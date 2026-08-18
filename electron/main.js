@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, globalShortcut } = require('electron');
 const path = require('path');
 const { spawn, execSync } = require('child_process');
 const fs = require('fs');
@@ -144,6 +144,14 @@ function createWindow(showSetup = false) {
     }
   });
 
+  // F12 = toggle DevTools (always available for debugging)
+  globalShortcut.register('F12', () => {
+    mainWindow?.webContents.toggleDevTools();
+  });
+  globalShortcut.register('CommandOrControl+Shift+I', () => {
+    mainWindow?.webContents.toggleDevTools();
+  });
+
   if (isDev) {
     mainWindow.loadURL(getFrontendUrl(showSetup));
   } else {
@@ -152,6 +160,16 @@ function createWindow(showSetup = false) {
       showSetup ? { query: { setup: '1' } } : {}
     );
   }
+
+  // Log to file for debugging
+  const logPath = path.join(app.getPath('userData'), 'debug.log');
+  const logStream = fs.createWriteStream(logPath, { flags: 'a' });
+  const origLog = console.log.bind(console);
+  const origErr = console.error.bind(console);
+  const ts = () => new Date().toISOString();
+  console.log = (...a) => { origLog(...a); logStream.write(`[${ts()}] INFO  ${a.join(' ')}\n`); };
+  console.error = (...a) => { origErr(...a); logStream.write(`[${ts()}] ERROR ${a.join(' ')}\n`); };
+  console.log('[App] Log started. userData:', app.getPath('userData'));
 }
 
 // ── App lifecycle ─────────────────────────────────────────────────
@@ -180,12 +198,43 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-// ── IPC: Window controls ──────────────────────────────────────────
+// ── IPC: Window controls ────────────────────────────────────────────
 ipcMain.handle('window-minimize', () => mainWindow?.minimize());
 ipcMain.handle('window-maximize', () => {
   mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
 });
 ipcMain.handle('window-close', () => mainWindow?.close());
+
+// IPC: Debug info
+ipcMain.handle('get-debug-info', () => {
+  const isWin = os.platform() === 'win32';
+  const backendDir = getBackendDir();
+  const userData = app.getPath('userData');
+  const venvPath = isWin
+    ? path.join(userData, 'venv', 'Scripts', 'python.exe')
+    : path.join(userData, 'venv', 'bin', 'python3');
+  const venvPathOld = isWin
+    ? path.join(backendDir, 'venv', 'Scripts', 'python.exe')
+    : path.join(backendDir, 'venv', 'bin', 'python3');
+
+  return {
+    version: app.getVersion(),
+    platform: os.platform(),
+    userData,
+    backendDir,
+    backendMain: path.join(backendDir, 'main.py'),
+    backendMainExists: fs.existsSync(path.join(backendDir, 'main.py')),
+    venvPath,
+    venvExists: fs.existsSync(venvPath),
+    venvPathOld,
+    venvOldExists: fs.existsSync(venvPathOld),
+    setupFlagExists: fs.existsSync(SETUP_FLAG),
+    backendPort: BACKEND_PORT,
+    logFile: path.join(userData, 'debug.log'),
+    pythonCmd: getPythonCmd(),
+    backendRunning: !!pythonProcess && !pythonProcess.killed,
+  };
+});
 
 // ── IPC: File dialogs ─────────────────────────────────────────────
 ipcMain.handle('open-folder-dialog', async () => {

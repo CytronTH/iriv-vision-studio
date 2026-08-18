@@ -23,4 +23,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   checkForUpdate: () => ipcRenderer.invoke('check-for-update'),
   installUpdate: () => ipcRenderer.invoke('install-update'),
   onUpdateStatus: (cb) => ipcRenderer.on('update-status', (_, data) => cb(data)),
+  // Debug
+  getDebugInfo: () => ipcRenderer.invoke('get-debug-info'),
+  onBackendError: (cb) => ipcRenderer.on('backend-error', (_, data) => cb(data)),
 });

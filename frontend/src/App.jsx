@@ -1100,11 +1100,37 @@ export default function App() {
   const [onnxPath, setOnnxPath] = useState(null);
   const [compileResult, setCompileResult] = useState(null);
   const [deviceIp, setDeviceIp] = useState('10.10.10.57');
+  const [showDebug, setShowDebug] = useState(false);
+  const [debugInfo, setDebugInfo] = useState(null);
+  const [backendError, setBackendError] = useState(null);
 
+  // Poll /api/system every 3s until connected
   useEffect(() => {
     if (!setupDone) return;
-    fetch(`${API}/api/system`).then(r => r.json()).then(setSysInfo).catch(() => {});
-  }, [setupDone]);
+    const poll = () => {
+      fetch(`${API}/api/system`).then(r => r.json()).then(info => {
+        setSysInfo(info);
+        setBackendError(null);
+      }).catch(() => {});
+    };
+    poll();
+    const t = setInterval(() => { if (!sysInfo) poll(); }, 3000);
+    return () => clearInterval(t);
+  }, [setupDone, sysInfo]);
+
+  // Listen for backend crash events
+  useEffect(() => {
+    if (!window.electronAPI?.onBackendError) return;
+    window.electronAPI.onBackendError((msg) => setBackendError(msg));
+  }, []);
+
+  const openDebug = async () => {
+    if (window.electronAPI?.getDebugInfo) {
+      const info = await window.electronAPI.getDebugInfo();
+      setDebugInfo(info);
+    }
+    setShowDebug(true);
+  };
 
   if (!setupDone) {
     return <SetupWizard onComplete={() => setSetupDone(true)} />;
@@ -1123,6 +1149,7 @@ export default function App() {
     deploy: false
   };
 
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
       {/* Update notification floating banner */}
@@ -1132,6 +1159,47 @@ export default function App() {
           onInstall={() => window.electronAPI?.installUpdate()}
           onDismiss={() => setUpdateDismissed(true)}
         />
+      )}
+      {/* Debug Modal */}
+      {showDebug && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
+        }} onClick={() => setShowDebug(false)}>
+          <div style={{
+            background: '#0d1117', border: '1px solid #1e2130', borderRadius: 16,
+            padding: 24, maxWidth: 680, width: '90%', maxHeight: '80vh', overflowY: 'auto'
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 16 }}>🔍 Debug Info</div>
+            {backendError && (
+              <div style={{ background: '#1a0a0a', border: '1px solid #7f1d1d', borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 12, color: '#f87171', fontFamily: 'JetBrains Mono' }}>
+                ⚠️ Backend Error: {backendError}
+              </div>
+            )}
+            {debugInfo ? (
+              <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
+                {Object.entries(debugInfo).map(([k, v]) => (
+                  <tr key={k} style={{ borderBottom: '1px solid #1e2130' }}>
+                    <td style={{ padding: '6px 8px', color: '#6b7280', whiteSpace: 'nowrap', fontFamily: 'JetBrains Mono' }}>{k}</td>
+                    <td style={{ padding: '6px 8px', color: typeof v === 'boolean' ? (v ? '#10b981' : '#f87171') : '#e2e8f0', wordBreak: 'break-all', fontFamily: 'JetBrains Mono' }}>
+                      {typeof v === 'boolean' ? (v ? '✅ YES' : '❌ NO') : String(v)}
+                    </td>
+                  </tr>
+                ))}
+              </table>
+            ) : <div style={{ color: '#4b5563' }}>ข้อมูล debug ไม่พร้อมใช้งาน (รันบน browser)</div>}
+            <div style={{ marginTop: 16, fontSize: 11, color: '#374151' }}>
+              💡 กด <strong>F12</strong> เพื่อเปิด DevTools แล้วดู Console tab สำหรับ log เพิ่มเติม
+            </div>
+            <div style={{ marginTop: 8, fontSize: 11, color: '#374151' }}>
+              📄 Log file: <code style={{ color: '#818cf8' }}>{debugInfo?.logFile || 'N/A'}</code>
+            </div>
+            <button onClick={() => setShowDebug(false)} style={{
+              marginTop: 16, width: '100%', padding: '8px', borderRadius: 8,
+              border: '1px solid #1e2130', background: 'transparent', color: '#6b7280', cursor: 'pointer'
+            }}>Close</button>
+          </div>
+        </div>
       )}
       {/* Titlebar */}
       <div className="titlebar" style={{
@@ -1158,8 +1226,26 @@ export default function App() {
               </span>
             </div>
           ) : (
-            <span style={{ color: '#4b5563', fontSize: 12 }}>Connecting to backend...</span>
+            <span
+              style={{ color: backendError ? '#f87171' : '#4b5563', fontSize: 12, cursor: 'pointer' }}
+              onClick={openDebug}
+              title="คลิกเพื่อดู debug info"
+            >
+              {backendError ? '❌ Backend Error' : '⏳ Connecting to backend...'}
+            </span>
           )}
+          {/* Debug button */}
+          <button
+            onClick={openDebug}
+            title="Debug Info (F12 for DevTools)"
+            style={{
+              background: 'none', border: '1px solid #1e2130', color: '#374151',
+              cursor: 'pointer', width: 28, height: 28, borderRadius: 6,
+              fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center'
+            }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = '#6366f1'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = '#1e2130'}
+          >🔍</button>
           {/* Window buttons (for frameless on Windows) */}
           {window.electronAPI && ['−','□','✕'].map((sym, i) => (
             <button key={i} onClick={() => [window.electronAPI?.minimize(), window.electronAPI?.maximize(), window.electronAPI?.close()][i]}
