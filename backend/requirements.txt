@@ -1,0 +1,12 @@
+fastapi==0.115.0
+uvicorn==0.30.0
+python-multipart==0.0.9
+ultralytics>=8.2.0
+torch
+torchvision
+onnx
+onnxruntime
+requests
+Pillow
+websockets
+aiofiles
