@@ -6,6 +6,10 @@ on:
       - model-studio
   workflow_dispatch:
 
+# Grant GITHUB_TOKEN permission to create releases
+permissions:
+  contents: write
+
 jobs:
   build-and-release:
     name: Build Windows Installer & Publish Release
