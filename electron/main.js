@@ -233,18 +233,26 @@ ipcMain.handle('run-setup', async () => {
 
     const sendLog = (text) => mainWindow?.webContents.send('setup-log', text);
 
-    // ── Run setup.bat / setup.sh with shell:true so cmd.exe is found correctly ──
-    const proc = isWin
-      ? spawn(scriptPath, [], {
-          cwd: backendDir,
-          shell: true,              // ← KEY FIX: shell:true resolves cmd.exe correctly
-          env: { ...process.env, VENV_DIR: venvDir, BACKEND_DIR: backendDir }
-        })
-      : spawn('bash', [scriptPath], {
-          cwd: backendDir,
-          shell: false,
-          env: { ...process.env, VENV_DIR: venvDir, BACKEND_DIR: backendDir }
-        });
+    sendLog(`[Setup] Script: ${scriptPath}`);
+    sendLog(`[Setup] BackendDir: ${backendDir}`);
+    sendLog(`[Setup] VenvDir: ${venvDir}`);
+
+    let proc;
+    if (isWin) {
+      // Use ComSpec (full path to cmd.exe, e.g. C:\Windows\System32\cmd.exe)
+      // Pass script path as argument — cmd.exe handles quoted paths with spaces correctly
+      const cmdExe = process.env.ComSpec || 'C:\\Windows\\System32\\cmd.exe';
+      proc = spawn(cmdExe, ['/c', scriptPath], {
+        cwd: backendDir,
+        shell: false,   // shell:false because we're calling cmd.exe directly
+        env: { ...process.env, VENV_DIR: venvDir, BACKEND_DIR: backendDir }
+      });
+    } else {
+      proc = spawn('bash', [scriptPath], {
+        cwd: backendDir,
+        env: { ...process.env, VENV_DIR: venvDir, BACKEND_DIR: backendDir }
+      });
+    }
 
     setupProcess = proc;
 
