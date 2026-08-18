@@ -26,4 +26,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Debug
   getDebugInfo: () => ipcRenderer.invoke('get-debug-info'),
   onBackendError: (cb) => ipcRenderer.on('backend-error', (_, data) => cb(data)),
+  resetAndReinstall: () => ipcRenderer.invoke('reset-and-reinstall'),
 });

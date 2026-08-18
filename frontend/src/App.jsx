@@ -1194,6 +1194,22 @@ export default function App() {
             <div style={{ marginTop: 8, fontSize: 11, color: '#374151' }}>
               📄 Log file: <code style={{ color: '#818cf8' }}>{debugInfo?.logFile || 'N/A'}</code>
             </div>
+            {window.electronAPI?.resetAndReinstall && (
+              <button
+                onClick={async () => {
+                  if (confirm('จะลบ venv เก่าและติดตั้ง dependencies ใหม่ทั้งหมด ใช้เวลา ~5 นาที ดำเนินการต่อ?')) {
+                    await window.electronAPI.resetAndReinstall();
+                  }
+                }}
+                style={{
+                  marginTop: 12, width: '100%', padding: '10px', borderRadius: 8,
+                  border: '1px solid #f59e0b', background: 'rgba(245,158,11,0.1)',
+                  color: '#fbbf24', cursor: 'pointer', fontWeight: 600, fontSize: 13
+                }}
+              >
+                🔄 Reinstall Dependencies (fix CPU only / CUDA issues)
+              </button>
+            )}
             <button onClick={() => setShowDebug(false)} style={{
               marginTop: 16, width: '100%', padding: '8px', borderRadius: 8,
               border: '1px solid #1e2130', background: 'transparent', color: '#6b7280', cursor: 'pointer'

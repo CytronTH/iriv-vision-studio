@@ -497,3 +497,32 @@ ipcMain.handle('check-for-update', async () => {
 
 // IPC: Get current app version
 ipcMain.handle('get-app-version', () => app.getVersion());
+
+// IPC: Reset setup and reinstall (clears flag, kills backend, reloads to setup)
+ipcMain.handle('reset-and-reinstall', () => {
+  try {
+    // Kill running backend
+    if (pythonProcess) { try { pythonProcess.kill(); } catch {} pythonProcess = null; }
+    // Remove setup flag so setup wizard shows on next load
+    try { fs.unlinkSync(SETUP_FLAG); } catch {}
+    // Remove old venv so setup creates fresh one
+    const isWin = os.platform() === 'win32';
+    const userData = app.getPath('userData');
+    const venvDir = path.join(userData, 'venv');
+    if (fs.existsSync(venvDir)) {
+      fs.rmSync(venvDir, { recursive: true, force: true });
+      console.log('[App] Removed old venv:', venvDir);
+    }
+    // Reload the window to show setup wizard
+    setTimeout(() => {
+      mainWindow?.loadFile(
+        path.join(__dirname, '../frontend/dist/index.html'),
+        { query: { setup: '1' } }
+      );
+    }, 500);
+    return { success: true };
+  } catch (err) {
+    console.error('[App] reset-and-reinstall error:', err.message);
+    return { success: false, error: err.message };
+  }
+});
