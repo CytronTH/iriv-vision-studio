@@ -59,17 +59,57 @@ function getPythonCmd() {
 }
 
 // ── Start Python backend ──────────────────────────────────────────
+function findVenvPython() {
+  const isWin = os.platform() === 'win32';
+  const backendDir = getBackendDir();
+
+  // All possible venv locations (new → old for backwards compat)
+  const candidates = isWin ? [
+    path.join(app.getPath('userData'), 'venv', 'Scripts', 'python.exe'),   // new (userData)
+    path.join(backendDir, 'venv', 'Scripts', 'python.exe'),                 // old (backend/venv)
+    path.join(__dirname, '../backend/venv/Scripts/python.exe'),              // dev fallback
+  ] : [
+    path.join(app.getPath('userData'), 'venv', 'bin', 'python3'),
+    path.join(backendDir, 'venv', 'bin', 'python3'),
+    path.join(__dirname, '../backend/venv/bin/python3'),
+  ];
+
+  for (const p of candidates) {
+    if (fs.existsSync(p)) {
+      console.log('[Backend] Found venv python:', p);
+      return p;
+    }
+  }
+  console.warn('[Backend] No venv found, falling back to system python');
+  return getPythonCmd() || 'python';
+}
+
+function isVenvReady() {
+  const isWin = os.platform() === 'win32';
+  const backendDir = getBackendDir();
+  const checks = isWin ? [
+    path.join(app.getPath('userData'), 'venv', 'Scripts', 'python.exe'),
+    path.join(backendDir, 'venv', 'Scripts', 'python.exe'),
+  ] : [
+    path.join(app.getPath('userData'), 'venv', 'bin', 'python3'),
+    path.join(backendDir, 'venv', 'bin', 'python3'),
+  ];
+  return checks.some(p => fs.existsSync(p));
+}
+
 function startPythonBackend() {
   const backendDir = getBackendDir();
   const backendMain = path.join(backendDir, 'main.py');
-  const isWin = os.platform() === 'win32';
-  const venvPython = isWin
-    ? path.join(app.getPath('userData'), 'venv', 'Scripts', 'python.exe')
-    : path.join(app.getPath('userData'), 'venv', 'bin', 'python3');
+  const usePython = findVenvPython();
 
-  const usePython = fs.existsSync(venvPython) ? venvPython : (getPythonCmd() || 'python');
+  if (!fs.existsSync(backendMain)) {
+    console.error('[Backend] main.py not found at:', backendMain);
+    mainWindow?.webContents.send('backend-error', 'main.py not found: ' + backendMain);
+    return;
+  }
 
   console.log('[Backend] Starting:', usePython, backendMain);
+  console.log('[Backend] cwd:', backendDir);
 
   pythonProcess = spawn(usePython, [backendMain, '--port', String(BACKEND_PORT)], {
     cwd: backendDir,
@@ -80,7 +120,11 @@ function startPythonBackend() {
 
   pythonProcess.stdout.on('data', d => console.log('[Backend]', d.toString().trim()));
   pythonProcess.stderr.on('data', d => console.error('[Backend ERR]', d.toString().trim()));
-  pythonProcess.on('close', code => console.log(`Python process exited: ${code}`));
+  pythonProcess.on('error', err => console.error('[Backend] spawn error:', err.message));
+  pythonProcess.on('close', code => {
+    console.log(`Python process exited: ${code}`);
+    mainWindow?.webContents.send('backend-error', `Python backend exited with code ${code}`);
+  });
 }
 
 // ── Create browser window ─────────────────────────────────────────
@@ -112,14 +156,21 @@ function createWindow(showSetup = false) {
 
 // ── App lifecycle ─────────────────────────────────────────────────
 app.whenReady().then(() => {
-  const needsSetup = !isSetupComplete();
+  const setupDone = isSetupComplete();
+
+  // If setup flag exists but venv is missing → force re-setup
+  if (setupDone && !isVenvReady()) {
+    console.warn('[App] Setup flag found but venv missing — resetting setup');
+    try { fs.unlinkSync(SETUP_FLAG); } catch {}
+    createWindow(true);  // show setup
+    return;
+  }
+
+  const needsSetup = !setupDone;
   createWindow(needsSetup);
   if (!needsSetup) {
     startPythonBackend();
-    // Check for updates 5s after launch (only in packaged build)
-    if (!isDev) {
-      setTimeout(() => initAutoUpdater(), 5000);
-    }
+    if (!isDev) setTimeout(() => initAutoUpdater(), 5000);
   }
 });
 
