@@ -17,6 +17,10 @@
   "build": {
     "appId": "com.iriv.model-studio",
     "productName": "IRIV Model Studio",
+    "asar": true,
+    "asarUnpack": [
+      "backend/**/*"
+    ],
     "directories": {
       "output": "dist"
     },

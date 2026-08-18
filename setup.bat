@@ -2,64 +2,69 @@
 setlocal enabledelayedexpansion
 echo.
 echo ================================================
-echo   IRIV Model Studio - First Time Setup
+echo   IRIV Model Studio - Installing Dependencies
 echo ================================================
+echo.
+
+:: Use VENV_DIR from Electron if provided, else default to backend\venv
+if "%VENV_DIR%"=="" (
+    set "VENV_DIR=%~dp0venv"
+)
+if "%BACKEND_DIR%"=="" (
+    set "BACKEND_DIR=%~dp0"
+)
+
+echo Backend dir: %BACKEND_DIR%
+echo Venv dir:    %VENV_DIR%
 echo.
 
 :: Step 1 - Check Python
 echo [1/4] Checking Python...
 python --version >nul 2>&1
 if errorlevel 1 (
-    echo WARN: Python not found. Opening download page...
-    start https://www.python.org/downloads/
-    echo.
-    echo Please install Python 3.10+ and run this setup again.
-    echo Make sure to check "Add Python to PATH" during installation!
-    echo.
-    pause
-    exit /b 1
+    py --version >nul 2>&1
+    if errorlevel 1 (
+        echo __SETUP_FAILED__: Python not found
+        exit /b 1
+    ) else (
+        set PYTHON_CMD=py
+    )
+) else (
+    set PYTHON_CMD=python
 )
-python --version
+%PYTHON_CMD% --version
+echo.
 
 :: Step 2 - Create virtual environment
-echo.
-echo [2/4] Creating Python virtual environment...
-cd /d "%~dp0backend"
-python -m venv venv
+echo [2/4] Creating virtual environment...
+%PYTHON_CMD% -m venv "%VENV_DIR%"
 if errorlevel 1 (
-    echo ERROR: Failed to create venv
+    echo __SETUP_FAILED__: Failed to create venv
     exit /b 1
 )
-echo Done!
-
-:: Step 3 - Install Python packages
+echo [OK] Virtual Environment created
 echo.
-echo [3/4] Installing Python packages (this may take 5-10 minutes)...
-echo       Downloading: FastAPI, Ultralytics YOLOv8, PyTorch CUDA...
+
+:: Step 3 - Activate and install
+echo [3/4] Installing packages...
+call "%VENV_DIR%\Scripts\activate.bat"
+
+python -m pip install --upgrade pip --quiet
+python -m pip install fastapi uvicorn python-multipart aiofiles requests --quiet
+echo [OK] FastAPI installed
+
+python -m pip install ultralytics --quiet
+echo [OK] Ultralytics (YOLOv8) installed
+
+python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121 --quiet
+echo [OK] PyTorch CUDA installed
+
+python -m pip install onnx onnxruntime --quiet
+echo [OK] ONNX installed
+
 echo.
-call venv\Scripts\activate.bat
-
-pip install --upgrade pip --quiet
-pip install fastapi uvicorn python-multipart aiofiles requests --quiet
-echo   [OK] FastAPI installed
-
-pip install ultralytics --quiet
-echo   [OK] Ultralytics (YOLOv8) installed
-
-:: Install PyTorch with CUDA
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121 --quiet
-echo   [OK] PyTorch CUDA installed
-
-pip install onnx onnxruntime --quiet
-echo   [OK] ONNX installed
-
-:: Step 4 - Done
-echo.
-echo [4/4] Setup complete!
-echo.
+echo [4/4] Done!
 echo ================================================
-echo   All dependencies installed successfully!
-echo   IRIV Model Studio is ready to use.
+echo   All packages installed successfully!
 echo ================================================
-echo.
 exit /b 0
