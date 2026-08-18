@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Database, BrainCircuit, Cpu, PackageOpen, CheckCircle2,
   Upload, Trash2, Play, Square, Zap, Wifi, RefreshCw,
-  ChevronRight, FolderOpen, FileCode, Server, AlertTriangle
+  ChevronRight, FolderOpen, FileCode, Server, AlertTriangle,
+  Download, Terminal, ExternalLink, ShieldCheck
 } from 'lucide-react';
 
 const API = 'http://localhost:7654';
@@ -480,8 +481,269 @@ function DeployPage({ compileResult, deviceIp }) {
   );
 }
 
+// ── Setup Wizard ───────────────────────────────────────────────────
+const INSTALL_STEPS = [
+  { id: 'python',  label: 'Python 3.10+',              desc: 'Runtime environment' },
+  { id: 'venv',   label: 'Virtual Environment',        desc: 'Isolated package space' },
+  { id: 'fastapi',label: 'FastAPI & Web Server',       desc: 'Backend API' },
+  { id: 'yolo',   label: 'Ultralytics YOLOv8',        desc: 'AI training framework' },
+  { id: 'torch',  label: 'PyTorch + CUDA',             desc: 'GPU acceleration' },
+  { id: 'onnx',   label: 'ONNX Tools',                 desc: 'Model export' },
+];
+
+function SetupWizard({ onComplete }) {
+  const [phase, setPhase] = useState('check'); // check | ready | installing | done | error | nopython
+  const [pythonInfo, setPythonInfo] = useState(null);
+  const [logs, setLogs] = useState([]);
+  const [progress, setProgress] = useState(0);
+  const [currentStep, setCurrentStep] = useState('');
+  const logRef = useRef();
+  const isElectron = !!window.electronAPI;
+
+  useEffect(() => {
+    if (isElectron) {
+      window.electronAPI.checkPython().then(info => {
+        setPythonInfo(info);
+        setPhase(info.found ? 'ready' : 'nopython');
+      });
+      window.electronAPI.onSetupLog((line) => {
+        if (line === '__SETUP_COMPLETE__') {
+          setPhase('done');
+          setProgress(100);
+          return;
+        }
+        if (line.startsWith('__SETUP_FAILED__')) {
+          setPhase('error');
+          return;
+        }
+        // Detect progress from install lines
+        if (line.includes('FastAPI')) { setProgress(25); setCurrentStep('fastapi'); }
+        if (line.includes('Ultralytics')) { setProgress(50); setCurrentStep('yolo'); }
+        if (line.includes('PyTorch')) { setProgress(75); setCurrentStep('torch'); }
+        if (line.includes('ONNX')) { setProgress(90); setCurrentStep('onnx'); }
+        setLogs(prev => [...prev.slice(-200), line.trim()]);
+      });
+    } else {
+      // Browser mode — skip setup
+      setPhase('done');
+    }
+  }, []);
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [logs]);
+
+  const startInstall = async () => {
+    setPhase('installing');
+    setProgress(5);
+    setCurrentStep('python');
+    await window.electronAPI.runSetup();
+  };
+
+  const openPythonDownload = () => {
+    if (isElectron) window.electronAPI.openExternal('https://www.python.org/downloads/');
+    else window.open('https://www.python.org/downloads/', '_blank');
+  };
+
+  if (phase === 'done') {
+    return (
+      <div style={{
+        height: '100vh', display: 'flex', flexDirection: 'column',
+        alignItems: 'center', justifyContent: 'center',
+        background: 'radial-gradient(ellipse at center, #0d1424 0%, #0a0c12 100%)'
+      }}>
+        <div style={{ textAlign: 'center', animation: 'fadeIn 0.5s ease' }}>
+          <div style={{
+            width: 80, height: 80, borderRadius: '50%',
+            background: 'linear-gradient(135deg, #059669, #10b981)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            margin: '0 auto 24px', boxShadow: '0 0 60px rgba(16,185,129,0.4)'
+          }}>
+            <CheckCircle2 size={40} color="white" />
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>Ready to Go! 🎉</div>
+          <div style={{ color: '#6b7280', marginBottom: 32 }}>All dependencies installed successfully</div>
+          <button className="btn-primary" onClick={onComplete} style={{ fontSize: 16, padding: '14px 40px', borderRadius: 14 }}>
+            Launch IRIV Model Studio →
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Titlebar */}
+      <div className="titlebar" style={{
+        height: 44, background: '#060810', borderBottom: '1px solid #1e2130',
+        display: 'flex', alignItems: 'center', paddingLeft: 80, paddingRight: 16, flexShrink: 0
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{
+            width: 26, height: 26, borderRadius: 8,
+            background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>
+            <BrainCircuit size={14} color="white" />
+          </div>
+          <span style={{ fontWeight: 700, fontSize: 14 }}>IRIV Model Studio</span>
+          <span style={{ color: '#374151', fontSize: 13 }}>— First Time Setup</span>
+        </div>
+        <div className="no-drag" style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          {['−','□','✕'].map((sym, i) => (
+            <button key={i} onClick={() => [window.electronAPI?.minimize(), window.electronAPI?.maximize(), window.electronAPI?.close()][i]}
+              style={{ background: 'none', border: 'none', color: '#4b5563', cursor: 'pointer', width: 28, height: 28, borderRadius: 6, fontSize: 14, display:'flex',alignItems:'center',justifyContent:'center' }}
+              onMouseEnter={e => e.target.style.background='#1e2130'} onMouseLeave={e => e.target.style.background='none'}>
+              {sym}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Body */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: 32 }}>
+        <div style={{ maxWidth: 620, width: '100%' }}>
+
+          {/* Header */}
+          <div style={{ textAlign: 'center', marginBottom: 40 }}>
+            <div style={{
+              width: 72, height: 72, borderRadius: 20,
+              background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 20px', boxShadow: '0 8px 40px rgba(99,102,241,0.4)'
+            }}>
+              <Download size={32} color="white" />
+            </div>
+            <div style={{ fontSize: 26, fontWeight: 800, marginBottom: 8 }}>Welcome to IRIV Model Studio</div>
+            <div style={{ color: '#6b7280', fontSize: 14 }}>We need to install a few things before you can start training models.</div>
+          </div>
+
+          {/* No Python screen */}
+          {phase === 'nopython' && (
+            <div className="card" style={{ borderColor: '#ef4444', background: 'rgba(239,68,68,0.05)', textAlign: 'center', padding: 32 }}>
+              <AlertTriangle size={40} color="#ef4444" style={{ margin: '0 auto 16px' }} />
+              <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 8, color: '#f87171' }}>Python Not Found</div>
+              <div style={{ color: '#9ca3af', marginBottom: 24, fontSize: 14 }}>
+                IRIV Model Studio requires Python 3.10 or newer.<br />
+                Please install Python, then relaunch this app.
+              </div>
+              <div style={{ background: '#0a0c12', borderRadius: 10, padding: '12px 16px', marginBottom: 24, fontFamily: 'JetBrains Mono', fontSize: 13, color: '#f59e0b', textAlign: 'left' }}>
+                ⚠️ During installation, make sure to check<br />
+                <strong style={{ color: '#fbbf24' }}>"Add Python to PATH"</strong>
+              </div>
+              <button className="btn-primary" onClick={openPythonDownload} style={{ justifyContent: 'center', width: '100%', padding: '14px' }}>
+                <ExternalLink size={16} /> Download Python 3.12 (Official)
+              </button>
+              <button className="btn-secondary" onClick={() => window.location.reload()} style={{ justifyContent: 'center', width: '100%', marginTop: 10 }}>
+                <RefreshCw size={14} /> I've installed Python — Check Again
+              </button>
+            </div>
+          )}
+
+          {/* Ready to install */}
+          {phase === 'ready' && (
+            <div>
+              <div className="card" style={{ marginBottom: 20, background: 'rgba(5,150,105,0.05)', borderColor: 'rgba(5,150,105,0.3)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <ShieldCheck size={20} color="#10b981" />
+                  <div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>Python detected: {pythonInfo?.version}</div>
+                    <div style={{ color: '#6b7280', fontSize: 12 }}>Ready to install dependencies</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="card" style={{ marginBottom: 24 }}>
+                <div style={{ fontWeight: 600, fontSize: 13, color: '#9ca3af', marginBottom: 16 }}>WILL INSTALL</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {INSTALL_STEPS.map(s => (
+                    <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#374151' }} />
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontWeight: 500, fontSize: 14 }}>{s.label}</span>
+                        <span style={{ color: '#4b5563', fontSize: 12, marginLeft: 8 }}>{s.desc}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 16, padding: '10px 14px', background: '#0a0c12', borderRadius: 10, fontSize: 12, color: '#6b7280' }}>
+                  ⏱️ Estimated time: <strong style={{ color: '#9ca3af' }}>5–15 minutes</strong> (depends on internet speed)
+                </div>
+              </div>
+
+              <button className="btn-primary" onClick={startInstall} style={{ width: '100%', justifyContent: 'center', padding: '16px', fontSize: 16, borderRadius: 14 }}>
+                <Download size={18} /> Install Now — One Click Setup
+              </button>
+            </div>
+          )}
+
+          {/* Installing */}
+          {phase === 'installing' && (
+            <div>
+              <div className="card" style={{ marginBottom: 20 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 8, color: '#9ca3af' }}>
+                  <span className="animate-pulse">Installing dependencies...</span>
+                  <span>{progress}%</span>
+                </div>
+                <div className="progress-bar">
+                  <div className="progress-bar-fill" style={{ width: `${progress}%` }} />
+                </div>
+
+                <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
+                  {INSTALL_STEPS.map(s => {
+                    const idx = INSTALL_STEPS.findIndex(x => x.id === s.id);
+                    const curIdx = INSTALL_STEPS.findIndex(x => x.id === currentStep);
+                    const isDone = idx < curIdx;
+                    const isCur = s.id === currentStep;
+                    return (
+                      <div key={s.id} style={{
+                        display: 'flex', alignItems: 'center', gap: 6, fontSize: 12,
+                        color: isDone ? '#10b981' : isCur ? '#818cf8' : '#374151'
+                      }}>
+                        {isDone ? <CheckCircle2 size={12} /> : isCur ? <RefreshCw size={12} className="animate-spin" /> : <div style={{ width: 12, height: 12, borderRadius: '50%', border: '1px solid #374151' }} />}
+                        {s.label}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Log window */}
+              <div ref={logRef} style={{
+                background: '#060810', border: '1px solid #1e2130', borderRadius: 12,
+                height: 200, overflowY: 'auto', padding: 12,
+                fontFamily: 'JetBrains Mono', fontSize: 11, color: '#4b5563'
+              }}>
+                {logs.map((l, i) => (
+                  <div key={i} style={{ lineHeight: 1.7, color: l.includes('[OK]') ? '#10b981' : l.includes('ERROR') ? '#f87171' : '#4b5563' }}>{l}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {phase === 'error' && (
+            <div className="card" style={{ borderColor: '#ef4444', textAlign: 'center', padding: 32 }}>
+              <AlertTriangle size={40} color="#ef4444" style={{ margin: '0 auto 16px' }} />
+              <div style={{ fontWeight: 700, color: '#f87171', marginBottom: 12 }}>Installation Failed</div>
+              <div style={{ color: '#6b7280', fontSize: 13, marginBottom: 20 }}>Check your internet connection and try again.</div>
+              <button className="btn-secondary" onClick={() => { setPhase('ready'); setLogs([]); setProgress(0); }} style={{ justifyContent: 'center', width: '100%' }}>
+                <RefreshCw size={14} /> Try Again
+              </button>
+            </div>
+          )}
+
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main App ───────────────────────────────────────────────────────
 export default function App() {
+  // Detect if we need setup (from URL param or first launch)
+  const needsSetup = new URLSearchParams(window.location.search).get('setup') === '1';
+  const [setupDone, setSetupDone] = useState(!needsSetup);
+
   const [page, setPage] = useState('dataset');
   const [sysInfo, setSysInfo] = useState(null);
   const [selectedDataset, setSelectedDataset] = useState(null);
@@ -490,8 +752,13 @@ export default function App() {
   const [deviceIp, setDeviceIp] = useState('10.10.10.57');
 
   useEffect(() => {
+    if (!setupDone) return;
     fetch(`${API}/api/system`).then(r => r.json()).then(setSysInfo).catch(() => {});
-  }, []);
+  }, [setupDone]);
+
+  if (!setupDone) {
+    return <SetupWizard onComplete={() => setSetupDone(true)} />;
+  }
 
   const handleDatasetSelected = (ds) => {
     setSelectedDataset(ds);
@@ -535,6 +802,14 @@ export default function App() {
           ) : (
             <span style={{ color: '#4b5563', fontSize: 12 }}>Connecting to backend...</span>
           )}
+          {/* Window buttons (for frameless on Windows) */}
+          {window.electronAPI && ['−','□','✕'].map((sym, i) => (
+            <button key={i} onClick={() => [window.electronAPI?.minimize(), window.electronAPI?.maximize(), window.electronAPI?.close()][i]}
+              style={{ background: 'none', border: 'none', color: '#4b5563', cursor: 'pointer', width: 28, height: 28, borderRadius: 6, fontSize: 14, display:'flex',alignItems:'center',justifyContent:'center' }}
+              onMouseEnter={e => e.target.style.background='#1e2130'} onMouseLeave={e => e.target.style.background='none'}>
+              {sym}
+            </button>
+          ))}
         </div>
       </div>
 

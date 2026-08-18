@@ -1,8 +1,19 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
+  // Window controls
+  minimize: () => ipcRenderer.invoke('window-minimize'),
+  maximize: () => ipcRenderer.invoke('window-maximize'),
+  close: () => ipcRenderer.invoke('window-close'),
+  // File dialogs
   openFolderDialog: () => ipcRenderer.invoke('open-folder-dialog'),
   openFileDialog: (filters) => ipcRenderer.invoke('open-file-dialog', filters),
-  saveFileDialog: (defaultName) => ipcRenderer.invoke('save-file-dialog', defaultName),
+  saveFileDialog: (name) => ipcRenderer.invoke('save-file-dialog', name),
+  // Backend
   getBackendPort: () => ipcRenderer.invoke('get-backend-port'),
+  openExternal: (url) => ipcRenderer.invoke('open-external', url),
+  // Setup
+  checkPython: () => ipcRenderer.invoke('check-python'),
+  runSetup: () => ipcRenderer.invoke('run-setup'),
+  onSetupLog: (cb) => ipcRenderer.on('setup-log', (_, data) => cb(data)),
 });
