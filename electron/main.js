@@ -135,6 +135,111 @@ ipcMain.handle('check-python', () => {
   }
 });
 
+// ── IPC: Auto-install Python ──────────────────────────────────────
+ipcMain.handle('install-python', async () => {
+  return new Promise((resolve) => {
+    const isWin = os.platform() === 'win32';
+    if (!isWin) {
+      // On Linux: use apt
+      mainWindow?.webContents.send('python-install-log', 'Running: sudo apt install python3...');
+      const proc = spawn('bash', ['-c', 'sudo apt-get install -y python3 python3-pip python3-venv']);
+      proc.stdout.on('data', d => mainWindow?.webContents.send('python-install-log', d.toString()));
+      proc.stderr.on('data', d => mainWindow?.webContents.send('python-install-log', d.toString()));
+      proc.on('close', code => resolve({ success: code === 0 }));
+      return;
+    }
+
+    // Windows: try winget first, then fall back to silent .exe install
+    const PYTHON_VERSION = '3.12.5';
+    const PYTHON_URL = `https://www.python.org/ftp/python/${PYTHON_VERSION}/python-${PYTHON_VERSION}-amd64.exe`;
+    const installerPath = path.join(os.tmpdir(), `python_installer.exe`);
+
+    const sendLog = (msg) => mainWindow?.webContents.send('python-install-log', msg);
+
+    // Try winget first (built-in on modern Windows 10/11)
+    sendLog('Checking for winget (Windows Package Manager)...');
+    let wingetAvailable = false;
+    try {
+      execSync('winget --version', { stdio: 'pipe' });
+      wingetAvailable = true;
+    } catch {}
+
+    if (wingetAvailable) {
+      sendLog('✅ winget found! Installing Python 3.12 via winget...');
+      const proc = spawn('winget', [
+        'install', 'Python.Python.3.12',
+        '--silent',
+        '--accept-source-agreements',
+        '--accept-package-agreements',
+        '--scope', 'user'
+      ], { shell: true });
+
+      proc.stdout.on('data', d => sendLog(d.toString()));
+      proc.stderr.on('data', d => sendLog(d.toString()));
+      proc.on('close', (code) => {
+        if (code === 0) {
+          sendLog('__PYTHON_INSTALLED__');
+          resolve({ success: true, method: 'winget' });
+        } else {
+          sendLog('winget failed, falling back to direct download...');
+          installViaDirect(installerPath, PYTHON_URL, sendLog, resolve);
+        }
+      });
+    } else {
+      sendLog('winget not available. Downloading Python installer directly...');
+      installViaDirect(installerPath, PYTHON_URL, sendLog, resolve);
+    }
+  });
+});
+
+function installViaDirect(installerPath, url, sendLog, resolve) {
+  const PYTHON_VERSION = '3.12.5';
+  sendLog(`Downloading Python ${PYTHON_VERSION} from python.org...`);
+  sendLog('(This may take 1-2 minutes depending on your internet speed)');
+
+  // Use PowerShell to download
+  const downloadCmd = `(New-Object Net.WebClient).DownloadFile('${url}', '${installerPath}')`;
+  const dlProc = spawn('powershell', [
+    '-NoProfile', '-NonInteractive', '-Command', downloadCmd
+  ], { shell: false });
+
+  dlProc.stderr.on('data', d => sendLog(d.toString()));
+  dlProc.on('close', (dlCode) => {
+    if (dlCode !== 0) {
+      sendLog('__PYTHON_FAILED__: Download error');
+      resolve({ success: false, reason: 'download_failed' });
+      return;
+    }
+    sendLog('Download complete. Running silent installer...');
+    sendLog('(Installing Python for current user, adding to PATH)');
+
+    // Silent install: user-only, prepend to PATH, no test suite
+    const installProc = spawn(installerPath, [
+      '/quiet',
+      'InstallAllUsers=0',
+      'PrependPath=1',
+      'Include_test=0',
+      'Include_doc=0',
+      'Include_launcher=1',
+      'SimpleInstall=1'
+    ], { shell: false });
+
+    installProc.on('close', (code) => {
+      // Cleanup installer
+      try { fs.unlinkSync(installerPath); } catch {}
+
+      if (code === 0) {
+        sendLog('__PYTHON_INSTALLED__');
+        resolve({ success: true, method: 'direct' });
+      } else {
+        sendLog(`__PYTHON_FAILED__: Installer exited with code ${code}`);
+        resolve({ success: false, reason: 'install_failed', code });
+      }
+    });
+  });
+}
+
+
 // ── IPC: Run setup ────────────────────────────────────────────────
 ipcMain.handle('run-setup', async (event) => {
   return new Promise((resolve) => {

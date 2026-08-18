@@ -504,8 +504,42 @@ function SetupWizard({ onComplete }) {
     if (isElectron) {
       window.electronAPI.checkPython().then(info => {
         setPythonInfo(info);
-        setPhase(info.found ? 'ready' : 'nopython');
+        if (info.found) {
+          setPhase('ready');
+        } else {
+          // Auto-trigger Python install immediately — no user action needed
+          setPhase('installing-python');
+          setLogs(['Python not found. Starting automatic installation...']);
+          window.electronAPI.installPython();
+        }
       });
+
+      // Listen to Python install logs
+      window.electronAPI.onPythonInstallLog((line) => {
+        if (line === '__PYTHON_INSTALLED__') {
+          setLogs(prev => [...prev, '✅ Python installed successfully!', 'Verifying installation...']);
+          // Re-check Python after install
+          setTimeout(() => {
+            window.electronAPI.checkPython().then(info => {
+              if (info.found) {
+                setPythonInfo(info);
+                setPhase('ready');
+                setLogs([]);
+              } else {
+                setPhase('python-failed');
+              }
+            });
+          }, 1500);
+          return;
+        }
+        if (line.startsWith('__PYTHON_FAILED__')) {
+          setPhase('python-failed');
+          return;
+        }
+        setLogs(prev => [...prev.slice(-100), line.trim()]);
+      });
+
+      // Listen to dependency install logs
       window.electronAPI.onSetupLog((line) => {
         if (line === '__SETUP_COMPLETE__') {
           setPhase('done');
@@ -516,15 +550,13 @@ function SetupWizard({ onComplete }) {
           setPhase('error');
           return;
         }
-        // Detect progress from install lines
-        if (line.includes('FastAPI')) { setProgress(25); setCurrentStep('fastapi'); }
-        if (line.includes('Ultralytics')) { setProgress(50); setCurrentStep('yolo'); }
-        if (line.includes('PyTorch')) { setProgress(75); setCurrentStep('torch'); }
-        if (line.includes('ONNX')) { setProgress(90); setCurrentStep('onnx'); }
+        if (line.includes('[OK] FastAPI')) { setProgress(30); setCurrentStep('fastapi'); }
+        if (line.includes('[OK] Ultralytics')) { setProgress(55); setCurrentStep('yolo'); }
+        if (line.includes('[OK] PyTorch')) { setProgress(80); setCurrentStep('torch'); }
+        if (line.includes('[OK] ONNX')) { setProgress(95); setCurrentStep('onnx'); }
         setLogs(prev => [...prev.slice(-200), line.trim()]);
       });
     } else {
-      // Browser mode — skip setup
       setPhase('done');
     }
   }, []);
@@ -535,14 +567,10 @@ function SetupWizard({ onComplete }) {
 
   const startInstall = async () => {
     setPhase('installing');
-    setProgress(5);
-    setCurrentStep('python');
+    setProgress(10);
+    setCurrentStep('venv');
+    setLogs([]);
     await window.electronAPI.runSetup();
-  };
-
-  const openPythonDownload = () => {
-    if (isElectron) window.electronAPI.openExternal('https://www.python.org/downloads/');
-    else window.open('https://www.python.org/downloads/', '_blank');
   };
 
   if (phase === 'done') {
@@ -618,24 +646,49 @@ function SetupWizard({ onComplete }) {
             <div style={{ color: '#6b7280', fontSize: 14 }}>We need to install a few things before you can start training models.</div>
           </div>
 
-          {/* No Python screen */}
-          {phase === 'nopython' && (
-            <div className="card" style={{ borderColor: '#ef4444', background: 'rgba(239,68,68,0.05)', textAlign: 'center', padding: 32 }}>
-              <AlertTriangle size={40} color="#ef4444" style={{ margin: '0 auto 16px' }} />
-              <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 8, color: '#f87171' }}>Python Not Found</div>
-              <div style={{ color: '#9ca3af', marginBottom: 24, fontSize: 14 }}>
-                IRIV Model Studio requires Python 3.10 or newer.<br />
-                Please install Python, then relaunch this app.
+          {/* Auto-installing Python */}
+          {phase === 'installing-python' && (
+            <div className="card" style={{ textAlign: 'center', padding: 32 }}>
+              <div style={{
+                width: 56, height: 56, borderRadius: '50%',
+                background: 'rgba(99,102,241,0.15)', border: '2px solid rgba(99,102,241,0.4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px'
+              }}>
+                <RefreshCw size={24} color="#818cf8" className="animate-spin" />
               </div>
-              <div style={{ background: '#0a0c12', borderRadius: 10, padding: '12px 16px', marginBottom: 24, fontFamily: 'JetBrains Mono', fontSize: 13, color: '#f59e0b', textAlign: 'left' }}>
-                ⚠️ During installation, make sure to check<br />
-                <strong style={{ color: '#fbbf24' }}>"Add Python to PATH"</strong>
+              <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 8 }}>Installing Python 3.12</div>
+              <div style={{ color: '#6b7280', fontSize: 13, marginBottom: 20 }}>
+                กำลังติดตั้ง Python อัตโนมัติ — ไม่ต้องทำอะไรเพิ่มเติม
               </div>
-              <button className="btn-primary" onClick={openPythonDownload} style={{ justifyContent: 'center', width: '100%', padding: '14px' }}>
-                <ExternalLink size={16} /> Download Python 3.12 (Official)
+              <div style={{
+                background: '#060810', border: '1px solid #1e2130', borderRadius: 10,
+                padding: 12, maxHeight: 160, overflowY: 'auto', textAlign: 'left',
+                fontFamily: 'JetBrains Mono', fontSize: 11
+              }} ref={logRef}>
+                {logs.map((l, i) => (
+                  <div key={i} style={{ lineHeight: 1.7, color: l.includes('✅') ? '#10b981' : '#4b5563' }}>{l}</div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Python install failed — fallback */}
+          {phase === 'python-failed' && (
+            <div className="card" style={{ borderColor: '#f59e0b', background: 'rgba(245,158,11,0.05)', textAlign: 'center', padding: 32 }}>
+              <AlertTriangle size={36} color="#f59e0b" style={{ margin: '0 auto 14px' }} />
+              <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 8, color: '#fbbf24' }}>Auto-install Failed</div>
+              <div style={{ color: '#9ca3af', marginBottom: 20, fontSize: 13 }}>
+                ไม่สามารถติดตั้ง Python อัตโนมัติได้<br />
+                กรุณาดาวน์โหลดและติดตั้งเอง แล้วกด "Check Again"
+              </div>
+              <div style={{ background: '#0a0c12', borderRadius: 8, padding: '10px 14px', marginBottom: 20, fontFamily: 'JetBrains Mono', fontSize: 12, color: '#f59e0b', textAlign: 'left' }}>
+                ⚠️ ขณะติดตั้ง ให้เลือก <strong style={{ color: '#fbbf24' }}>"Add Python to PATH"</strong>
+              </div>
+              <button className="btn-primary" onClick={() => window.electronAPI?.openExternal('https://www.python.org/downloads/')} style={{ justifyContent: 'center', width: '100%', padding: '13px', marginBottom: 10 }}>
+                <ExternalLink size={15} /> Download Python 3.12 (Official)
               </button>
-              <button className="btn-secondary" onClick={() => window.location.reload()} style={{ justifyContent: 'center', width: '100%', marginTop: 10 }}>
-                <RefreshCw size={14} /> I've installed Python — Check Again
+              <button className="btn-secondary" onClick={() => window.location.reload()} style={{ justifyContent: 'center', width: '100%' }}>
+                <RefreshCw size={14} /> ติดตั้งแล้ว — Check Again
               </button>
             </div>
           )}

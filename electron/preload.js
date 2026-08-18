@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: (url) => ipcRenderer.invoke('open-external', url),
   // Setup
   checkPython: () => ipcRenderer.invoke('check-python'),
+  installPython: () => ipcRenderer.invoke('install-python'),
+  onPythonInstallLog: (cb) => ipcRenderer.on('python-install-log', (_, data) => cb(data)),
   runSetup: () => ipcRenderer.invoke('run-setup'),
   onSetupLog: (cb) => ipcRenderer.on('setup-log', (_, data) => cb(data)),
 });
