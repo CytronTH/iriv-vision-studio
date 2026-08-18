@@ -649,13 +649,38 @@ const INSTALL_STEPS = [
 ];
 
 function SetupWizard({ onComplete }) {
-  const [phase, setPhase] = useState('check'); // check | ready | installing | done | error | nopython
+  const [phase, setPhase] = useState('check');
   const [pythonInfo, setPythonInfo] = useState(null);
   const [logs, setLogs] = useState([]);
   const [progress, setProgress] = useState(0);
   const [currentStep, setCurrentStep] = useState('');
+  const [logCopied, setLogCopied] = useState(false);
   const logRef = useRef();
   const isElectron = !!window.electronAPI;
+
+  // Helper: add a timestamped log line
+  const addLog = (line) => {
+    if (!line || !line.trim()) return;
+    const ts = new Date().toLocaleTimeString('th-TH', { hour12: false });
+    setLogs(prev => [...prev.slice(-300), `[${ts}] ${line.trim()}`]);
+  };
+
+  const copyLog = () => {
+    navigator.clipboard.writeText(logs.join('\n')).then(() => {
+      setLogCopied(true);
+      setTimeout(() => setLogCopied(false), 2000);
+    });
+  };
+
+  // Classify log line for color
+  const logColor = (line) => {
+    const l = line.toLowerCase();
+    if (l.includes('[ok]') || l.includes('success') || l.includes('✅') || l.includes('installed')) return '#10b981';
+    if (l.includes('error') || l.includes('failed') || l.includes('❌') || l.includes('fatal')) return '#f87171';
+    if (l.includes('warn') || l.includes('warning') || l.includes('⚠')) return '#fbbf24';
+    if (l.includes('[setup]') || l.includes('⏳') || l.includes('downloading') || l.includes('installing')) return '#818cf8';
+    return '#4b5563';
+  };
 
   useEffect(() => {
     if (isElectron) {
@@ -674,8 +699,8 @@ function SetupWizard({ onComplete }) {
       // Listen to Python install logs
       window.electronAPI.onPythonInstallLog((line) => {
         if (line === '__PYTHON_INSTALLED__') {
-          setLogs(prev => [...prev, '✅ Python installed successfully!', 'Verifying installation...']);
-          // Re-check Python after install
+          addLog('✅ Python installed successfully!');
+          addLog('Verifying installation...');
           setTimeout(() => {
             window.electronAPI.checkPython().then(info => {
               if (info.found) {
@@ -693,7 +718,7 @@ function SetupWizard({ onComplete }) {
           setPhase('python-failed');
           return;
         }
-        setLogs(prev => [...prev.slice(-100), line.trim()]);
+        addLog(line);
       });
 
       // Listen to dependency install logs
@@ -707,11 +732,11 @@ function SetupWizard({ onComplete }) {
           setPhase('error');
           return;
         }
-        if (line.includes('[OK] FastAPI')) { setProgress(30); setCurrentStep('fastapi'); }
+        if (line.includes('[OK] FastAPI'))     { setProgress(30); setCurrentStep('fastapi'); }
         if (line.includes('[OK] Ultralytics')) { setProgress(55); setCurrentStep('yolo'); }
-        if (line.includes('[OK] PyTorch')) { setProgress(80); setCurrentStep('torch'); }
-        if (line.includes('[OK] ONNX')) { setProgress(95); setCurrentStep('onnx'); }
-        setLogs(prev => [...prev.slice(-200), line.trim()]);
+        if (line.includes('[OK] PyTorch'))     { setProgress(80); setCurrentStep('torch'); }
+        if (line.includes('[OK] ONNX'))        { setProgress(95); setCurrentStep('onnx'); }
+        addLog(line);
       });
     } else {
       setPhase('done');
@@ -727,6 +752,7 @@ function SetupWizard({ onComplete }) {
     setProgress(10);
     setCurrentStep('venv');
     setLogs([]);
+    addLog('Starting dependency installation...');
     await window.electronAPI.runSetup();
   };
 
@@ -918,15 +944,45 @@ function SetupWizard({ onComplete }) {
                 </div>
               </div>
 
-              {/* Log window */}
-              <div ref={logRef} style={{
-                background: '#060810', border: '1px solid #1e2130', borderRadius: 12,
-                height: 200, overflowY: 'auto', padding: 12,
-                fontFamily: 'JetBrains Mono', fontSize: 11, color: '#4b5563'
-              }}>
-                {logs.map((l, i) => (
-                  <div key={i} style={{ lineHeight: 1.7, color: l.includes('[OK]') ? '#10b981' : l.includes('ERROR') ? '#f87171' : '#4b5563' }}>{l}</div>
-                ))}
+              {/* Log window with debug output */}
+              <div style={{ position: 'relative' }}>
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  marginBottom: 6
+                }}>
+                  <span style={{ fontSize: 11, color: '#374151', fontFamily: 'JetBrains Mono' }}>
+                    DEBUG LOG ({logs.length} lines)
+                  </span>
+                  <button
+                    onClick={copyLog}
+                    style={{
+                      fontSize: 11, padding: '3px 10px', borderRadius: 6,
+                      border: '1px solid #1e2130', background: logCopied ? '#10b981' : 'transparent',
+                      color: logCopied ? 'white' : '#6b7280', cursor: 'pointer', transition: 'all 0.2s'
+                    }}
+                  >
+                    {logCopied ? '✅ Copied!' : '📋 Copy Log'}
+                  </button>
+                </div>
+                <div ref={logRef} style={{
+                  background: '#020408', border: '1px solid #1e2130', borderRadius: 10,
+                  height: 260, overflowY: 'auto', padding: '10px 14px',
+                  fontFamily: 'JetBrains Mono', fontSize: 11,
+                  scrollBehavior: 'smooth'
+                }}>
+                  {logs.length === 0 ? (
+                    <div style={{ color: '#1f2937' }}>Waiting for output...</div>
+                  ) : logs.map((l, i) => {
+                    const ts = l.match(/^\[\d+:\d+:\d+\]/)?.[0] || '';
+                    const msg = ts ? l.slice(ts.length + 1) : l;
+                    return (
+                      <div key={i} style={{ lineHeight: 1.8, display: 'flex', gap: 8 }}>
+                        <span style={{ color: '#1f2937', flexShrink: 0, userSelect: 'none' }}>{ts}</span>
+                        <span style={{ color: logColor(l), wordBreak: 'break-all' }}>{msg}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}
