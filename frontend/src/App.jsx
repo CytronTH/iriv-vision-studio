@@ -30,26 +30,119 @@ function DatasetPage({ onDatasetSelected }) {
   const [datasets, setDatasets] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);       // 0–100 upload %
+  const [processProgress, setProcessProgress] = useState(0);     // 0–100 extract %
+  const [uploadStep, setUploadStep] = useState('');              // current status text
+  const [uploadLog, setUploadLog] = useState([]);                // log lines
+  const [uploadedBytes, setUploadedBytes] = useState(0);
+  const [totalBytes, setTotalBytes] = useState(0);
   const fileRef = useRef();
+  const logRef = useRef();
+
+  const addLog = (msg, type = 'info') => {
+    const icon = type === 'ok' ? '✅' : type === 'err' ? '❌' : type === 'step' ? '⏳' : 'ℹ️';
+    setUploadLog(prev => [...prev, `${icon} ${msg}`]);
+  };
+
+  useEffect(() => {
+    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
+  }, [uploadLog]);
 
   const loadDatasets = async () => {
-    const res = await fetch(`${API}/api/datasets`);
-    const d = await res.json();
-    setDatasets(d.datasets || []);
+    try {
+      const res = await fetch(`${API}/api/datasets`);
+      const d = await res.json();
+      setDatasets(d.datasets || []);
+    } catch {}
   };
 
   useEffect(() => { loadDatasets(); }, []);
 
-  const handleUpload = async (file) => {
-    if (!file || !file.name.endsWith('.zip')) { alert('Please select a .zip file from Roboflow'); return; }
+  const handleUpload = (file) => {
+    if (!file || !file.name.endsWith('.zip')) {
+      alert('Please select a .zip file from Roboflow');
+      return;
+    }
+
     setUploading(true);
+    setUploadProgress(0);
+    setProcessProgress(0);
+    setUploadLog([]);
+    setUploadedBytes(0);
+    setTotalBytes(file.size);
+
+    addLog(`ไฟล์: ${file.name} (${(file.size / 1024 / 1024).toFixed(1)} MB)`);
+    addLog('เชื่อมต่อ backend...', 'step');
+
     const fd = new FormData();
     fd.append('file', file);
-    const res = await fetch(`${API}/api/datasets/import-roboflow`, { method: 'POST', body: fd });
-    const data = await res.json();
-    setUploading(false);
-    if (data.status === 'success') { loadDatasets(); }
-    else { alert('Import failed: ' + data.detail); }
+
+    const xhr = new XMLHttpRequest();
+
+    // Upload progress
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) {
+        const pct = Math.round((e.loaded / e.total) * 100);
+        setUploadProgress(pct);
+        setUploadedBytes(e.loaded);
+        if (pct === 100) {
+          setUploadStep('กำลัง extract และอ่าน labels...');
+          addLog('อัพโหลดสำเร็จ! กำลัง extract ZIP...', 'ok');
+        } else {
+          setUploadStep(`กำลังอัพโหลด... ${pct}%`);
+        }
+      }
+    });
+
+    // Simulate extract progress while waiting for server response
+    let extractInterval = null;
+    xhr.upload.addEventListener('load', () => {
+      let p = 0;
+      extractInterval = setInterval(() => {
+        p = Math.min(p + Math.random() * 8, 92);
+        setProcessProgress(Math.round(p));
+        if (p > 30 && p < 35) addLog('กำลัง extract ไฟล์รูปภาพ...', 'step');
+        if (p > 60 && p < 65) addLog('กำลังอ่าน labels และ class names...', 'step');
+        if (p > 80 && p < 85) addLog('กำลังบันทึก dataset info...', 'step');
+      }, 300);
+    });
+
+    xhr.addEventListener('load', () => {
+      clearInterval(extractInterval);
+      setProcessProgress(100);
+      try {
+        const data = JSON.parse(xhr.responseText);
+        if (data.status === 'success') {
+          addLog(`Dataset "${data.name || file.name}" import สำเร็จ!`, 'ok');
+          addLog(`พบ ${data.image_count || '?'} รูป, ${(data.classes || []).length} classes`, 'ok');
+          setUploadStep('✅ Import สำเร็จ!');
+          setTimeout(() => {
+            setUploading(false);
+            loadDatasets();
+          }, 1200);
+        } else {
+          addLog('Import ล้มเหลว: ' + (data.detail || xhr.responseText), 'err');
+          setUploadStep('❌ Import ล้มเหลว');
+          setTimeout(() => setUploading(false), 2000);
+        }
+      } catch {
+        addLog('Server ตอบกลับผิดปกติ: ' + xhr.responseText.slice(0, 100), 'err');
+        setUploadStep('❌ เกิดข้อผิดพลาด');
+        setTimeout(() => setUploading(false), 2000);
+      }
+    });
+
+    xhr.addEventListener('error', () => {
+      clearInterval(extractInterval);
+      addLog('ไม่สามารถเชื่อมต่อ backend ได้ — ตรวจสอบว่าโปรแกรมทำงานอยู่', 'err');
+      setUploadStep('❌ Connection error');
+      setTimeout(() => setUploading(false), 2000);
+    });
+
+    xhr.open('POST', `${API}/api/datasets/import-roboflow`);
+    xhr.send(fd);
+    setUploadStep('กำลังส่งไฟล์...');
+    addLog('เริ่มส่งไฟล์ไปยัง backend...', 'step');
   };
 
   const handleDelete = async (id) => {
@@ -58,34 +151,97 @@ function DatasetPage({ onDatasetSelected }) {
     loadDatasets();
   };
 
+  const fmtBytes = (b) => b > 1024*1024 ? `${(b/1024/1024).toFixed(1)} MB` : `${(b/1024).toFixed(0)} KB`;
+
   return (
     <div className="animate-fade-in" style={{ maxWidth: 800 }}>
       <SectionTitle>📁 Dataset Manager</SectionTitle>
       <SubText>Import your labeled dataset from Roboflow (YOLOv8 format ZIP export)</SubText>
 
-      {/* Drop Zone */}
-      <div
-        className={`drop-zone ${dragging ? 'drag-over' : ''}`}
-        onClick={() => fileRef.current.click()}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => { e.preventDefault(); setDragging(false); handleUpload(e.dataTransfer.files[0]); }}
-        style={{ marginBottom: 32 }}
-      >
-        <input ref={fileRef} type="file" accept=".zip" style={{ display: 'none' }} onChange={e => handleUpload(e.target.files[0])} />
-        <Upload size={40} color="#6366f1" style={{ margin: '0 auto 12px' }} />
-        {uploading ? (
-          <div>
-            <div style={{ color: '#818cf8', fontWeight: 600, marginBottom: 4 }}>Importing dataset...</div>
-            <div className="animate-pulse" style={{ color: '#6b7280', fontSize: 13 }}>Extracting ZIP and reading labels</div>
+      {/* Drop Zone / Upload UI */}
+      {!uploading ? (
+        <div
+          className={`drop-zone ${dragging ? 'drag-over' : ''}`}
+          onClick={() => fileRef.current.click()}
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => { e.preventDefault(); setDragging(false); handleUpload(e.dataTransfer.files[0]); }}
+          style={{ marginBottom: 32 }}
+        >
+          <input ref={fileRef} type="file" accept=".zip" style={{ display: 'none' }} onChange={e => handleUpload(e.target.files[0])} />
+          <Upload size={40} color="#6366f1" style={{ margin: '0 auto 12px' }} />
+          <div style={{ fontWeight: 600, marginBottom: 6, color: '#e2e8f0' }}>Drop Roboflow ZIP here or click to browse</div>
+          <div style={{ color: '#6b7280', fontSize: 13 }}>Export from Roboflow as <strong style={{ color: '#818cf8' }}>YOLOv8</strong> format → download .zip</div>
+        </div>
+      ) : (
+        /* ── Upload Progress Card ── */
+        <div className="card" style={{ marginBottom: 32, border: '1px solid #3730a3' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: '50%',
+              background: 'rgba(99,102,241,0.15)', border: '2px solid rgba(99,102,241,0.4)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>
+              <Upload size={18} color="#818cf8" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, marginBottom: 2 }}>Importing Dataset</div>
+              <div style={{ fontSize: 12, color: '#6b7280' }}>{uploadStep}</div>
+            </div>
           </div>
-        ) : (
-          <div>
-            <div style={{ fontWeight: 600, marginBottom: 6, color: '#e2e8f0' }}>Drop Roboflow ZIP here or click to browse</div>
-            <div style={{ color: '#6b7280', fontSize: 13 }}>Export from Roboflow as <strong style={{ color: '#818cf8' }}>YOLOv8</strong> format → download .zip</div>
+
+          {/* Upload progress bar */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6b7280', marginBottom: 4 }}>
+              <span>อัพโหลด</span>
+              <span>{uploadProgress < 100 ? `${fmtBytes(uploadedBytes)} / ${fmtBytes(totalBytes)}` : 'เสร็จแล้ว'}</span>
+            </div>
+            <div style={{ height: 6, background: '#1e2130', borderRadius: 99, overflow: 'hidden' }}>
+              <div style={{
+                height: '100%', borderRadius: 99,
+                background: 'linear-gradient(90deg, #6366f1, #8b5cf6)',
+                width: `${uploadProgress}%`,
+                transition: 'width 0.3s ease'
+              }} />
+            </div>
           </div>
-        )}
-      </div>
+
+          {/* Extract / process progress bar */}
+          {uploadProgress === 100 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: '#6b7280', marginBottom: 4 }}>
+                <span>ประมวลผล</span>
+                <span>{processProgress}%</span>
+              </div>
+              <div style={{ height: 6, background: '#1e2130', borderRadius: 99, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%', borderRadius: 99,
+                  background: 'linear-gradient(90deg, #10b981, #059669)',
+                  width: `${processProgress}%`,
+                  transition: 'width 0.4s ease'
+                }} />
+              </div>
+            </div>
+          )}
+
+          {/* Log output */}
+          <div ref={logRef} style={{
+            background: '#060810', border: '1px solid #1e2130', borderRadius: 8,
+            padding: '10px 12px', maxHeight: 140, overflowY: 'auto',
+            fontFamily: 'JetBrains Mono', fontSize: 11, lineHeight: 1.8
+          }}>
+            {uploadLog.map((line, i) => (
+              <div key={i} style={{
+                color: line.startsWith('✅') ? '#10b981'
+                     : line.startsWith('❌') ? '#f87171'
+                     : line.startsWith('⏳') ? '#818cf8'
+                     : '#4b5563'
+              }}>{line}</div>
+            ))}
+            {uploadLog.length === 0 && <div style={{ color: '#374151' }}>รอการเชื่อมต่อ...</div>}
+          </div>
+        </div>
+      )}
 
       {/* Dataset list */}
       <div style={{ fontWeight: 600, fontSize: 14, color: '#9ca3af', marginBottom: 12 }}>
@@ -131,6 +287,7 @@ function DatasetPage({ onDatasetSelected }) {
     </div>
   );
 }
+
 
 // ── Step 2: Train ──────────────────────────────────────────────────
 function TrainPage({ selectedDataset }) {
