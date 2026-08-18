@@ -63,24 +63,39 @@ function killPort(port) {
   const isWin = os.platform() === 'win32';
   try {
     if (isWin) {
-      // Find PID(s) listening on the port
-      const out = execSync(`netstat -ano | findstr 0.0.0.0:${port}`, { encoding: 'utf8', timeout: 3000 });
+      // `:7654` matches both 127.0.0.1:7654 and 0.0.0.0:7654
+      const out = execSync(`netstat -ano | findstr :${port}`, { encoding: 'utf8', timeout: 3000 });
       const pids = new Set();
       out.split('\n').forEach(line => {
         const parts = line.trim().split(/\s+/);
-        if (parts.length >= 5 && (parts[1].endsWith(`:${port}`) || parts[1].includes(`:${port} `))) {
+        // parts: [TCP, LocalAddr, ForeignAddr, State, PID]
+        // Only kill if LOCAL address ends with :port (not foreign address)
+        if (parts.length >= 5 && parts[1] && parts[1].endsWith(`:${port}`)) {
           const pid = parts[parts.length - 1];
-          if (pid && pid !== '0') pids.add(pid);
+          if (pid && /^\d+$/.test(pid) && pid !== '0') pids.add(pid);
         }
       });
-      pids.forEach(pid => {
-        try { execSync(`taskkill /PID ${pid} /F`, { timeout: 3000 }); console.log('[Backend] Killed stale PID:', pid); } catch {}
-      });
+      if (pids.size > 0) {
+        pids.forEach(pid => {
+          try {
+            execSync(`taskkill /PID ${pid} /F`, { timeout: 3000 });
+            console.log('[Backend] Killed stale PID:', pid, 'on port', port);
+          } catch (e) {
+            console.warn('[Backend] Could not kill PID', pid, ':', e.message);
+          }
+        });
+        // Give OS time to release the port
+        const deadline = Date.now() + 1000;
+        while (Date.now() < deadline) { /* spin */ }
+      } else {
+        console.log('[Backend] Port', port, 'is free');
+      }
     } else {
       execSync(`lsof -ti :${port} | xargs kill -9 2>/dev/null || true`, { timeout: 3000 });
     }
   } catch {
-    // No process on port — that's fine
+    // No process found on port — that's fine
+    console.log('[Backend] Port', port, 'is free (no output from netstat)');
   }
 }
 
