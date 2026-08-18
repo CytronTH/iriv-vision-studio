@@ -977,11 +977,66 @@ function SetupWizard({ onComplete }) {
   );
 }
 
+// ── Update Notification Banner ─────────────────────────────────────
+function UpdateNotification({ status, onInstall, onDismiss }) {
+  if (!status || ['not-available', 'checking', 'error'].includes(status.type)) return null;
+  const fmtBytes = (b) => b > 1024*1024 ? `${(b/1024/1024).toFixed(1)} MB` : `${(b/1024).toFixed(0)} KB`;
+  return (
+    <div style={{
+      position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
+      background: '#111521', border: '1px solid #3730a3',
+      borderRadius: 14, padding: '16px 20px', maxWidth: 360,
+      boxShadow: '0 8px 32px rgba(0,0,0,0.5)', animation: 'fadeIn 0.3s ease'
+    }}>
+      {status.type === 'available' && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>🆕 มีอัพเดทใหม่ v{status.version}</div>
+            <div style={{ color: '#6b7280', fontSize: 12 }}>กำลังดาวน์โหลดในพื้นหลัง...</div>
+          </div>
+          <button onClick={onDismiss} style={{ background: 'none', border: 'none', color: '#4b5563', cursor: 'pointer', padding: 4 }}>✕</button>
+        </div>
+      )}
+      {status.type === 'downloading' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, marginBottom: 8 }}>
+            <span style={{ fontWeight: 600 }}>⬇️ ดาวน์โหลดอัพเดท</span>
+            <span style={{ color: '#6b7280' }}>{status.percent}%</span>
+          </div>
+          <div style={{ height: 4, background: '#1e2130', borderRadius: 99, overflow: 'hidden', marginBottom: 6 }}>
+            <div style={{ height: '100%', borderRadius: 99, background: 'linear-gradient(90deg, #6366f1, #8b5cf6)', width: `${status.percent}%`, transition: 'width 0.5s ease' }} />
+          </div>
+          <div style={{ fontSize: 11, color: '#4b5563' }}>{fmtBytes(status.transferred)} / {fmtBytes(status.total)} • {(status.bytesPerSecond / 1024).toFixed(0)} KB/s</div>
+        </div>
+      )}
+      {status.type === 'downloaded' && (
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 6 }}>✅ อัพเดท v{status.version} พร้อมแล้ว</div>
+          <div style={{ color: '#6b7280', fontSize: 12, marginBottom: 14 }}>ติดตั้งและรีสตาร์ทเพื่ออัพเดทได้เลย</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={onInstall} style={{ flex: 2, padding: '8px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', color: 'white', fontWeight: 600, fontSize: 13 }}>🔄 Restart & Update</button>
+            <button onClick={onDismiss} style={{ flex: 1, padding: '8px', borderRadius: 8, border: '1px solid #1e2130', background: 'transparent', color: '#6b7280', cursor: 'pointer', fontSize: 12 }}>ทีหลัง</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main App ───────────────────────────────────────────────────────
 export default function App() {
-  // Detect if we need setup (from URL param or first launch)
   const needsSetup = new URLSearchParams(window.location.search).get('setup') === '1';
   const [setupDone, setSetupDone] = useState(!needsSetup);
+  const [updateStatus, setUpdateStatus] = useState(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
+
+  useEffect(() => {
+    if (!window.electronAPI?.onUpdateStatus) return;
+    window.electronAPI.onUpdateStatus((status) => {
+      setUpdateStatus(status);
+      if (['available', 'downloading', 'downloaded'].includes(status.type)) setUpdateDismissed(false);
+    });
+  }, []);
 
   const [page, setPage] = useState('dataset');
   const [sysInfo, setSysInfo] = useState(null);
@@ -1014,6 +1069,14 @@ export default function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      {/* Update notification floating banner */}
+      {!updateDismissed && (
+        <UpdateNotification
+          status={updateStatus}
+          onInstall={() => window.electronAPI?.installUpdate()}
+          onDismiss={() => setUpdateDismissed(true)}
+        />
+      )}
       {/* Titlebar */}
       <div className="titlebar" style={{
         height: 44, background: '#060810', borderBottom: '1px solid #1e2130',

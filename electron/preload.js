@@ -18,4 +18,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onPythonInstallLog: (cb) => ipcRenderer.on('python-install-log', (_, data) => cb(data)),
   runSetup: () => ipcRenderer.invoke('run-setup'),
   onSetupLog: (cb) => ipcRenderer.on('setup-log', (_, data) => cb(data)),
+  // Auto-Update
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
+  checkForUpdate: () => ipcRenderer.invoke('check-for-update'),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  onUpdateStatus: (cb) => ipcRenderer.on('update-status', (_, data) => cb(data)),
 });

@@ -3,6 +3,11 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
+const { autoUpdater } = require('electron-updater');
+
+// electron-updater config
+autoUpdater.autoDownload = true;        // download silently in background
+autoUpdater.autoInstallOnAppQuit = false; // ask user before installing
 
 let mainWindow;
 let pythonProcess = null;
@@ -109,7 +114,13 @@ function createWindow(showSetup = false) {
 app.whenReady().then(() => {
   const needsSetup = !isSetupComplete();
   createWindow(needsSetup);
-  if (!needsSetup) startPythonBackend();
+  if (!needsSetup) {
+    startPythonBackend();
+    // Check for updates 5s after launch (only in packaged build)
+    if (!isDev) {
+      setTimeout(() => initAutoUpdater(), 5000);
+    }
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -275,3 +286,69 @@ ipcMain.handle('run-setup', async () => {
     });
   });
 });
+
+// \u2500\u2500 Auto-Updater \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+function initAutoUpdater() {
+  // Forward all updater events to the renderer
+  autoUpdater.on('checking-for-update', () => {
+    mainWindow?.webContents.send('update-status', { type: 'checking' });
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    mainWindow?.webContents.send('update-status', {
+      type: 'available',
+      version: info.version,
+      releaseNotes: info.releaseNotes || ''
+    });
+    // autoDownload:true will start downloading automatically
+  });
+
+  autoUpdater.on('update-not-available', () => {
+    mainWindow?.webContents.send('update-status', { type: 'not-available' });
+  });
+
+  autoUpdater.on('download-progress', (progress) => {
+    mainWindow?.webContents.send('update-status', {
+      type: 'downloading',
+      percent: Math.round(progress.percent),
+      transferred: progress.transferred,
+      total: progress.total,
+      bytesPerSecond: progress.bytesPerSecond
+    });
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    mainWindow?.webContents.send('update-status', {
+      type: 'downloaded',
+      version: info.version
+    });
+  });
+
+  autoUpdater.on('error', (err) => {
+    console.error('[AutoUpdater] Error:', err.message);
+    mainWindow?.webContents.send('update-status', { type: 'error', message: err.message });
+  });
+
+  // Kick off the check
+  autoUpdater.checkForUpdates().catch(err => {
+    console.error('[AutoUpdater] checkForUpdates failed:', err.message);
+  });
+}
+
+// IPC: User clicked "Install Update Now"
+ipcMain.handle('install-update', () => {
+  autoUpdater.quitAndInstall(false, true); // isSilent=false, isForceRunAfter=true
+});
+
+// IPC: Manually trigger update check
+ipcMain.handle('check-for-update', async () => {
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return { success: true, version: result?.updateInfo?.version };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+// IPC: Get current app version
+ipcMain.handle('get-app-version', () => app.getVersion());

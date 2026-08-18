@@ -8,11 +8,13 @@
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && python main.py",
     "build": "electron-builder --win --x64",
+    "publish": "electron-builder --win --x64 --publish always",
     "start": "electron ."
   },
   "devDependencies": {
     "electron": "^31.0.0",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "electron-updater": "^6.3.9"
   },
   "build": {
     "appId": "com.iriv.model-studio",
@@ -20,6 +22,14 @@
     "asar": true,
     "asarUnpack": [
       "backend/**/*"
+    ],
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "CytronTH",
+        "repo": "iriv-vision-studio",
+        "releaseType": "release"
+      }
     ],
     "directories": {
       "output": "dist"
