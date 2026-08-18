@@ -63,7 +63,9 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "IRIV Model Studio"
+      "shortcutName": "IRIV Model Studio",
+      "closeApplications": true,
+      "uninstallDisplayName": "IRIV Model Studio"
     }
   }
 }
