@@ -40,9 +40,11 @@
       "electron/**/*",
       "frontend/dist/**/*",
       "backend/**/*",
+      "node_modules/**/*",
       "!backend/venv/**",
       "!backend/workspace/**",
-      "!**/node_modules/**",
+      "!node_modules/electron-builder/**",
+      "!node_modules/electron/**",
       "!**/.git/**"
     ],
     "extraResources": [
