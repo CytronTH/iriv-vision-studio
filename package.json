@@ -2,6 +2,7 @@
   "name": "iriv-model-studio",
   "version": "1.0.0",
   "description": "All-in-one GUI Tool for training and compiling Hailo .hef models",
+  "author": "CytronTH",
   "main": "electron/main.js",
   "scripts": {
     "dev:frontend": "cd frontend && npm run dev",
@@ -29,12 +30,6 @@
       "!**/node_modules/**",
       "!**/.git/**"
     ],
-    "extraResources": [
-      {
-        "from": "setup.bat",
-        "to": "setup.bat"
-      }
-    ],
     "win": {
       "target": [
         {
@@ -47,9 +42,6 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
-      "installerIcon": "frontend/public/icon.ico",
-      "uninstallerIcon": "frontend/public/icon.ico",
-      "installerHeaderIcon": "frontend/public/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "IRIV Model Studio"
