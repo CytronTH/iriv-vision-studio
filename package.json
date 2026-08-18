@@ -4,27 +4,55 @@
   "description": "All-in-one GUI Tool for training and compiling Hailo .hef models",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "concurrently \"npm run dev:frontend\" \"npm run dev:backend\" \"wait-on http://localhost:5174 && electron .\"",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && python main.py",
-    "build": "cd frontend && npm run build && electron-builder",
+    "build": "electron-builder --win --x64",
     "start": "electron ."
   },
   "devDependencies": {
-    "concurrently": "^8.2.0",
     "electron": "^31.0.0",
-    "electron-builder": "^24.0.0",
-    "wait-on": "^7.2.0"
+    "electron-builder": "^24.13.3"
   },
   "build": {
     "appId": "com.iriv.model-studio",
     "productName": "IRIV Model Studio",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "backend/**/*",
+      "setup.bat",
+      "!backend/venv/**",
+      "!backend/workspace/**",
+      "!**/node_modules/**",
+      "!**/.git/**"
+    ],
+    "extraResources": [
+      {
+        "from": "setup.bat",
+        "to": "setup.bat"
+      }
+    ],
     "win": {
-      "target": "nsis",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
       "icon": "frontend/public/icon.ico"
     },
-    "linux": {
-      "target": "AppImage"
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "frontend/public/icon.ico",
+      "uninstallerIcon": "frontend/public/icon.ico",
+      "installerHeaderIcon": "frontend/public/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "IRIV Model Studio"
     }
   }
 }
