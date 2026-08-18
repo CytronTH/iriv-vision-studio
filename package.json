@@ -28,11 +28,16 @@
       "electron/**/*",
       "frontend/dist/**/*",
       "backend/**/*",
-      "setup.bat",
       "!backend/venv/**",
       "!backend/workspace/**",
       "!**/node_modules/**",
       "!**/.git/**"
+    ],
+    "extraResources": [
+      {
+        "from": "setup.bat",
+        "to": "setup.bat"
+      }
     ],
     "win": {
       "target": [

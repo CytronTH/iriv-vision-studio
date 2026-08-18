@@ -775,15 +775,44 @@ function SetupWizard({ onComplete }) {
           )}
 
           {phase === 'error' && (
-            <div className="card" style={{ borderColor: '#ef4444', textAlign: 'center', padding: 32 }}>
-              <AlertTriangle size={40} color="#ef4444" style={{ margin: '0 auto 16px' }} />
-              <div style={{ fontWeight: 700, color: '#f87171', marginBottom: 12 }}>Installation Failed</div>
-              <div style={{ color: '#6b7280', fontSize: 13, marginBottom: 20 }}>Check your internet connection and try again.</div>
-              <button className="btn-secondary" onClick={() => { setPhase('ready'); setLogs([]); setProgress(0); }} style={{ justifyContent: 'center', width: '100%' }}>
-                <RefreshCw size={14} /> Try Again
-              </button>
+            <div className="card" style={{ borderColor: '#ef4444' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <AlertTriangle size={28} color="#ef4444" />
+                <div>
+                  <div style={{ fontWeight: 700, color: '#f87171', fontSize: 16 }}>Installation Failed</div>
+                  <div style={{ color: '#6b7280', fontSize: 12, marginTop: 2 }}>ดู log ด้านล่างเพื่อหาสาเหตุ</div>
+                </div>
+              </div>
+
+              {/* Show actual logs so user can diagnose */}
+              {logs.length > 0 && (
+                <div style={{
+                  background: '#060810', border: '1px solid #1e2130', borderRadius: 10,
+                  padding: 12, maxHeight: 200, overflowY: 'auto', marginBottom: 16,
+                  fontFamily: 'JetBrains Mono', fontSize: 11
+                }}>
+                  {logs.slice(-50).map((l, i) => (
+                    <div key={i} style={{
+                      lineHeight: 1.7,
+                      color: l.includes('[OK]') ? '#10b981'
+                           : l.includes('error') || l.includes('Error') || l.includes('FAILED') ? '#f87171'
+                           : '#4b5563'
+                    }}>{l}</div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="btn-secondary" onClick={() => { setPhase('ready'); setLogs([]); setProgress(0); }} style={{ flex: 1, justifyContent: 'center' }}>
+                  <RefreshCw size={14} /> Try Again
+                </button>
+                <button className="btn-secondary" onClick={() => window.electronAPI?.openExternal('https://github.com/CytronTH/iriv-vision-studio/issues')} style={{ flex: 1, justifyContent: 'center', fontSize: 12 }}>
+                  <ExternalLink size={12} /> Report Issue
+                </button>
+              </div>
             </div>
           )}
+
 
         </div>
       </div>
