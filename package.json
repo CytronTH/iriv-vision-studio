@@ -55,6 +55,10 @@
       {
         "from": "detect_cuda.py",
         "to": "detect_cuda.py"
+      },
+      {
+        "from": "install_torch.py",
+        "to": "install_torch.py"
       }
     ],
     "win": {

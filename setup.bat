@@ -53,18 +53,18 @@ echo [OK] Ultralytics (YOLOv8) installed
 python -m pip install onnx onnxruntime --quiet
 echo [OK] ONNX installed
 
-:: Always install PyTorch CUDA 12.4
-:: Works on all machines: uses GPU if available, falls back to CPU if not
-:: (CUDA build = ~2.5GB but supports both GPU and CPU seamlessly)
-echo Downloading PyTorch with CUDA 12.4 support...
-echo (This may take 5-10 minutes depending on your connection)
-python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
-if errorlevel 1 (
-    echo [WARN] cu124 failed, falling back to CPU-only PyTorch
+:: Install PyTorch via bundled install_torch.py (tries cu126→cu124→cu121→cpu)
+set "INSTALL_TORCH=%~dp0install_torch.py"
+if exist "%INSTALL_TORCH%" (
+    python "%INSTALL_TORCH%"
+    if errorlevel 1 (
+        echo __SETUP_FAILED__: PyTorch installation failed
+        exit /b 1
+    )
+) else (
+    echo [WARN] install_torch.py not found, installing CPU-only PyTorch
     python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu --quiet
     echo [OK] PyTorch CPU installed ^(fallback^)
-) else (
-    echo [OK] PyTorch cu124 installed
 )
 echo.
 
