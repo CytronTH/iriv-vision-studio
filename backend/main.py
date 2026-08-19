@@ -193,24 +193,36 @@ async def run_training(config: TrainConfig, yaml_path: str, output_dir: str):
         await broadcast_training_log({"type": "status", "message": "Starting training...", "progress": 0})
 
         # Build the training script
+        # IMPORTANT: On Windows, PyTorch DataLoader uses multiprocessing spawn.
+        # The script MUST have if __name__ == '__main__': guard + freeze_support()
+        # to prevent recursive worker spawning. We also set workers=0 to be safe
+        # since we're already inside a subprocess.
         script = f"""
-import sys, os
+import sys, os, multiprocessing
+multiprocessing.freeze_support()
+
 sys.stdout.reconfigure(line_buffering=True)
-print("Loading YOLO model (may download weights ~20MB on first run)...", flush=True)
-from ultralytics import YOLO
-print("Model loaded. Starting training...", flush=True)
-model = YOLO('{config.model_size}.pt')
-results = model.train(
-    data=r'{yaml_path}',
-    epochs={config.epochs},
-    imgsz={config.imgsz},
-    batch={config.batch},
-    project=r'{output_dir}',
-    name='train',
-    exist_ok=True,
-    verbose=True
-)
-print('TRAINING_COMPLETE', flush=True)
+
+def main():
+    print("Loading YOLO model (may download weights ~20MB on first run)...", flush=True)
+    from ultralytics import YOLO
+    print("Model loaded. Starting training...", flush=True)
+    model = YOLO(r'{config.model_size}.pt')
+    results = model.train(
+        data=r'{yaml_path}',
+        epochs={config.epochs},
+        imgsz={config.imgsz},
+        batch={config.batch},
+        project=r'{output_dir}',
+        name='train',
+        exist_ok=True,
+        verbose=True,
+        workers=0,
+    )
+    print('TRAINING_COMPLETE', flush=True)
+
+if __name__ == '__main__':
+    main()
 """
 
         # Use the same venv python that's running this server
