@@ -619,6 +619,27 @@ function ExportPage({ onExported }) {
     setImporting(false);
   };
 
+  const handleDownloadOnnx = async (onnxPath, modelName) => {
+    const dest = await window.electronAPI?.saveFileDialog(`${modelName}.onnx`);
+    if (!dest) return;
+    try {
+      const res = await fetch(`${API}/api/copy-file`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ src: onnxPath, dest })
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        // Open containing folder so user can find the file
+        await window.electronAPI?.openExternal('file:///' + dest.replace(/\\/g, '/').split('/').slice(0, -1).join('/'));
+      } else {
+        alert('Download failed: ' + data.message);
+      }
+    } catch (e) {
+      alert('Download failed: ' + e.message);
+    }
+  };
+
   const isExporting = exporting !== null;
 
   return (
@@ -688,9 +709,16 @@ function ExportPage({ onExported }) {
             </button>
           )}
           {(m.has_onnx || results[m.name]) && (
-            <button className="btn-secondary no-drag" onClick={() => onExported(results[m.name] || m.onnx_path)}>
-              Use This →
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="btn-secondary no-drag"
+                title="Save .onnx file to your computer"
+                onClick={() => handleDownloadOnnx(results[m.name] || m.onnx_path, m.name)}>
+                <Download size={13} /> Download
+              </button>
+              <button className="btn-secondary no-drag" onClick={() => onExported(results[m.name] || m.onnx_path)}>
+                Use This →
+              </button>
+            </div>
           )}
         </div>
       ))}

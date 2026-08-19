@@ -722,6 +722,24 @@ async def import_onnx(req: ImportOnnxRequest):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# --- COPY FILE (used for ONNX download to user-chosen path) ---
+class CopyFileRequest(BaseModel):
+    src: str   # source path (inside workspace)
+    dest: str  # destination path (chosen by user via Save dialog)
+
+@app.post("/api/copy-file")
+async def copy_file(req: CopyFileRequest):
+    try:
+        src_path  = Path(req.src)
+        dest_path = Path(req.dest)
+        if not src_path.exists():
+            return {"status": "error", "message": f"Source file not found: {req.src}"}
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(str(src_path), str(dest_path))
+        return {"status": "success", "dest": str(dest_path)}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=7654)
