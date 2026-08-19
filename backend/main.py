@@ -50,17 +50,18 @@ def prepare_calib_npy(calib_dir, npy_dir, input_h=640, input_w=640, max_images=6
     img_paths = sorted(set(img_paths))[:max_images]
     if not img_paths:
         print(f'[IRIV] No calibration images found in {calib_dir}', flush=True); return calib_dir
-    print(f'[IRIV] Preprocessing {len(img_paths)} images to .npy ({input_w}x{input_h}) ...', flush=True)
+    print(f'[IRIV] Preprocessing {len(img_paths)} images to .npy ({input_w}x{input_h}, raw 0-255) ...', flush=True)
     count = 0
     for p in img_paths:
         try:
             img = Image.open(p).convert('RGB').resize((input_w, input_h), Image.BILINEAR)
+            # Raw 0-255: Hailo model script handles /255 normalization on-chip
             np.save(os.path.join(npy_dir, f'calib_{count:04d}.npy'),
-                    np.array(img, dtype=np.float32) / 255.0)
+                    np.array(img, dtype=np.float32))
             count += 1
         except Exception as e:
             print(f'[IRIV] Warning: skipped {os.path.basename(p)}: {e}', flush=True)
-    print(f'[IRIV] {count} .npy files ready', flush=True)
+    print(f'[IRIV] {count} .npy files ready (raw 0-255)', flush=True)
     return npy_dir if count > 0 else calib_dir
 
 def main():
@@ -90,6 +91,10 @@ def main():
             print(f'[IRIV] Parse failed (exit {code})', flush=True); sys.exit(code)
 
     calib_path = prepare_calib_npy('/calib', '/workspace/calib_npy')
+    alls_path = '/workspace/yolov8_norm.alls'
+    with open(alls_path, 'w') as f:
+        f.write('normalization1 = normalization([0, 0, 0], [255, 255, 255])\n')
+    print(f'[IRIV] Model script: {alls_path}', flush=True)
 
     print('STEP_OPTIMIZE', flush=True)
     parse_har = f'/workspace/{model_name}.har'
@@ -101,7 +106,8 @@ def main():
         parse_output = cands[-1] if cands else None
     if not parse_output:
         print('[IRIV] ERROR: No .hn or .har file found after parsing!', flush=True); sys.exit(1)
-    code = run_streaming(['hailo', 'optimize', parse_output, '--hw-arch', hw_arch, '--calib-set-path', calib_path])
+    code = run_streaming(['hailo', 'optimize', parse_output, '--hw-arch', hw_arch,
+                          '--calib-set-path', calib_path, '--model-script', alls_path])
     if code != 0:
         print(f'[IRIV] Optimize failed (exit {code})', flush=True); sys.exit(code)
 

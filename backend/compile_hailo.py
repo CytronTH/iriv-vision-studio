@@ -43,8 +43,9 @@ def prepare_calib_npy(calib_dir, npy_dir, input_h=640, input_w=640, max_images=6
     """
     Convert calibration images → .npy files required by hailo optimize.
 
-    hailo optimize --calib-set-path expects a directory of numpy arrays
-    (shape: H×W×C, dtype float32, normalized 0-1), NOT raw JPEG/PNG.
+    When using a Hailo model script with normalization1 directive, the model
+    expects raw [0, 255] float32 inputs (Hailo normalizes on-chip).
+    We therefore do NOT divide by 255 here.
     Returns the npy_dir if any images were converted, else calib_dir.
     """
     try:
@@ -67,7 +68,7 @@ def prepare_calib_npy(calib_dir, npy_dir, input_h=640, input_w=640, max_images=6
         return calib_dir
 
     print(f'[IRIV] Preprocessing {len(img_paths)} calibration images to .npy '
-          f'({input_w}x{input_h}, float32, 0-1) ...', flush=True)
+          f'({input_w}x{input_h}, float32, raw 0-255) ...', flush=True)
 
     count = 0
     for img_path in img_paths:
@@ -75,14 +76,15 @@ def prepare_calib_npy(calib_dir, npy_dir, input_h=640, input_w=640, max_images=6
             img = Image.open(img_path).convert('RGB').resize(
                 (input_w, input_h), Image.BILINEAR
             )
-            arr = (np.array(img, dtype=np.float32) / 255.0)  # shape: (H, W, C)
+            # Keep raw [0, 255] range — Hailo model script handles normalization
+            arr = np.array(img, dtype=np.float32)  # shape: (H, W, C), range 0-255
             np.save(os.path.join(npy_dir, f'calib_{count:04d}.npy'), arr)
             count += 1
         except Exception as e:
             print(f'[IRIV] Warning: skipped {os.path.basename(img_path)}: {e}',
                   flush=True)
 
-    print(f'[IRIV] {count} calibration .npy files ready', flush=True)
+    print(f'[IRIV] {count} calibration .npy files ready (raw 0-255)', flush=True)
     return npy_dir if count > 0 else calib_dir
 
 
@@ -147,9 +149,19 @@ def main():
     print('[IRIV] Parse complete ✓', flush=True)
 
     # ── Step 2: Preprocess calibration images → .npy ─────────────────────────
-    # hailo optimize requires numpy arrays (H×W×C float32), NOT raw images.
     calib_npy_dir = '/workspace/calib_npy'
     calib_path = prepare_calib_npy('/calib', calib_npy_dir)
+
+    # ── Step 2b: Create Hailo model script (.alls) ────────────────────────────
+    # The normalization directive tells Hailo to:
+    #   1. Accept raw [0, 255] float32 inputs at runtime
+    #   2. Apply (input - 0) / 255 on-chip before the first layer
+    # This is the standard Hailo pipeline for YOLOv8 and resolves the
+    # depth_to_space allocation error that occurs without normalization setup.
+    alls_path = '/workspace/yolov8_norm.alls'
+    with open(alls_path, 'w') as f:
+        f.write('normalization1 = normalization([0, 0, 0], [255, 255, 255])\n')
+    print(f'[IRIV] Model script created: {alls_path}', flush=True)
 
     # ── Step 3: Optimize .hn/.har → .har (quantization) ─────────────────────
     print('STEP_OPTIMIZE', flush=True)
@@ -177,7 +189,8 @@ def main():
     code = run_streaming([
         'hailo', 'optimize', parse_output,
         '--hw-arch',        hw_arch,
-        '--calib-set-path', calib_path
+        '--calib-set-path', calib_path,
+        '--model-script',   alls_path
     ])
     if code != 0:
         print(f'[IRIV] Optimize failed (exit {code})', flush=True)
