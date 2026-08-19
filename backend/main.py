@@ -192,66 +192,91 @@ async def run_training(config: TrainConfig, yaml_path: str, output_dir: str):
     try:
         await broadcast_training_log({"type": "status", "message": "Starting training...", "progress": 0})
 
+        # Build the training script
         script = f"""
-import sys
+import sys, os
 sys.stdout.reconfigure(line_buffering=True)
+print("Loading YOLO model (may download weights ~20MB on first run)...", flush=True)
 from ultralytics import YOLO
+print("Model loaded. Starting training...", flush=True)
 model = YOLO('{config.model_size}.pt')
 results = model.train(
-    data='{yaml_path}',
+    data=r'{yaml_path}',
     epochs={config.epochs},
     imgsz={config.imgsz},
     batch={config.batch},
-    project='{output_dir}',
+    project=r'{output_dir}',
     name='train',
     exist_ok=True,
     verbose=True
 )
-print('TRAINING_COMPLETE')
+print('TRAINING_COMPLETE', flush=True)
 """
-        proc = subprocess.Popen(
-            [sys.executable, '-c', script],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            bufsize=1
+
+        # Use the same venv python that's running this server
+        python_exe = sys.executable
+
+        # Write script to temp file to avoid -c quoting issues on Windows
+        import tempfile, os
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+            f.write(script)
+            script_path = f.name
+
+        await broadcast_training_log({"type": "log", "message": f"Python: {python_exe}", "progress": 0})
+        await broadcast_training_log({"type": "log", "message": f"Dataset: {yaml_path}", "progress": 0})
+
+        # Use asyncio subprocess — non-blocking, won't stall the event loop
+        proc = await asyncio.create_subprocess_exec(
+            python_exe, script_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
         )
         active_training["process"] = proc
 
-        for line in iter(proc.stdout.readline, ''):
-            line = line.strip()
+        # Read output line-by-line without blocking the event loop
+        async for raw_line in proc.stdout:
+            line = raw_line.decode('utf-8', errors='replace').rstrip()
             if not line:
                 continue
-            # Parse epoch progress
+
+            # Parse epoch progress e.g. "Epoch 1/50"
             epoch_num = None
-            if line.startswith('Epoch') or '/'+str(config.epochs) in line:
+            if '/' + str(config.epochs) in line:
                 try:
                     parts = line.split('/')
-                    if len(parts) >= 2:
-                        epoch_num = int(parts[0].split()[-1])
-                        progress = int((epoch_num / config.epochs) * 90)
-                        await broadcast_training_log({"type": "log", "message": line, "progress": progress})
-                        continue
-                except:
+                    epoch_num = int(parts[0].strip().split()[-1])
+                    progress = int((epoch_num / config.epochs) * 90)
+                    await broadcast_training_log({"type": "log", "message": line, "progress": progress})
+                    continue
+                except Exception:
                     pass
+
             if 'TRAINING_COMPLETE' in line:
                 await broadcast_training_log({"type": "status", "message": "Training complete!", "progress": 100})
             else:
                 await broadcast_training_log({"type": "log", "message": line})
 
-        proc.wait()
+        await proc.wait()
+
+        # Clean up temp script
+        try:
+            os.unlink(script_path)
+        except Exception:
+            pass
 
         # Find best.pt
         best_pt = list(Path(output_dir).rglob("best.pt"))
         if best_pt:
             await broadcast_training_log({"type": "complete", "message": "Model saved!", "pt_path": str(best_pt[0])})
         else:
-            await broadcast_training_log({"type": "error", "message": "Training failed - best.pt not found"})
+            await broadcast_training_log({"type": "error", "message": "Training finished but best.pt not found"})
 
     except Exception as e:
-        await broadcast_training_log({"type": "error", "message": str(e)})
+        import traceback
+        await broadcast_training_log({"type": "error", "message": f"Training error: {e}\n{traceback.format_exc()}"})
     finally:
         active_training["running"] = False
+
 
 @app.post("/api/train/stop")
 async def stop_training():
