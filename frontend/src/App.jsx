@@ -736,7 +736,7 @@ const INSTALL_STEPS = [
   { id: 'onnx',   label: 'ONNX Tools',                 desc: 'Model export' },
 ];
 
-function SetupWizard({ onComplete }) {
+function SetupWizard({ onComplete, appVersion }) {
   const [phase, setPhase] = useState('check');
   const [pythonInfo, setPythonInfo] = useState(null);
   const [logs, setLogs] = useState([]);
@@ -1229,7 +1229,7 @@ export default function App() {
   };
 
   if (!setupDone) {
-    return <SetupWizard onComplete={() => setSetupDone(true)} />;
+    return <SetupWizard onComplete={() => setSetupDone(true)} appVersion={appVersion} />;
   }
 
   const handleDatasetSelected = (ds) => {
