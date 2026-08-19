@@ -2,7 +2,7 @@ import logging
 import asyncio
 import json
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Dict, Any
@@ -165,6 +165,171 @@ async def save_entities(data: Dict[str, Any]):
     write_entities(data)
     return {"status": "success"}
 
+import shutil
+
+@app.post("/api/models/upload")
+async def upload_model(
+    name: str = Form(...),
+    task: str = Form(...),
+    hef_file: UploadFile = File(...),
+    so_file: UploadFile = File(...)
+):
+    try:
+        models_dir = Path(__file__).resolve().parent.parent / "models"
+        models_dir.mkdir(exist_ok=True)
+        post_process_dir = models_dir / "post_processes"
+        post_process_dir.mkdir(exist_ok=True)
+        
+        hef_path = models_dir / hef_file.filename
+        so_path = post_process_dir / so_file.filename
+        
+        with open(hef_path, "wb") as f:
+            shutil.copyfileobj(hef_file.file, f)
+            
+        with open(so_path, "wb") as f:
+            shutil.copyfileobj(so_file.file, f)
+            
+        entities = read_entities()
+        new_model_id = f"model_{int(time.time())}"
+        
+        if "models" not in entities:
+            entities["models"] = []
+            
+        entities["models"].append({
+            "id": new_model_id,
+            "name": name,
+            "task": task,
+            "hef_path": hef_file.filename,
+            "so_path": so_file.filename
+        })
+        
+        write_entities(entities)
+        
+        return {"status": "success", "model_id": new_model_id}
+    except Exception as e:
+        logger.error(f"Failed to upload model: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/upload-hef")
+async def upload_hef_only(
+    hef_file: UploadFile = File(...),
+    name: str = Form(...),
+    task: str = Form("detection")
+):
+    """
+    Simplified .hef upload from IRIV Model Studio (local Docker compile).
+    Accepts only the .hef file — automatically assigns the correct post-process .so
+    based on task type.
+    """
+    try:
+        models_dir = Path(__file__).resolve().parent.parent / "models"
+        models_dir.mkdir(exist_ok=True)
+
+        hef_path = models_dir / hef_file.filename
+        with open(hef_path, "wb") as f:
+            shutil.copyfileobj(hef_file.file, f)
+
+        # Map task → default post-process shared library
+        so_map = {
+            "detection": "libyolo_hailortpp_post.so",
+            "classification": "libclassification_post.so",
+            "pose": "libyolo_hailortpp_post.so",
+        }
+        default_so = so_map.get(task, "libyolo_hailortpp_post.so")
+
+        entities = read_entities()
+        new_model_id = f"model_{int(time.time())}"
+        if "models" not in entities:
+            entities["models"] = []
+
+        entities["models"].append({
+            "id": new_model_id,
+            "name": name,
+            "task": task,
+            "hef_path": hef_file.filename,
+            "so_path": default_so
+        })
+        write_entities(entities)
+
+        logger.info(f"HEF uploaded and registered: {name} ({task})")
+        return {
+            "status": "success",
+            "model_id": new_model_id,
+            "message": f"Model '{name}' uploaded and registered successfully"
+        }
+    except Exception as e:
+        logger.error(f"Failed to upload HEF: {e}")
+        return {"status": "error", "message": str(e)}
+
+# --- Video File Upload APIs ---
+VIDEOS_DIR = Path(__file__).resolve().parent.parent / "videos"
+VIDEOS_DIR.mkdir(exist_ok=True)
+MAX_VIDEO_SIZE = 1 * 1024 * 1024 * 1024  # 1 GB
+ALLOWED_VIDEO_EXTENSIONS = {".mp4", ".avi", ".mkv", ".mov", ".webm"}
+
+@app.post("/api/videos/upload")
+async def upload_video(video_file: UploadFile = File(...)):
+    try:
+        suffix = Path(video_file.filename).suffix.lower()
+        if suffix not in ALLOWED_VIDEO_EXTENSIONS:
+            return {"status": "error", "message": f"Unsupported format. Allowed: {', '.join(ALLOWED_VIDEO_EXTENSIONS)}"}
+        
+        save_path = VIDEOS_DIR / video_file.filename
+        size = 0
+        with open(save_path, "wb") as f:
+            while chunk := await video_file.read(1024 * 1024):  # 1MB chunks
+                size += len(chunk)
+                if size > MAX_VIDEO_SIZE:
+                    f.close()
+                    save_path.unlink(missing_ok=True)
+                    return {"status": "error", "message": "File exceeds 1GB limit"}
+                f.write(chunk)
+        
+        # Register as a camera entity of type "file"
+        entities = read_entities()
+        new_cam_id = f"cam_file_{int(time.time())}"
+        if "cameras" not in entities:
+            entities["cameras"] = []
+        
+        entities["cameras"].append({
+            "id": new_cam_id,
+            "name": video_file.filename,
+            "type": "file",
+            "path": str(save_path)
+        })
+        write_entities(entities)
+        
+        return {"status": "success", "camera_id": new_cam_id, "filename": video_file.filename, "size_bytes": size}
+    except Exception as e:
+        logger.error(f"Failed to upload video: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/videos")
+async def list_videos():
+    try:
+        files = []
+        for f in VIDEOS_DIR.iterdir():
+            if f.is_file() and f.suffix.lower() in ALLOWED_VIDEO_EXTENSIONS:
+                files.append({"filename": f.name, "size_bytes": f.stat().st_size, "path": str(f)})
+        return {"status": "success", "files": files}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.delete("/api/videos/{filename}")
+async def delete_video(filename: str):
+    try:
+        file_path = VIDEOS_DIR / filename
+        if not file_path.exists() or not file_path.is_file():
+            return {"status": "error", "message": "File not found"}
+        file_path.unlink()
+        # Remove matching camera entity
+        entities = read_entities()
+        entities["cameras"] = [c for c in entities.get("cameras", []) if c.get("path") != str(file_path)]
+        write_entities(entities)
+        return {"status": "success"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 @app.get("/api/data-sources")
 async def get_data_sources(project_id: str = None):
     # Base data sources that are always available (e.g. system metrics)
@@ -254,3 +419,100 @@ async def stop_pipeline(project_id: str):
         del active_workers[project_id]
         return {"status": "success", "message": f"Pipeline {project_id} stopped"}
     return {"status": "error", "message": "Pipeline not running"}
+
+# --- IRIV Model Studio: Remote ONNX Compilation API ---
+@app.post("/api/compile-onnx")
+async def compile_onnx(
+    onnx_file: UploadFile = File(...),
+    model_name: str = Form(...),
+    task: str = Form("detection")
+):
+    """
+    Receives an ONNX file from IRIV Model Studio (PC) and compiles it to .hef
+    using Hailo Dataflow Compiler installed on this device.
+    The compiled model is automatically registered in entities.json.
+    """
+    import subprocess
+    
+    base_dir = Path(__file__).resolve().parent.parent
+    models_dir = base_dir / "models"
+    models_dir.mkdir(exist_ok=True)
+    
+    # Save the uploaded ONNX
+    onnx_path = models_dir / onnx_file.filename
+    with open(onnx_path, "wb") as f:
+        shutil.copyfileobj(onnx_file.file, f)
+    
+    hef_path = models_dir / f"{model_name}.hef"
+    
+    # Use hailo SDK to compile ONNX → HEF
+    # This requires hailo_sdk_client (Hailo Dataflow Compiler) installed on the device
+    compile_script = f"""
+import sys
+try:
+    from hailo_sdk_client import ClientRunner
+    runner = ClientRunner()
+    runner.translate_onnx_model(
+        '{onnx_path}',
+        '{model_name}',
+        net_input_shapes=None
+    )
+    runner.optimize_full_precision(calib_dataset=None)
+    runner.compile()
+    runner.save_hef('{hef_path}')
+    print('COMPILE_SUCCESS')
+except ImportError:
+    # Fallback: try hailo_model_zoo CLI
+    import subprocess
+    result = subprocess.run([
+        'hailomz', 'compile', '--ckpt', '{onnx_path}',
+        '--hw-arch', 'hailo8l', '--output-dir', '{models_dir}'
+    ], capture_output=True, text=True)
+    print(result.stdout)
+    if result.returncode == 0:
+        print('COMPILE_SUCCESS')
+    else:
+        print('COMPILE_FAILED:', result.stderr)
+except Exception as e:
+    print('COMPILE_FAILED:', str(e))
+"""
+    
+    result = subprocess.run(
+        [sys.executable, "-c", compile_script],
+        capture_output=True, text=True, timeout=600
+    )
+    
+    combined_output = result.stdout + result.stderr
+    
+    if "COMPILE_SUCCESS" in combined_output and hef_path.exists():
+        # Auto-register compiled model in entities.json
+        entities = read_entities()
+        new_model_id = f"model_{int(time.time())}"
+        if "models" not in entities:
+            entities["models"] = []
+        
+        entities["models"].append({
+            "id": new_model_id,
+            "name": model_name,
+            "task": task,
+            "hef_path": hef_path.name,
+            "so_path": "libyolo_hailortpp_post.so" if task == "detection" else "libclassification_post.so"
+        })
+        write_entities(entities)
+        
+        logger.info(f"Model compiled and registered: {model_name}")
+        return {
+            "status": "success",
+            "message": f"Model '{model_name}' compiled and registered successfully",
+            "model_id": new_model_id,
+            "hef_path": hef_path.name
+        }
+    else:
+        logger.error(f"Compilation failed: {combined_output}")
+        # Clean up failed ONNX
+        onnx_path.unlink(missing_ok=True)
+        return {
+            "status": "error",
+            "message": "Hailo compilation failed. Make sure Hailo Dataflow Compiler (hailo_sdk_client) is installed.",
+            "log": combined_output[-2000:]  # Last 2000 chars of log
+        }
