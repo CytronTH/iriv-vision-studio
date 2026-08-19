@@ -1,0 +1,43 @@
+# Hailo Dataflow Compiler — Minimal Docker Image
+# Size: ~2-3 GB (vs 12 GB for full hailo_sw_suite)
+# Requires: hailo_dataflow_compiler-*.whl from https://hailo.ai/developer-zone/
+#
+# Build steps:
+# 1. Download hailo_dataflow_compiler-x.x.x-py3-none-linux_x86_64.whl
+#    from https://hailo.ai/developer-zone/software-downloads/
+# 2. Place the .whl file in the same directory as this Dockerfile
+# 3. Run: docker build -t iriv-hailo-compiler:latest .
+#
+# Usage:
+# docker run --rm -v /path/to/workspace:/workspace iriv-hailo-compiler:latest bash -c "..."
+
+FROM python:3.10-slim
+
+# Minimal system deps for Hailo DFC
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1-mesa-glx \
+    libgomp1 \
+    libglib2.0-0 \
+    graphviz \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Pin numpy to version required by Hailo DFC
+RUN pip install --no-cache-dir \
+    "numpy==1.23.3" \
+    "onnx>=1.12.0" \
+    "Pillow>=9.0.0" \
+    "scipy" \
+    "matplotlib"
+
+# Install Hailo Dataflow Compiler
+# Place the .whl file next to this Dockerfile before building
+COPY hailo_dataflow_compiler-*.whl /tmp/
+RUN pip install --no-cache-dir /tmp/hailo_dataflow_compiler-*.whl && \
+    rm /tmp/hailo_dataflow_compiler-*.whl
+
+WORKDIR /workspace
+
+# Default entrypoint
+ENTRYPOINT ["/bin/bash", "-c"]
+CMD ["hailo --version"]

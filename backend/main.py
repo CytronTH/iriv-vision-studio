@@ -28,11 +28,14 @@ WORKSPACE_DIR = BASE_DIR / "workspace"
 DATASETS_DIR = WORKSPACE_DIR / "datasets"
 MODELS_DIR = WORKSPACE_DIR / "models"
 EXPORTS_DIR = WORKSPACE_DIR / "exports"
-for d in [DATASETS_DIR, MODELS_DIR, EXPORTS_DIR]:
+COMPILED_DIR = WORKSPACE_DIR / "compiled"
+for d in [DATASETS_DIR, MODELS_DIR, EXPORTS_DIR, COMPILED_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
-# Store active training websocket clients
+# Store active websocket clients per operation
 training_clients: list[WebSocket] = []
+export_clients: list[WebSocket] = []
+compile_clients: list[WebSocket] = []
 
 # --- SYSTEM ---
 @app.get("/api/system")
@@ -166,6 +169,52 @@ async def broadcast_training_log(message: dict):
     for d in dead:
         training_clients.remove(d)
 
+# --- EXPORT WEBSOCKET ---
+@app.websocket("/ws/export")
+async def export_websocket(ws: WebSocket):
+    await ws.accept()
+    export_clients.append(ws)
+    try:
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        if ws in export_clients:
+            export_clients.remove(ws)
+
+async def broadcast_export_log(message: dict):
+    dead = []
+    for client in export_clients:
+        try:
+            await client.send_json(message)
+        except:
+            dead.append(client)
+    for d in dead:
+        if d in export_clients:
+            export_clients.remove(d)
+
+# --- COMPILE WEBSOCKET ---
+@app.websocket("/ws/compile")
+async def compile_websocket(ws: WebSocket):
+    await ws.accept()
+    compile_clients.append(ws)
+    try:
+        while True:
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        if ws in compile_clients:
+            compile_clients.remove(ws)
+
+async def broadcast_compile_log(message: dict):
+    dead = []
+    for client in compile_clients:
+        try:
+            await client.send_json(message)
+        except:
+            dead.append(client)
+    for d in dead:
+        if d in compile_clients:
+            compile_clients.remove(d)
+
 @app.post("/api/train")
 async def start_training(config: TrainConfig, background_tasks=None):
     """Start YOLOv8 training in background"""
@@ -298,22 +347,28 @@ async def stop_training():
         return {"status": "stopped"}
     return {"status": "not_running"}
 
-# --- EXPORT TO ONNX ---
+# --- EXPORT TO ONNX (async streaming) ---
 class ExportConfig(BaseModel):
     pt_path: str
     imgsz: int = 640
 
 @app.post("/api/export/onnx")
 async def export_to_onnx(config: ExportConfig):
-    """Export .pt to .onnx"""
+    """Start async ONNX export — streams logs via /ws/export"""
     pt_path = Path(config.pt_path)
     if not pt_path.exists():
         raise HTTPException(404, "Model file not found")
+    asyncio.create_task(run_export(config, str(pt_path)))
+    return {"status": "started"}
 
+async def run_export(config: ExportConfig, pt_path_str: str):
+    """Async ONNX export with WebSocket log streaming"""
+    import tempfile
+    pt_path = Path(pt_path_str)
     onnx_path = pt_path.with_suffix('.onnx')
-
-    # Use repr() to safely escape backslashes in Windows paths
     pt_path_repr = repr(str(pt_path))
+
+    await broadcast_export_log({"type": "status", "message": "Starting ONNX export...", "progress": 0})
 
     script = f"""
 import sys, multiprocessing
@@ -321,62 +376,224 @@ multiprocessing.freeze_support()
 sys.stdout.reconfigure(line_buffering=True)
 
 def main():
+    print("Loading model weights...", flush=True)
     from ultralytics import YOLO
+    print("Model loaded. Exporting to ONNX...", flush=True)
     model = YOLO({pt_path_repr})
     model.export(format='onnx', imgsz={config.imgsz}, opset=11, simplify=True)
-    print('EXPORT_COMPLETE', flush=True)
+    print("EXPORT_COMPLETE", flush=True)
 
 if __name__ == '__main__':
     main()
 """
-    import tempfile
     with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
         f.write(script)
         script_path = f.name
 
     try:
-        result = subprocess.run(
-            [sys.executable, script_path],
-            capture_output=True, text=True, timeout=300
+        proc = await asyncio.create_subprocess_exec(
+            sys.executable, script_path,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
         )
+
+        progress_map = {
+            "Loading model": 10,
+            "Model loaded": 30,
+            "Exporting": 50,
+            "DFL": 70,
+            "simplify": 85,
+            "EXPORT_COMPLETE": 100,
+        }
+
+        async for raw in proc.stdout:
+            line = raw.decode(errors='replace').strip()
+            if not line:
+                continue
+            progress = 50
+            for keyword, pct in progress_map.items():
+                if keyword.lower() in line.lower():
+                    progress = pct
+                    break
+            await broadcast_export_log({"type": "log", "message": line, "progress": progress})
+
+        await proc.wait()
+
+        if proc.returncode == 0 and onnx_path.exists():
+            await broadcast_export_log({
+                "type": "done", "status": "success",
+                "message": "Export complete!", "progress": 100,
+                "onnx_path": str(onnx_path)
+            })
+        else:
+            await broadcast_export_log({
+                "type": "done", "status": "error",
+                "message": "Export failed — check logs above", "progress": 0
+            })
+    except Exception as e:
+        await broadcast_export_log({"type": "done", "status": "error", "message": str(e), "progress": 0})
     finally:
         try:
             os.unlink(script_path)
         except Exception:
             pass
 
-    if 'EXPORT_COMPLETE' in result.stdout:
-        return {"status": "success", "onnx_path": str(onnx_path)}
-    error_msg = result.stderr or result.stdout or "Unknown export error"
-    return {"status": "error", "message": error_msg}
-
-# --- COMPILE (via IRIV Device) ---
-class CompileConfig(BaseModel):
+# --- COMPILE TO .HEF (local Docker) ---
+class LocalCompileConfig(BaseModel):
     onnx_path: str
-    device_ip: str
+    dataset_id: str           # to find calibration images
     model_name: str
+    hailo_arch: str = "hailo8l"   # hailo8 or hailo8l
+    docker_image: str = "iriv-hailo-compiler:latest"
     task: str = "detection"
 
-@app.post("/api/compile")
-async def compile_on_device(config: CompileConfig):
-    """Send ONNX to IRIV device for compilation to .hef"""
+@app.post("/api/compile/local")
+async def compile_local(config: LocalCompileConfig):
+    """Start local Hailo compilation via Docker — streams logs via /ws/compile"""
     onnx_path = Path(config.onnx_path)
     if not onnx_path.exists():
         raise HTTPException(404, "ONNX file not found")
 
-    device_url = f"http://{config.device_ip}:8000/api/compile-onnx"
+    # Check calibration images exist
+    dataset_dir = DATASETS_DIR / config.dataset_id
+    train_img_dir = dataset_dir / "train" / "images"
+    if not train_img_dir.exists() or not any(train_img_dir.iterdir()):
+        raise HTTPException(400,
+            f"No calibration images found at {train_img_dir}. "
+            "Please ensure the dataset is imported correctly. "
+            "Tip: The 'train/images' folder inside your dataset must contain images for Hailo quantization calibration."
+        )
+
+    asyncio.create_task(run_local_compile(config, str(onnx_path), str(train_img_dir)))
+    return {"status": "started"}
+
+async def run_local_compile(config: LocalCompileConfig, onnx_path_str: str, calib_dir_str: str):
+    """Run Hailo compilation in Docker, stream logs via WebSocket"""
+    onnx_path = Path(onnx_path_str)
+    calib_dir = Path(calib_dir_str)
+    output_dir = COMPILED_DIR / config.model_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy ONNX to output workspace
+    shutil.copy2(onnx_path, output_dir / "model.onnx")
+
+    # Docker paths must use forward slashes on Windows
+    def docker_path(p: Path) -> str:
+        return str(p).replace('\\', '/')
+
+    workspace_docker = docker_path(output_dir)
+    calib_docker = docker_path(calib_dir)
+
+    # Check Docker image exists
+    await broadcast_compile_log({"type": "status", "message": "Checking Docker image...", "progress": 2})
+    check = await asyncio.create_subprocess_exec(
+        "docker", "image", "inspect", config.docker_image,
+        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+    )
+    await check.wait()
+    if check.returncode != 0:
+        await broadcast_compile_log({
+            "type": "done", "status": "error",
+            "message": (
+                f"Docker image '{config.docker_image}' not found.\n\n"
+                "To build the minimal Hailo compiler image (~2-3 GB):\n"
+                "1. Download hailo_dataflow_compiler-*.whl from https://hailo.ai/developer-zone/\n"
+                "2. Place the .whl file next to Dockerfile.hailo in the IRIV Model Studio folder\n"
+                f"3. Run: docker build -f Dockerfile.hailo -t {config.docker_image} .\n\n"
+                "Or to use the full Hailo SW Suite (~12 GB):\n"
+                "   docker pull hailo/hailo_sw_suite_2024-10:latest"
+            ),
+            "progress": 0
+        })
+        return
+
+    # Compilation bash script inside Docker
+    bash_script = (
+        "set -e && "
+        "cd /workspace && "
+        "echo 'STEP_PARSE' && "
+        f"hailo parser onnx model.onnx --net-name {config.model_name} --hw-arch {config.hailo_arch} 2>&1 && "
+        "echo 'STEP_OPTIMIZE' && "
+        f"hailo optimize {config.model_name}.hn --hw-arch {config.hailo_arch} --calib-set-path /calib 2>&1 && "
+        "echo 'STEP_COMPILE' && "
+        f"HN=$(find /workspace -name '*.hn' | sort | tail -1) && "
+        f"hailo compiler \"$HN\" --hw-arch {config.hailo_arch} -o /workspace/{config.model_name}.hef 2>&1 && "
+        "echo 'COMPILE_DONE'"
+    )
+
+    await broadcast_compile_log({"type": "status", "message": "Starting Docker compilation...", "progress": 5})
+
+    proc = await asyncio.create_subprocess_exec(
+        "docker", "run", "--rm",
+        f"--name=iriv-compile-{int(asyncio.get_event_loop().time())}",
+        "-v", f"{workspace_docker}:/workspace",
+        "-v", f"{calib_docker}:/calib:ro",
+        config.docker_image,
+        bash_script,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+    )
+
+    step_progress = {"STEP_PARSE": 20, "STEP_OPTIMIZE": 50, "STEP_COMPILE": 80, "COMPILE_DONE": 100}
+    current_progress = 5
+
+    async for raw in proc.stdout:
+        line = raw.decode(errors='replace').strip()
+        if not line:
+            continue
+        for keyword, pct in step_progress.items():
+            if keyword in line:
+                current_progress = pct
+        await broadcast_compile_log({"type": "log", "message": line, "progress": current_progress})
+
+    await proc.wait()
+    hef_path = output_dir / f"{config.model_name}.hef"
+
+    if proc.returncode == 0 and hef_path.exists():
+        await broadcast_compile_log({
+            "type": "done", "status": "success",
+            "message": f"Compilation complete! .hef saved to: {hef_path}",
+            "progress": 100,
+            "hef_path": str(hef_path),
+            "model_name": config.model_name,
+            "task": config.task
+        })
+    else:
+        await broadcast_compile_log({
+            "type": "done", "status": "error",
+            "message": f"Compilation failed (Docker exit code {proc.returncode}). Check logs above.",
+            "progress": 0
+        })
+
+# --- DEPLOY .HEF TO IRIV EDGEAI ---
+class DeployHefConfig(BaseModel):
+    hef_path: str
+    device_ip: str
+    model_name: str
+    task: str = "detection"
+
+@app.post("/api/deploy/hef")
+async def deploy_hef(config: DeployHefConfig):
+    """Upload compiled .hef to IRIV EdgeAI device"""
+    hef_path = Path(config.hef_path)
+    if not hef_path.exists():
+        raise HTTPException(404, "HEF file not found")
+
+    device_url = f"http://{config.device_ip}:8000/api/upload-hef"
     try:
-        with open(onnx_path, 'rb') as f:
+        with open(hef_path, 'rb') as f:
             response = requests.post(
                 device_url,
-                files={"onnx_file": (onnx_path.name, f, "application/octet-stream")},
-                data={"model_name": config.model_name, "task": config.task},
-                timeout=300  # 5 min timeout for compilation
+                files={"hef_file": (hef_path.name, f, "application/octet-stream")},
+                data={"name": config.model_name, "task": config.task},
+                timeout=60
             )
         result = response.json()
         return result
     except requests.exceptions.ConnectionError:
-        raise HTTPException(503, f"Cannot connect to IRIV device at {config.device_ip}:8000")
+        raise HTTPException(503, f"Cannot connect to IRIV EdgeAI at {config.device_ip}:8000")
+    except Exception as e:
+        raise HTTPException(500, str(e))
 
 # --- LIST MODELS ---
 @app.get("/api/models")

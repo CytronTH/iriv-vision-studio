@@ -537,30 +537,54 @@ function ExportPage({ onExported }) {
   const [models, setModels] = useState([]);
   const [exporting, setExporting] = useState(null);
   const [results, setResults] = useState({});
+  const [logs, setLogs] = useState([]);
+  const [progress, setProgress] = useState(0);
+  const wsRef = useRef(null);
+  const logEndRef = useRef(null);
 
   useEffect(() => {
     fetch(`${API}/api/models`).then(r => r.json()).then(d => setModels(d.models || []));
   }, []);
 
+  useEffect(() => {
+    const wsUrl = API.replace('http', 'ws') + '/ws/export';
+    const ws = new WebSocket(wsUrl);
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      setProgress(msg.progress || 0);
+      if (msg.type === 'log' || msg.type === 'status') {
+        setLogs(l => [...l.slice(-200), { text: msg.message, type: msg.type }]);
+      }
+      if (msg.type === 'done') {
+        setExporting(null);
+        if (msg.status === 'success' && msg.onnx_path) {
+          setResults(r => ({ ...r, [exporting]: msg.onnx_path }));
+          setModels(m => m.map(mo => mo.name === exporting ? { ...mo, has_onnx: true, onnx_path: msg.onnx_path } : mo));
+          onExported(msg.onnx_path);
+        }
+      }
+    };
+    wsRef.current = ws;
+    return () => ws.close();
+  }, [exporting]);
+
+  useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [logs]);
+
   const handleExport = async (model) => {
     setExporting(model.name);
-    const res = await fetch(`${API}/api/export/onnx`, {
+    setLogs([]);
+    setProgress(0);
+    await fetch(`${API}/api/export/onnx`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pt_path: model.pt_path, imgsz: 640 })
     });
-    const data = await res.json();
-    setExporting(null);
-    if (data.status === 'success') {
-      setResults(r => ({ ...r, [model.name]: data.onnx_path }));
-      onExported(data.onnx_path);
-    } else {
-      alert('Export failed: ' + data.message);
-    }
   };
 
+  const isExporting = exporting !== null;
+
   return (
-    <div className="animate-fade-in" style={{ maxWidth: 700 }}>
+    <div className="animate-fade-in" style={{ maxWidth: 760 }}>
       <SectionTitle>📄 Export to ONNX</SectionTitle>
       <SubText>Convert your trained .pt model to ONNX format for Hailo compilation</SubText>
 
@@ -579,7 +603,7 @@ function ExportPage({ onExported }) {
             </div>
           </div>
           {m.has_pt && !m.has_onnx && !results[m.name] && (
-            <button className="btn-primary no-drag" onClick={() => handleExport(m)} disabled={exporting === m.name}>
+            <button className="btn-primary no-drag" onClick={() => handleExport(m)} disabled={isExporting}>
               {exporting === m.name ? (
                 <><RefreshCw size={14} className="animate-spin" /> Exporting...</>
               ) : (
@@ -594,59 +618,146 @@ function ExportPage({ onExported }) {
           )}
         </div>
       ))}
+
+      {/* Progress + Log Panel */}
+      {(isExporting || logs.length > 0) && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>⚙️ Export Log</div>
+            <div style={{ fontSize: 12, color: '#6366f1', fontFamily: 'JetBrains Mono, monospace' }}>{progress}%</div>
+          </div>
+          {/* Progress bar */}
+          <div style={{ height: 4, background: '#1e2130', borderRadius: 4, marginBottom: 12, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${progress}%`, background: 'linear-gradient(90deg,#6366f1,#8b5cf6)', borderRadius: 4, transition: 'width 0.4s ease' }} />
+          </div>
+          {/* Log terminal */}
+          <div style={{ background: '#060810', border: '1px solid #1e2130', borderRadius: 8, padding: 12, maxHeight: 220, overflowY: 'auto', fontFamily: 'JetBrains Mono, monospace', fontSize: 11, lineHeight: 1.6 }}>
+            {logs.map((l, i) => (
+              <div key={i} style={{ color: l.type === 'status' ? '#818cf8' : '#9ca3af' }}>{l.text}</div>
+            ))}
+            <div ref={logEndRef} />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Step 4: Compile ────────────────────────────────────────────────
-function CompilePage({ onnxPath, onCompiled }) {
+function CompilePage({ onnxPath, selectedDataset, onCompiled }) {
   const [deviceIp, setDeviceIp] = useState('10.10.10.57');
   const [modelName, setModelName] = useState('my_detector');
   const [task, setTask] = useState('detection');
+  const [hailoArch, setHailoArch] = useState('hailo8l');
+  const [dockerImage, setDockerImage] = useState('iriv-hailo-compiler:latest');
   const [compiling, setCompiling] = useState(false);
-  const [result, setResult] = useState(null);
+  const [deploying, setDeploying] = useState(false);
+  const [logs, setLogs] = useState([]);
+  const [progress, setProgress] = useState(0);
+  const [compileResult, setCompileResult] = useState(null);
+  const wsRef = useRef(null);
+  const logEndRef = useRef(null);
+
+  useEffect(() => {
+    const wsUrl = API.replace('http', 'ws') + '/ws/compile';
+    const ws = new WebSocket(wsUrl);
+    ws.onmessage = (e) => {
+      const msg = JSON.parse(e.data);
+      setProgress(msg.progress || 0);
+      if (msg.type === 'log' || msg.type === 'status') {
+        setLogs(l => [...l.slice(-300), { text: msg.message, type: msg.type }]);
+      }
+      if (msg.type === 'done') {
+        setCompiling(false);
+        setCompileResult(msg);
+        if (msg.status === 'success') onCompiled(msg);
+      }
+    };
+    wsRef.current = ws;
+    return () => ws.close();
+  }, []);
+
+  useEffect(() => { logEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [logs]);
 
   const handleCompile = async () => {
     if (!onnxPath) { alert('No ONNX model selected — complete Step 3 first'); return; }
-    setCompiling(true); setResult(null);
+    setCompiling(true); setCompileResult(null); setLogs([]); setProgress(0);
+    const res = await fetch(`${API}/api/compile/local`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        onnx_path: onnxPath,
+        dataset_id: selectedDataset?.id || selectedDataset?.name || '',
+        model_name: modelName,
+        hailo_arch: hailoArch,
+        docker_image: dockerImage,
+        task
+      })
+    });
+    const data = await res.json();
+    if (data.status !== 'started') {
+      setCompiling(false);
+      setCompileResult({ status: 'error', message: data.detail || data.message || 'Failed to start' });
+    }
+  };
+
+  const handleDeploy = async () => {
+    if (!compileResult?.hef_path) return;
+    setDeploying(true);
     try {
-      const res = await fetch(`${API}/api/compile`, {
+      const res = await fetch(`${API}/api/deploy/hef`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ onnx_path: onnxPath, device_ip: deviceIp, model_name: modelName, task })
+        body: JSON.stringify({
+          hef_path: compileResult.hef_path,
+          device_ip: deviceIp,
+          model_name: modelName,
+          task
+        })
       });
       const data = await res.json();
-      setResult(data);
-      if (data.status === 'success') onCompiled(data);
+      if (data.status === 'success') {
+        alert(`✅ Model deployed to IRIV EdgeAI successfully!\nModel ID: ${data.model_id}`);
+      } else {
+        alert('❌ Deploy failed: ' + (data.message || 'Unknown error'));
+      }
     } catch (e) {
-      setResult({ status: 'error', message: e.message });
+      alert('❌ Deploy error: ' + e.message);
     }
-    setCompiling(false);
+    setDeploying(false);
   };
 
   return (
-    <div className="animate-fade-in" style={{ maxWidth: 600 }}>
+    <div className="animate-fade-in" style={{ maxWidth: 700 }}>
       <SectionTitle>⚙️ Compile to .hef</SectionTitle>
-      <SubText>Send your ONNX model to the IRIV device for Hailo compilation. The device has Hailo SDK pre-installed.</SubText>
+      <SubText>Compile ONNX model locally via Docker → deploy .hef to IRIV EdgeAI</SubText>
+
+      {/* Docker requirement info */}
+      <div style={{ padding: '10px 14px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: 10, marginBottom: 20, fontSize: 12, color: '#818cf8', lineHeight: 1.7 }}>
+        <div style={{ fontWeight: 700, marginBottom: 4 }}>🐳 Prerequisites</div>
+        1. Install <strong>Docker Desktop</strong> + WSL2 on Windows<br/>
+        2. Build minimal Hailo image: Download <code style={{ background: '#0d1117', padding: '1px 4px', borderRadius: 3 }}>hailo_dataflow_compiler-*.whl</code> from{' '}
+        <span style={{ color: '#6366f1', cursor: 'pointer', textDecoration: 'underline' }} onClick={() => window.electronAPI?.openExternal('https://hailo.ai/developer-zone/')}>
+          hailo.ai/developer-zone
+        </span>{' '}
+        then run: <code style={{ background: '#0d1117', padding: '1px 4px', borderRadius: 3 }}>docker build -f Dockerfile.hailo -t iriv-hailo-compiler:latest .</code>
+      </div>
 
       {onnxPath ? (
-        <div style={{ padding: '10px 14px', background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.3)', borderRadius: 10, marginBottom: 24, fontSize: 13, color: '#10b981' }}>
+        <div style={{ padding: '10px 14px', background: 'rgba(5,150,105,0.08)', border: '1px solid rgba(5,150,105,0.3)', borderRadius: 10, marginBottom: 20, fontSize: 13, color: '#10b981' }}>
           ✅ ONNX: {onnxPath.split('\\').pop().split('/').pop()}
         </div>
       ) : (
-        <div style={{ padding: '10px 14px', background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)', borderRadius: 10, marginBottom: 24, fontSize: 13, color: '#eab308' }}>
+        <div style={{ padding: '10px 14px', background: 'rgba(234,179,8,0.08)', border: '1px solid rgba(234,179,8,0.3)', borderRadius: 10, marginBottom: 20, fontSize: 13, color: '#eab308' }}>
           ⚠️ No ONNX model selected — complete Step 3 first
         </div>
       )}
 
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div>
-          <label className="input-label">IRIV Device IP Address</label>
-          <input className="input-field" value={deviceIp} onChange={e => setDeviceIp(e.target.value)} placeholder="e.g. 192.168.1.100" />
-        </div>
+      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Row 1 */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
           <div>
-            <label className="input-label">Model Name (in system)</label>
+            <label className="input-label">Model Name</label>
             <input className="input-field" value={modelName} onChange={e => setModelName(e.target.value)} placeholder="e.g. expiry_detector" />
           </div>
           <div>
@@ -659,34 +770,89 @@ function CompilePage({ onnxPath, onCompiled }) {
           </div>
         </div>
 
+        {/* Row 2 */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <label className="input-label">Hailo Hardware Architecture</label>
+            <select className="input-field" value={hailoArch} onChange={e => setHailoArch(e.target.value)}>
+              <option value="hailo8l">Hailo-8L (IRIV EdgeAI Lite)</option>
+              <option value="hailo8">Hailo-8 (IRIV EdgeAI Pro)</option>
+            </select>
+          </div>
+          <div>
+            <label className="input-label">Docker Image</label>
+            <input className="input-field" value={dockerImage} onChange={e => setDockerImage(e.target.value)} placeholder="iriv-hailo-compiler:latest" style={{ fontSize: 12 }} />
+          </div>
+        </div>
+
+        {/* Row 3 — IRIV EdgeAI IP */}
+        <div>
+          <label className="input-label">IRIV EdgeAI IP Address (for deploy)</label>
+          <input className="input-field" value={deviceIp} onChange={e => setDeviceIp(e.target.value)} placeholder="e.g. 10.10.10.57" />
+        </div>
+
         <button className="btn-primary no-drag" onClick={handleCompile} disabled={compiling || !onnxPath} style={{ justifyContent: 'center' }}>
           {compiling ? (
-            <><RefreshCw size={16} className="animate-spin" /> Compiling on device... (may take 3-5 min)</>
+            <><RefreshCw size={16} className="animate-spin" /> Compiling... (3-10 min)</>
           ) : (
-            <><Cpu size={16} /> Compile on IRIV Device</>
+            <><Cpu size={16} /> Compile on Local PC (Docker)</>
           )}
         </button>
       </div>
 
-      {result && (
-        <div style={{
-          marginTop: 20, padding: 16, borderRadius: 12,
-          background: result.status === 'success' ? 'rgba(5,150,105,0.1)' : 'rgba(239,68,68,0.08)',
-          border: `1px solid ${result.status === 'success' ? 'rgba(5,150,105,0.3)' : 'rgba(239,68,68,0.3)'}`
-        }}>
-          <div style={{ fontWeight: 600, color: result.status === 'success' ? '#10b981' : '#ef4444', marginBottom: 6 }}>
-            {result.status === 'success' ? '✅ Compilation successful!' : '❌ Compilation failed'}
+      {/* Progress + Log */}
+      {(compiling || logs.length > 0) && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ fontWeight: 600, fontSize: 13 }}>🔧 Compilation Log</div>
+            <div style={{ fontSize: 12, color: '#6366f1', fontFamily: 'JetBrains Mono, monospace' }}>{progress}%</div>
           </div>
-          <div style={{ fontSize: 12, color: '#6b7280' }}>{result.message}</div>
+          <div style={{ height: 4, background: '#1e2130', borderRadius: 4, marginBottom: 12, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${progress}%`, background: 'linear-gradient(90deg,#f59e0b,#ef4444)', borderRadius: 4, transition: 'width 0.5s ease' }} />
+          </div>
+          <div style={{ fontSize: 11, color: '#4b5563', marginBottom: 8 }}>
+            Parse → Optimize (calibration) → Compile
+          </div>
+          <div style={{ background: '#060810', border: '1px solid #1e2130', borderRadius: 8, padding: 12, maxHeight: 280, overflowY: 'auto', fontFamily: 'JetBrains Mono, monospace', fontSize: 11, lineHeight: 1.6 }}>
+            {logs.map((l, i) => (
+              <div key={i} style={{
+                color: l.type === 'status' ? '#818cf8'
+                  : l.text.includes('error') || l.text.includes('Error') || l.text.includes('FAILED') ? '#ef4444'
+                  : l.text.includes('STEP_') ? '#f59e0b'
+                  : l.text.includes('COMPILE_DONE') ? '#10b981'
+                  : '#9ca3af'
+              }}>{l.text}</div>
+            ))}
+            <div ref={logEndRef} />
+          </div>
         </div>
       )}
 
-      <div className="card" style={{ marginTop: 24, borderColor: '#1e2130' }}>
-        <div style={{ fontWeight: 600, fontSize: 13, color: '#818cf8', marginBottom: 10 }}>ℹ️ How it works</div>
-        <div style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.8 }}>
-          เมื่อกด Compile บน PC → ไฟล์ .onnx จะถูกส่งไปยัง IRIV Device ผ่าน Network → Device จะใช้ Hailo Dataflow Compiler รัน Quantization และ Compile เป็น .hef → ไฟล์ .hef จะถูกลงทะเบียนอัตโนมัติใน IRIV Vision Studio พร้อมใช้งานทันที
+      {/* Result + Deploy */}
+      {compileResult && (
+        <div style={{
+          marginTop: 16, padding: 16, borderRadius: 12,
+          background: compileResult.status === 'success' ? 'rgba(5,150,105,0.1)' : 'rgba(239,68,68,0.08)',
+          border: `1px solid ${compileResult.status === 'success' ? 'rgba(5,150,105,0.3)' : 'rgba(239,68,68,0.3)'}`
+        }}>
+          <div style={{ fontWeight: 600, color: compileResult.status === 'success' ? '#10b981' : '#ef4444', marginBottom: 8 }}>
+            {compileResult.status === 'success' ? '✅ Compilation successful!' : '❌ Compilation failed'}
+          </div>
+          <div style={{ fontSize: 12, color: '#6b7280', whiteSpace: 'pre-wrap', fontFamily: 'JetBrains Mono, monospace' }}>
+            {compileResult.message}
+          </div>
+          {compileResult.status === 'success' && (
+            <button className="btn-primary no-drag" onClick={handleDeploy} disabled={deploying}
+              style={{ marginTop: 16, justifyContent: 'center', background: 'linear-gradient(135deg, #059669, #047857)' }}>
+              {deploying ? (
+                <><RefreshCw size={14} className="animate-spin" /> Deploying to {deviceIp}...</>
+              ) : (
+                <><Wifi size={14} /> Deploy .hef to IRIV EdgeAI ({deviceIp})</>
+              )}
+            </button>
+          )}
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1450,7 +1616,7 @@ export default function App() {
           {page === 'dataset' && <DatasetPage onDatasetSelected={handleDatasetSelected} />}
           {page === 'train' && <TrainPage selectedDataset={selectedDataset} />}
           {page === 'export' && <ExportPage onExported={(p) => { setOnnxPath(p); setPage('compile'); }} />}
-          {page === 'compile' && <CompilePage onnxPath={onnxPath} onCompiled={(r) => { setCompileResult(r); setPage('deploy'); }} />}
+          {page === 'compile' && <CompilePage onnxPath={onnxPath} selectedDataset={selectedDataset} onCompiled={(r) => { setCompileResult(r); setPage('deploy'); }} />}
           {page === 'deploy' && <DeployPage compileResult={compileResult} deviceIp={deviceIp} />}
         </div>
       </div>
