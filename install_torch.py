@@ -1,68 +1,86 @@
 """
 IRIV Model Studio - PyTorch installer with CUDA fallback
-Tries CUDA builds in order: cu126 → cu124 → cu121 → cpu
+Tries: cu126 → cu124 → cu121 → cpu
+Uses --force-reinstall to bypass pip's "already satisfied" check
+(pip treats 2.13.0+cpu and 2.13.0+cu126 as the same version otherwise)
 """
 import subprocess
 import sys
-import importlib
 
 
 CUDA_TAGS = ["cu126", "cu124", "cu121", "cpu"]
 
 
-def pip_install(index_url, packages):
-    """Run pip install and return True on success."""
-    cmd = [sys.executable, "-m", "pip", "install"] + packages + [
-        "--index-url", index_url
-    ]
-    print(f"[Torch] Trying: {index_url}")
-    result = subprocess.run(cmd, timeout=900)
-    return result.returncode == 0
-
-
-def get_torch_version():
+def get_installed_torch():
+    """Return installed torch version string, or None if not installed."""
     try:
-        # Force reimport after install
+        # Reload to get fresh version after possible reinstall
         if "torch" in sys.modules:
             del sys.modules["torch"]
         import torch
         return torch.__version__
-    except Exception:
+    except ImportError:
         return None
 
 
+def is_cuda_build(ver):
+    """Return True if the torch version has CUDA support."""
+    if ver is None:
+        return False
+    return "+cpu" not in ver and "+" in ver  # e.g. 2.13.0+cu126
+
+
+def pip_install_torch(index_url, force=False):
+    """Install torch + torchvision from index_url. Returns exit code."""
+    cmd = [
+        sys.executable, "-m", "pip", "install",
+        "torch", "torchvision",
+        "--index-url", index_url,
+    ]
+    if force:
+        cmd.append("--force-reinstall")
+
+    print(f"[Torch] pip install --index-url {index_url}" + (" --force-reinstall" if force else ""))
+    result = subprocess.run(cmd, timeout=900)
+    return result.returncode
+
+
 def main():
-    packages = ["torch", "torchvision"]
-    installed_tag = None
+    current = get_installed_torch()
+    needs_force = current is not None  # if already installed (even +cpu), must force
+
+    print(f"[Torch] Currently installed: {current or 'None'}")
+    if current and is_cuda_build(current):
+        print("[Torch] Already have CUDA build — skipping reinstall")
+        print(f"[OK] {current}")
+        return
 
     for tag in CUDA_TAGS:
         index_url = f"https://download.pytorch.org/whl/{tag}"
-        if pip_install(index_url, packages):
-            ver = get_torch_version()
-            if ver is not None:
-                print(f"[OK] PyTorch installed: {ver}")
-                if f"+{tag}" in ver or (tag == "cpu" and "+cpu" in ver):
-                    installed_tag = tag
-                    print(f"[OK] Confirmed CUDA tag: {tag}")
-                    break
-                elif tag != "cpu" and "+cpu" not in ver:
-                    # CUDA build installed (version doesn't include tag in some versions)
-                    installed_tag = tag
-                    print(f"[OK] Installed (tag={tag}): {ver}")
-                    break
-                else:
-                    # Got CPU build even when requesting CUDA — try next tag
-                    print(f"[WARN] Got CPU build for tag={tag} ({ver}), trying next...")
-                    continue
-        else:
-            print(f"[WARN] Install failed for tag={tag}, trying next...")
+        rc = pip_install_torch(index_url, force=needs_force)
 
-    if installed_tag is None:
-        print("[ERROR] All CUDA attempts failed, falling back to CPU")
-        pip_install("https://download.pytorch.org/whl/cpu", packages)
+        if rc != 0:
+            print(f"[WARN] Install failed for {tag} (exit={rc}), trying next...")
+            continue
+
+        ver = get_installed_torch()
+        print(f"[Torch] After install: {ver}")
+
+        if tag == "cpu":
+            # CPU is always acceptable as last resort
+            print(f"[OK] PyTorch CPU installed: {ver}")
+            break
+
+        if ver and is_cuda_build(ver):
+            print(f"[OK] PyTorch CUDA installed: {ver}")
+            break
+        else:
+            print(f"[WARN] Got CPU build even from {tag} index, trying next with --force-reinstall")
+            needs_force = True
+            continue
 
     # Final verification
-    ver = get_torch_version()
+    ver = get_installed_torch()
     if ver:
         try:
             import torch
@@ -70,12 +88,10 @@ def main():
             gpu = torch.cuda.get_device_name(0) if cuda_ok else "N/A"
             print(f"[Verify] Torch={ver} | CUDA={cuda_ok} | GPU={gpu}")
         except Exception as e:
-            print(f"[Verify] {ver} (cuda check failed: {e})")
+            print(f"[Verify] {ver} (cuda check error: {e})")
     else:
         print("[ERROR] PyTorch could not be imported after install")
         sys.exit(1)
-
-    sys.exit(0)
 
 
 if __name__ == "__main__":
