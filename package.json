@@ -51,6 +51,10 @@
       {
         "from": "setup.bat",
         "to": "setup.bat"
+      },
+      {
+        "from": "detect_cuda.py",
+        "to": "detect_cuda.py"
       }
     ],
     "win": {
