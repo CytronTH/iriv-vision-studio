@@ -183,16 +183,27 @@ def main():
             sys.exit(1)
 
     hef_out = f'/workspace/{model_name}.hef'
-    print(f'[IRIV] Compiling: {input_file} → {hef_out}', flush=True)
+    print(f'[IRIV] Compiling: {input_file} (output will be in /workspace/)', flush=True)
 
+    # hailo compiler does NOT support -o flag — it auto-names output in cwd
     code = run_streaming([
         'hailo', 'compiler', input_file,
-        '--hw-arch', hw_arch,
-        '-o', hef_out
+        '--hw-arch', hw_arch
     ])
     if code != 0:
         print(f'[IRIV] Compile failed (exit {code})', flush=True)
         sys.exit(code)
+
+    # Locate the generated .hef (hailo names it after model_name in cwd)
+    hef_files = sorted(glob.glob('/workspace/*.hef'))
+    if hef_files:
+        actual_hef = hef_files[-1]
+        if actual_hef != hef_out:
+            import shutil
+            shutil.move(actual_hef, hef_out)
+        print(f'[IRIV] HEF ready: {hef_out}', flush=True)
+    else:
+        print('[IRIV] Warning: .hef not found after compile!', flush=True)
 
     print('COMPILE_DONE', flush=True)
     sys.exit(0)

@@ -103,7 +103,7 @@ def main():
     input_file = har_files[-1] if har_files else (sorted(glob.glob('/workspace/*.hn')) or [None])[-1]
     if not input_file:
         print('[IRIV] ERROR: No .har/.hn file found!', flush=True); sys.exit(1)
-    code = run_streaming(['hailo', 'compiler', input_file, '--hw-arch', hw_arch, '-o', f'/workspace/{model_name}.hef'])
+    code = run_streaming(['hailo', 'compiler', input_file, '--hw-arch', hw_arch])
     if code != 0:
         print(f'[IRIV] Compile failed (exit {code})', flush=True); sys.exit(code)
 
