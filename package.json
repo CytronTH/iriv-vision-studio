@@ -59,6 +59,10 @@
       {
         "from": "install_torch.py",
         "to": "install_torch.py"
+      },
+      {
+        "from": "Dockerfile.hailo",
+        "to": "Dockerfile.hailo"
       }
     ],
     "win": {
