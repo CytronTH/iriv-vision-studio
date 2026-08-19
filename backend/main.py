@@ -61,10 +61,12 @@ def main():
             print(f'[IRIV] Parse failed (exit {code})', flush=True); sys.exit(code)
 
     print('STEP_OPTIMIZE', flush=True)
-    hn_files = sorted(glob.glob('/workspace/*.hn'))
-    if not hn_files:
-        print('[IRIV] ERROR: No .hn file found!', flush=True); sys.exit(1)
-    code = run_streaming(['hailo', 'optimize', hn_files[-1], '--hw-arch', hw_arch, '--calib-set-path', '/calib'])
+    har_files = sorted(glob.glob('/workspace/*.har'))
+    hn_files  = sorted(glob.glob('/workspace/*.hn'))
+    parse_output = (har_files or hn_files or [None])[-1]
+    if not parse_output:
+        print('[IRIV] ERROR: No .hn or .har file found after parsing!', flush=True); sys.exit(1)
+    code = run_streaming(['hailo', 'optimize', parse_output, '--hw-arch', hw_arch, '--calib-set-path', '/calib'])
     if code != 0:
         print(f'[IRIV] Optimize failed (exit {code})', flush=True); sys.exit(code)
 

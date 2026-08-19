@@ -4,8 +4,9 @@ IRIV Model Studio — Hailo Compilation Script
 Runs inside Docker container: iriv-hailo-compiler:latest
 
 Handles:
-  1. Parse ONNX → .hn  (auto-retry with recommended end nodes if needed)
-  2. Optimize .hn → .har  (quantization with calibration set)
+  1. Parse ONNX → .hn or .har  (auto-retry with end nodes if needed)
+     Note: standard parse → .hn, parse with --end-node-names → .har directly
+  2. Optimize .hn/.har → .har   (quantization with calibration set)
   3. Compile .har → .hef
 
 Usage: python3 /compile_hailo.py <model_name> <hw_arch>
@@ -91,18 +92,21 @@ def main():
 
     print('[IRIV] Parse complete ✓', flush=True)
 
-    # ── Step 2: Optimize .hn → .har (quantization) ──────────────────────────
+    # ── Step 2: Optimize .hn/.har → .har (quantization) ────────────────────────
     print('STEP_OPTIMIZE', flush=True)
 
-    hn_files = sorted(glob.glob('/workspace/*.hn'))
-    if not hn_files:
-        print('[IRIV] ERROR: No .hn file found after parsing!', flush=True)
+    # When parser ran with --end-node-names it saves .har directly.
+    # Standard parse saves .hn. Accept either.
+    har_files = sorted(glob.glob('/workspace/*.har'))
+    hn_files  = sorted(glob.glob('/workspace/*.hn'))
+    parse_output = (har_files or hn_files or [None])[-1]
+    if not parse_output:
+        print('[IRIV] ERROR: No .hn or .har file found after parsing!', flush=True)
         sys.exit(1)
-    hn_file = hn_files[-1]
-    print(f'[IRIV] Optimizing: {hn_file}', flush=True)
+    print(f'[IRIV] Optimizing: {parse_output}', flush=True)
 
     code = run_streaming([
-        'hailo', 'optimize', hn_file,
+        'hailo', 'optimize', parse_output,
         '--hw-arch',        hw_arch,
         '--calib-set-path', '/calib'
     ])
