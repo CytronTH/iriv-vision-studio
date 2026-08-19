@@ -296,38 +296,101 @@ function TrainPage({ selectedDataset }) {
   const [progress, setProgress] = useState(0);
   const [running, setRunning] = useState(false);
   const [result, setResult] = useState(null);
+  const [wsStatus, setWsStatus] = useState('connecting'); // connecting | open | closed | error
+  const [debugLog, setDebugLog] = useState([]); // raw debug events
   const wsRef = useRef();
   const logRef = useRef();
+  const debugRef = useRef();
+
+  const addDebug = (msg, color = '#6b7280') => {
+    const ts = new Date().toLocaleTimeString();
+    setDebugLog(prev => [...prev.slice(-100), { ts, msg, color }]);
+  };
 
   useEffect(() => {
-    const ws = new WebSocket(`ws://localhost:7654/ws/training`);
-    wsRef.current = ws;
-    ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
-      if (msg.progress !== undefined) setProgress(msg.progress);
-      if (msg.type === 'complete') { setRunning(false); setResult(msg); }
-      if (msg.type === 'error') { setRunning(false); }
-      setLogs(prev => [...prev.slice(-300), { type: msg.type, text: msg.message }]);
+    addDebug('TrainPage mounted — connecting WebSocket...', '#818cf8');
+    const wsUrl = `ws://localhost:7654/ws/training`;
+    addDebug(`WS URL: ${wsUrl}`, '#6b7280');
+
+    let ws;
+    try {
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+    } catch (err) {
+      addDebug(`❌ WebSocket constructor failed: ${err.message}`, '#f87171');
+      setWsStatus('error');
+      return;
+    }
+
+    ws.onopen = () => {
+      setWsStatus('open');
+      addDebug('✅ WebSocket connected to /ws/training', '#34d399');
     };
-    return () => ws.close();
+    ws.onerror = (e) => {
+      setWsStatus('error');
+      addDebug(`❌ WebSocket error — backend may not be running`, '#f87171');
+    };
+    ws.onclose = (e) => {
+      setWsStatus('closed');
+      addDebug(`⚠️ WebSocket closed (code=${e.code} reason=${e.reason || 'none'})`, '#fbbf24');
+    };
+    ws.onmessage = (e) => {
+      addDebug(`📨 WS message: ${e.data.slice(0, 120)}`, '#4ade80');
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.progress !== undefined) setProgress(msg.progress);
+        if (msg.type === 'complete') { setRunning(false); setResult(msg); }
+        if (msg.type === 'error') { setRunning(false); }
+        setLogs(prev => [...prev.slice(-300), { type: msg.type, text: msg.message }]);
+      } catch (err) {
+        addDebug(`❌ JSON parse error: ${err.message}`, '#f87171');
+      }
+    };
+    return () => { ws.close(); };
   }, []);
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [logs]);
+    if (debugRef.current) debugRef.current.scrollTop = debugRef.current.scrollHeight;
+  }, [logs, debugLog]);
 
   const startTrain = async () => {
     if (!selectedDataset) { alert('Select a dataset first (Step 1)'); return; }
+    addDebug('▶️ Start Training clicked', '#818cf8');
+    addDebug(`WS status: ${wsRef.current?.readyState} (0=CONNECTING 1=OPEN 2=CLOSING 3=CLOSED)`, '#6b7280');
+
     setLogs([]); setProgress(0); setResult(null); setRunning(true);
-    await fetch(`${API}/api/train`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...config, dataset_id: selectedDataset.id })
-    });
+
+    const body = { ...config, dataset_id: selectedDataset.id };
+    addDebug(`POST /api/train: ${JSON.stringify(body)}`, '#6b7280');
+
+    try {
+      const res = await fetch(`${API}/api/train`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      addDebug(`✅ POST /api/train → ${res.status}: ${JSON.stringify(data)}`, res.ok ? '#34d399' : '#f87171');
+      if (!res.ok) {
+        setRunning(false);
+        setLogs([{ type: 'error', text: `API error ${res.status}: ${JSON.stringify(data)}` }]);
+      }
+    } catch (err) {
+      addDebug(`❌ fetch /api/train failed: ${err.message}`, '#f87171');
+      setRunning(false);
+      setLogs([{ type: 'error', text: `Network error: ${err.message}` }]);
+    }
   };
 
   const stopTrain = async () => {
-    await fetch(`${API}/api/train/stop`, { method: 'POST' });
+    addDebug('⏹️ Stop Training clicked', '#fbbf24');
+    try {
+      await fetch(`${API}/api/train/stop`, { method: 'POST' });
+      addDebug('✅ Stop request sent', '#34d399');
+    } catch (err) {
+      addDebug(`❌ Stop failed: ${err.message}`, '#f87171');
+    }
     setRunning(false);
   };
 
@@ -423,13 +486,23 @@ function TrainPage({ selectedDataset }) {
 
       {/* Log panel */}
       <div style={{ flex: 1 }}>
-        <div style={{ fontWeight: 600, fontSize: 13, color: '#6b7280', marginBottom: 12, marginTop: 4 }}>TRAINING LOG</div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, marginTop: 4 }}>
+          <div style={{ fontWeight: 600, fontSize: 13, color: '#6b7280' }}>TRAINING LOG</div>
+          <span style={{
+            fontSize: 11, padding: '2px 8px', borderRadius: 20, fontFamily: 'JetBrains Mono',
+            background: wsStatus === 'open' ? 'rgba(5,150,105,0.15)' : wsStatus === 'error' ? 'rgba(239,68,68,0.15)' : 'rgba(107,114,128,0.15)',
+            color: wsStatus === 'open' ? '#10b981' : wsStatus === 'error' ? '#f87171' : '#9ca3af',
+            border: `1px solid ${wsStatus === 'open' ? '#166534' : wsStatus === 'error' ? '#7f1d1d' : '#374151'}`
+          }}>
+            WS: {wsStatus}
+          </span>
+        </div>
         <div ref={logRef} style={{
           background: '#060810', border: '1px solid #1e2130', borderRadius: 12,
-          height: 500, overflowY: 'auto', padding: 16, fontFamily: 'JetBrains Mono, monospace', fontSize: 12
+          height: 340, overflowY: 'auto', padding: 16, fontFamily: 'JetBrains Mono, monospace', fontSize: 12
         }}>
           {logs.length === 0 ? (
-            <div style={{ color: '#374151', textAlign: 'center', marginTop: 80 }}>Logs will appear here when training starts...</div>
+            <div style={{ color: '#374151', textAlign: 'center', marginTop: 60 }}>Logs will appear here when training starts...</div>
           ) : logs.map((l, i) => (
             <div key={i} style={{
               color: l.type === 'error' ? '#f87171' : l.type === 'complete' ? '#34d399' : l.type === 'status' ? '#818cf8' : '#9ca3af',
@@ -438,6 +511,21 @@ function TrainPage({ selectedDataset }) {
               {l.text}
             </div>
           ))}
+        </div>
+
+        {/* Debug panel */}
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontWeight: 600, fontSize: 11, color: '#4b5563', marginBottom: 6 }}>🔧 DEBUG LOG</div>
+          <div ref={debugRef} style={{
+            background: '#080a0f', border: '1px solid #1a2030', borderRadius: 8,
+            height: 130, overflowY: 'auto', padding: 10, fontFamily: 'JetBrains Mono, monospace', fontSize: 11
+          }}>
+            {debugLog.map((d, i) => (
+              <div key={i} style={{ color: d.color, lineHeight: 1.5 }}>
+                <span style={{ color: '#374151', marginRight: 6 }}>[{d.ts}]</span>{d.msg}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
