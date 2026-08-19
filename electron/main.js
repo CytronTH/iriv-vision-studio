@@ -394,10 +394,10 @@ ipcMain.handle('open-folder-dialog', async () => {
 });
 ipcMain.handle('open-file-dialog', async (e, filters) => {
   const r = await dialog.showOpenDialog(mainWindow, {
-    properties: ['openFile', 'multiSelections'],
+    properties: ['openFile'],
     filters: filters || [{ name: 'All Files', extensions: ['*'] }]
   });
-  return r.filePaths;
+  return r.filePaths[0] || null;  // return single path string, not array
 });
 ipcMain.handle('save-file-dialog', async (e, defaultName) => {
   const r = await dialog.showSaveDialog(mainWindow, { defaultPath: defaultName || 'model.hef' });
