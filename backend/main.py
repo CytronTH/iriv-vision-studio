@@ -595,10 +595,15 @@ async def run_local_compile(config: LocalCompileConfig, onnx_path_str: str, cali
         compile_script.write_text(_COMPILE_HAILO_SCRIPT, encoding="utf-8")
 
     import shlex
-    # Dockerfile ENTRYPOINT is ["/bin/bash", "-c"], so we must pass a single
-    # bash command string — NOT separate arguments.
-    # Separate args would make bash -c run only the first token ("python3")
-    # as the script, ignoring the rest → python3 interactive REPL → exit 0!
+    # Copy compile_hailo.py to the workspace directory before mounting.
+    # The installation path contains spaces ("IRIV Model Studio") which causes
+    # Docker Desktop on Windows to hang indefinitely when used as a volume source.
+    # The workspace path (AppData/Roaming/iriv-model-studio/...) is space-free.
+    compile_script_ws = output_dir / "compile_hailo.py"
+    shutil.copy2(str(compile_script), str(compile_script_ws))
+    compile_script_docker = docker_path(compile_script_ws)
+
+    # Dockerfile ENTRYPOINT is ["/bin/bash", "-c"] → must pass a single bash string
     bash_cmd = f"python3 /compile_hailo.py {shlex.quote(config.model_name)} {shlex.quote(config.hailo_arch)}"
 
     await broadcast_compile_log({"type": "status", "message": "Starting Docker compilation...", "progress": 5})
