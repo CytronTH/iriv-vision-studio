@@ -613,6 +613,40 @@ async def list_models():
             })
     return {"models": models}
 
+# --- IMPORT EXTERNAL ONNX ---
+class ImportOnnxRequest(BaseModel):
+    onnx_path: str          # Source path on Windows (selected by user)
+    model_name: str = ""    # Optional display name; defaults to filename stem
+
+@app.post("/api/import/onnx")
+async def import_onnx(req: ImportOnnxRequest):
+    try:
+        src = Path(req.onnx_path)
+        if not src.exists():
+            return {"status": "error", "message": f"File not found: {req.onnx_path}"}
+        if src.suffix.lower() != ".onnx":
+            return {"status": "error", "message": "File must be a .onnx file"}
+
+        model_name = req.model_name.strip() or src.stem
+        # Sanitize name
+        model_name = "".join(c if c.isalnum() or c in "_-" else "_" for c in model_name)
+        model_name = model_name or "imported_model"
+
+        model_dir = MODELS_DIR / model_name
+        model_dir.mkdir(parents=True, exist_ok=True)
+
+        dest = model_dir / src.name
+        if str(src) != str(dest):
+            shutil.copy2(str(src), str(dest))
+
+        return {
+            "status": "success",
+            "model_name": model_name,
+            "onnx_path": str(dest)
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=7654)

@@ -541,10 +541,16 @@ function ExportPage({ onExported }) {
   const [progress, setProgress] = useState(0);
   const wsRef = useRef(null);
   const logEndRef = useRef(null);
+  // Import state
+  const [importPath, setImportPath] = useState('');
+  const [importName, setImportName] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState('');
 
-  useEffect(() => {
+  const refreshModels = () =>
     fetch(`${API}/api/models`).then(r => r.json()).then(d => setModels(d.models || []));
-  }, []);
+
+  useEffect(() => { refreshModels(); }, []);
 
   useEffect(() => {
     const wsUrl = API.replace('http', 'ws') + '/ws/export';
@@ -581,13 +587,83 @@ function ExportPage({ onExported }) {
     });
   };
 
+  const handlePickOnnx = async () => {
+    const path = await window.electronAPI?.openFileDialog([{ name: 'ONNX Model', extensions: ['onnx'] }]);
+    if (path) {
+      setImportPath(path);
+      setImportName(p => p || path.split('\\').pop().split('/').pop().replace('.onnx', ''));
+      setImportError('');
+    }
+  };
+
+  const handleImport = async () => {
+    if (!importPath) return;
+    setImporting(true);
+    setImportError('');
+    try {
+      const res = await fetch(`${API}/api/import/onnx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ onnx_path: importPath, model_name: importName })
+      });
+      const data = await res.json();
+      if (data.status === 'success') {
+        await refreshModels();
+        onExported(data.onnx_path);
+      } else {
+        setImportError(data.message || 'Import failed');
+      }
+    } catch (e) {
+      setImportError(e.message);
+    }
+    setImporting(false);
+  };
+
   const isExporting = exporting !== null;
 
   return (
     <div className="animate-fade-in" style={{ maxWidth: 760 }}>
-      <SectionTitle>📄 Export to ONNX</SectionTitle>
-      <SubText>Convert your trained .pt model to ONNX format for Hailo compilation</SubText>
+      <SectionTitle>📄 Export / Import ONNX</SectionTitle>
+      <SubText>แปลง .pt เป็น .onnx หรือ import ไฟล์ .onnx ที่มีอยู่แล้วเพื่อข้ามขั้นตอน Training</SubText>
 
+      {/* ── Import existing ONNX (shortcut) ── */}
+      <div className="card" style={{ marginBottom: 24, borderColor: 'rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.04)' }}>
+        <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Upload size={16} color="#818cf8" /> Import ไฟล์ ONNX ที่มีอยู่แล้ว
+          <span style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 400, color: '#4b5563', background: '#1e2130', padding: '2px 8px', borderRadius: 20 }}>ข้าม Training ได้เลย</span>
+        </div>
+        <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+          <div style={{ flex: 1, padding: '10px 14px', background: '#060810', border: '1px solid #1e2130', borderRadius: 8, fontSize: 12, color: importPath ? '#10b981' : '#4b5563', fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {importPath ? `✅ ${importPath.split('\\').pop().split('/').pop()}` : 'ยังไม่ได้เลือกไฟล์ .onnx'}
+          </div>
+          <button className="btn-secondary no-drag" onClick={handlePickOnnx} style={{ whiteSpace: 'nowrap' }}>
+            📂 เลือกไฟล์
+          </button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'flex-end' }}>
+          <div>
+            <label className="input-label">ชื่อโมเดล (สำหรับระบุในโปรแกรม)</label>
+            <input className="input-field" value={importName} onChange={e => setImportName(e.target.value)} placeholder="e.g. congee_detector" />
+          </div>
+          <button className="btn-primary no-drag" onClick={handleImport} disabled={!importPath || importing} style={{ justifyContent: 'center', whiteSpace: 'nowrap' }}>
+            {importing ? <><RefreshCw size={13} className="animate-spin" /> Importing...</> : <><Zap size={13} /> Import & ใช้งาน</>}
+          </button>
+        </div>
+        {importError && (
+          <div style={{ marginTop: 10, padding: '8px 12px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 8, fontSize: 12, color: '#f87171' }}>
+            ❌ {importError}
+          </div>
+        )}
+      </div>
+
+      {/* ── Divider ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+        <div style={{ flex: 1, height: 1, background: '#1e2130' }} />
+        <span style={{ color: '#374151', fontSize: 12 }}>หรือ Export จากโมเดลที่เทรนใน IRIV Model Studio</span>
+        <div style={{ flex: 1, height: 1, background: '#1e2130' }} />
+      </div>
+
+      {/* ── Trained models list ── */}
       {models.length === 0 ? (
         <div style={{ color: '#4b5563', textAlign: 'center', padding: 32, border: '1px solid #1e2130', borderRadius: 12 }}>
           No trained models found — complete training first (Step 2)
