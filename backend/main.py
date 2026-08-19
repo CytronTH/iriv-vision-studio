@@ -37,6 +37,32 @@ def run_capture(cmd, stdin_input=''):
     result = subprocess.run(cmd, capture_output=True, text=True, input=stdin_input)
     return result.returncode, result.stdout + result.stderr
 
+def prepare_calib_npy(calib_dir, npy_dir, input_h=640, input_w=640, max_images=64):
+    try:
+        import numpy as np
+        from PIL import Image
+    except ImportError:
+        return calib_dir
+    os.makedirs(npy_dir, exist_ok=True)
+    img_paths = []
+    for ext in ['jpg','jpeg','png','bmp','JPG','JPEG','PNG','BMP']:
+        img_paths.extend(glob.glob(os.path.join(calib_dir, f'*.{ext}')))
+    img_paths = sorted(set(img_paths))[:max_images]
+    if not img_paths:
+        print(f'[IRIV] No calibration images found in {calib_dir}', flush=True); return calib_dir
+    print(f'[IRIV] Preprocessing {len(img_paths)} images to .npy ({input_w}x{input_h}) ...', flush=True)
+    count = 0
+    for p in img_paths:
+        try:
+            img = Image.open(p).convert('RGB').resize((input_w, input_h), Image.BILINEAR)
+            np.save(os.path.join(npy_dir, f'calib_{count:04d}.npy'),
+                    np.array(img, dtype=np.float32) / 255.0)
+            count += 1
+        except Exception as e:
+            print(f'[IRIV] Warning: skipped {os.path.basename(p)}: {e}', flush=True)
+    print(f'[IRIV] {count} .npy files ready', flush=True)
+    return npy_dir if count > 0 else calib_dir
+
 def main():
     if len(sys.argv) < 3:
         print("Usage: compile_hailo.py <model_name> <hw_arch>"); sys.exit(1)
@@ -60,13 +86,15 @@ def main():
         if code != 0:
             print(f'[IRIV] Parse failed (exit {code})', flush=True); sys.exit(code)
 
+    calib_path = prepare_calib_npy('/calib', '/workspace/calib_npy')
+
     print('STEP_OPTIMIZE', flush=True)
     har_files = sorted(glob.glob('/workspace/*.har'))
     hn_files  = sorted(glob.glob('/workspace/*.hn'))
     parse_output = (har_files or hn_files or [None])[-1]
     if not parse_output:
         print('[IRIV] ERROR: No .hn or .har file found after parsing!', flush=True); sys.exit(1)
-    code = run_streaming(['hailo', 'optimize', parse_output, '--hw-arch', hw_arch, '--calib-set-path', '/calib'])
+    code = run_streaming(['hailo', 'optimize', parse_output, '--hw-arch', hw_arch, '--calib-set-path', calib_path])
     if code != 0:
         print(f'[IRIV] Optimize failed (exit {code})', flush=True); sys.exit(code)
 
@@ -86,6 +114,7 @@ if __name__ == '__main__':
 '''
 
 app = FastAPI(title="IRIV Model Studio Backend", version="1.0.0")
+
 
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
