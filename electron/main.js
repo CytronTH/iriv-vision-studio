@@ -99,7 +99,39 @@ function killPort(port) {
   }
 }
 
-// ── Start Python backend ──────────────────────────────────────────
+// ── Debug Window ─────────────────────────────────────────────────
+let debugWindow = null;
+
+function sendDebugLog(level, message) {
+  const entry = { ts: new Date().toISOString(), level, message };
+  try {
+    if (debugWindow && !debugWindow.isDestroyed()) {
+      debugWindow.webContents.send('debug-log', entry);
+    }
+  } catch {}
+}
+
+function createDebugWindow() {
+  debugWindow = new BrowserWindow({
+    width: 800,
+    height: 500,
+    minWidth: 600,
+    minHeight: 300,
+    title: 'IRIV Model Studio — Debug Console',
+    backgroundColor: '#0a0c10',
+    frame: true,  // use native frame so it's a clear separate window
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+  debugWindow.loadFile(path.join(__dirname, 'debug.html'));
+  debugWindow.setMenu(null);
+  debugWindow.on('closed', () => { debugWindow = null; });
+  return debugWindow;
+}
+
 function findVenvPython() {
   const isWin = os.platform() === 'win32';
   const backendDir = getBackendDir();
@@ -206,26 +238,57 @@ function createWindow(showSetup = false) {
     );
   }
 
-  // Log to file for debugging
+  // Log to file AND debug window
   const logPath = path.join(app.getPath('userData'), 'debug.log');
   const logStream = fs.createWriteStream(logPath, { flags: 'a' });
   const origLog = console.log.bind(console);
   const origErr = console.error.bind(console);
+  const origWarn = console.warn.bind(console);
   const ts = () => new Date().toISOString();
-  console.log = (...a) => { origLog(...a); logStream.write(`[${ts()}] INFO  ${a.join(' ')}\n`); };
-  console.error = (...a) => { origErr(...a); logStream.write(`[${ts()}] ERROR ${a.join(' ')}\n`); };
+
+  function parseLevel(args) {
+    const msg = args.join(' ');
+    if (msg.startsWith('[Backend ERR]') || msg.startsWith('[Error]')) return 'ERROR';
+    if (msg.startsWith('[Backend]')) return 'BACKEND';
+    if (msg.startsWith('[Setup]')) return 'SETUP';
+    if (msg.startsWith('[App]') || msg.startsWith('[Update]')) return 'SYSTEM';
+    return 'INFO';
+  }
+
+  console.log = (...a) => {
+    origLog(...a);
+    const msg = a.join(' ');
+    logStream.write(`[${ts()}] INFO  ${msg}\n`);
+    sendDebugLog(parseLevel(a), msg);
+  };
+  console.error = (...a) => {
+    origErr(...a);
+    const msg = a.join(' ');
+    logStream.write(`[${ts()}] ERROR ${msg}\n`);
+    sendDebugLog('ERROR', msg);
+  };
+  console.warn = (...a) => {
+    origWarn(...a);
+    const msg = a.join(' ');
+    logStream.write(`[${ts()}] WARN  ${msg}\n`);
+    sendDebugLog('WARN', msg);
+  };
+
   console.log('[App] Log started. userData:', app.getPath('userData'));
 }
 
 // ── App lifecycle ─────────────────────────────────────────────────
 app.whenReady().then(() => {
+  // Always open debug window first
+  createDebugWindow();
+
   const setupDone = isSetupComplete();
 
   // If setup flag exists but venv is missing → force re-setup
   if (setupDone && !isVenvReady()) {
     console.warn('[App] Setup flag found but venv missing — resetting setup');
     try { fs.unlinkSync(SETUP_FLAG); } catch {}
-    createWindow(true);  // show setup
+    createWindow(true);
     return;
   }
 
@@ -238,9 +301,18 @@ app.whenReady().then(() => {
 });
 
 app.on('window-all-closed', () => {
-  if (pythonProcess) { try { pythonProcess.kill(); } catch {} }
-  if (setupProcess) { try { setupProcess.kill(); } catch {} }
-  if (process.platform !== 'darwin') app.quit();
+  // Only quit when main window is closed (debug window close shouldn't quit app)
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (pythonProcess) { try { pythonProcess.kill(); } catch {} }
+    if (setupProcess) { try { setupProcess.kill(); } catch {} }
+    if (process.platform !== 'darwin') app.quit();
+  }
+});
+
+// When main window closes, also close debug window
+ipcMain.handle('window-close', () => {
+  if (debugWindow && !debugWindow.isDestroyed()) debugWindow.close();
+  mainWindow?.close();
 });
 
 // ── IPC: Window controls ────────────────────────────────────────────
@@ -248,7 +320,7 @@ ipcMain.handle('window-minimize', () => mainWindow?.minimize());
 ipcMain.handle('window-maximize', () => {
   mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize();
 });
-ipcMain.handle('window-close', () => mainWindow?.close());
+
 
 // IPC: Debug info
 ipcMain.handle('get-debug-info', () => {

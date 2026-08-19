@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>IRIV Model Studio — Debug Console</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0c10;
+      color: #c9d1d9;
+      font-family: 'Consolas', 'JetBrains Mono', 'Courier New', monospace;
+      font-size: 12px;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      user-select: text;
+    }
+    #titlebar {
+      background: #060810;
+      border-bottom: 1px solid #1e2130;
+      padding: 6px 12px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+      -webkit-app-region: drag;
+    }
+    #titlebar span { color: #4b5563; font-size: 11px; }
+    #titlebar strong { color: #818cf8; }
+    #controls {
+      background: #060810;
+      border-bottom: 1px solid #1e2130;
+      padding: 4px 8px;
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+      -webkit-app-region: no-drag;
+    }
+    .filter-btn {
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid #1e2130;
+      background: transparent;
+      color: #6b7280;
+      font-size: 10px;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.1s;
+    }
+    .filter-btn.active { background: #1e2130; color: #e2e8f0; border-color: #374151; }
+    #clear-btn {
+      margin-left: auto;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid #1e2130;
+      background: transparent;
+      color: #6b7280;
+      font-size: 10px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    #clear-btn:hover { background: #1e2130; color: #f87171; }
+    #log-container {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 12px;
+      scroll-behavior: smooth;
+    }
+    #log-container::-webkit-scrollbar { width: 6px; }
+    #log-container::-webkit-scrollbar-track { background: #0a0c10; }
+    #log-container::-webkit-scrollbar-thumb { background: #1e2130; border-radius: 3px; }
+    .log-entry {
+      display: flex;
+      gap: 8px;
+      padding: 1px 0;
+      line-height: 1.6;
+      border-bottom: 1px solid transparent;
+    }
+    .log-entry:hover { background: rgba(255,255,255,0.02); }
+    .log-ts { color: #374151; flex-shrink: 0; }
+    .log-level { flex-shrink: 0; width: 50px; text-align: right; }
+    .log-msg { word-break: break-all; flex: 1; }
+    .level-INFO  .log-level { color: #374151; }
+    .level-INFO  .log-msg   { color: #9ca3af; }
+    .level-SETUP .log-level { color: #818cf8; }
+    .level-SETUP .log-msg   { color: #a5b4fc; }
+    .level-BACKEND .log-level { color: #34d399; }
+    .level-BACKEND .log-msg   { color: #6ee7b7; }
+    .level-ERROR .log-level { color: #f87171; }
+    .level-ERROR .log-msg   { color: #fca5a5; }
+    .level-WARN  .log-level { color: #fbbf24; }
+    .level-WARN  .log-msg   { color: #fde68a; }
+    .level-SYSTEM .log-level { color: #60a5fa; }
+    .level-SYSTEM .log-msg   { color: #93c5fd; }
+    #status-bar {
+      background: #060810;
+      border-top: 1px solid #1e2130;
+      padding: 3px 12px;
+      font-size: 10px;
+      color: #374151;
+      display: flex;
+      gap: 16px;
+      flex-shrink: 0;
+    }
+    #status-bar span { color: #4b5563; }
+  </style>
+</head>
+<body>
+  <div id="titlebar">
+    <strong>🔧 Debug Console</strong>
+    <span>— IRIV Model Studio</span>
+  </div>
+  <div id="controls">
+    <button class="filter-btn active" data-level="ALL">ALL</button>
+    <button class="filter-btn" data-level="SYSTEM">SYSTEM</button>
+    <button class="filter-btn" data-level="SETUP">SETUP</button>
+    <button class="filter-btn" data-level="BACKEND">BACKEND</button>
+    <button class="filter-btn" data-level="ERROR">ERROR</button>
+    <button class="filter-btn" data-level="WARN">WARN</button>
+    <button id="clear-btn">Clear</button>
+  </div>
+  <div id="log-container"></div>
+  <div id="status-bar">
+    <span>Lines: <strong id="line-count">0</strong></span>
+    <span>Filter: <strong id="filter-label">ALL</strong></span>
+    <span style="margin-left:auto">Auto-scroll: ON</span>
+  </div>
+
+  <script>
+    const container = document.getElementById('log-container');
+    const lineCount = document.getElementById('line-count');
+    const filterLabel = document.getElementById('filter-label');
+    let totalLines = 0;
+    let currentFilter = 'ALL';
+    let autoScroll = true;
+
+    container.addEventListener('scroll', () => {
+      const atBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 20;
+      autoScroll = atBottom;
+    });
+
+    function addLog({ ts, level, message }) {
+      totalLines++;
+      lineCount.textContent = totalLines;
+
+      const entry = document.createElement('div');
+      entry.className = `log-entry level-${level}`;
+      entry.dataset.level = level;
+
+      const time = ts ? new Date(ts).toLocaleTimeString('en-US', { hour12: false }) : new Date().toLocaleTimeString();
+
+      entry.innerHTML = `
+        <span class="log-ts">${time}</span>
+        <span class="log-level">[${level}]</span>
+        <span class="log-msg">${escHtml(message)}</span>
+      `;
+
+      if (currentFilter !== 'ALL' && level !== currentFilter) {
+        entry.style.display = 'none';
+      }
+
+      container.appendChild(entry);
+      if (autoScroll) container.scrollTop = container.scrollHeight;
+    }
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    // Filter buttons
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentFilter = btn.dataset.level;
+        filterLabel.textContent = currentFilter;
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        document.querySelectorAll('.log-entry').forEach(e => {
+          e.style.display = (currentFilter === 'ALL' || e.dataset.level === currentFilter) ? '' : 'none';
+        });
+      });
+    });
+
+    document.getElementById('clear-btn').addEventListener('click', () => {
+      container.innerHTML = '';
+      totalLines = 0;
+      lineCount.textContent = 0;
+    });
+
+    // Receive logs from main process via IPC
+    if (window.electronAPI?.onDebugLog) {
+      window.electronAPI.onDebugLog((entry) => addLog(entry));
+    }
+  </script>
+</body>
+</html>
