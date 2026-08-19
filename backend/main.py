@@ -20,7 +20,71 @@ from typing import Optional
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
+# ── Embedded compile_hailo.py — written to disk if file is missing (older install) ──
+_COMPILE_HAILO_SCRIPT = r'''#!/usr/bin/env python3
+"""IRIV Model Studio — Hailo Compilation Script (embedded fallback copy)"""
+import subprocess, re, sys, os, glob
+
+def run_streaming(cmd):
+    print(f"[CMD] {' '.join(cmd)}", flush=True)
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    for line in proc.stdout:
+        print(line, end='', flush=True)
+    proc.wait()
+    return proc.returncode
+
+def run_capture(cmd, stdin_input=''):
+    result = subprocess.run(cmd, capture_output=True, text=True, input=stdin_input)
+    return result.returncode, result.stdout + result.stderr
+
+def main():
+    if len(sys.argv) < 3:
+        print("Usage: compile_hailo.py <model_name> <hw_arch>"); sys.exit(1)
+    model_name, hw_arch = sys.argv[1], sys.argv[2]
+    os.chdir('/workspace')
+
+    print('STEP_PARSE', flush=True)
+    base_cmd = ['hailo', 'parser', 'onnx', 'model.onnx', '--net-name', model_name, '--hw-arch', hw_arch]
+    code, out = run_capture(base_cmd, stdin_input='n\n')
+    print(out, flush=True)
+    if code != 0:
+        m = re.search(r'end node names:\s*([/\w,\s\.\-]+?)(?:\n|$)', out, re.IGNORECASE)
+        if not m:
+            m2 = re.search(r'end node names:\s*\[([^\]]+)\]', out)
+            nodes = [n.strip().strip("'\"") for n in m2.group(1).split(',')] if m2 else None
+        else:
+            nodes = [n.strip() for n in re.split(r'[,\s]+', m.group(1)) if n.strip().startswith('/')]
+        if nodes:
+            print(f'[IRIV] Auto-retry with end nodes: {nodes}', flush=True)
+            code = run_streaming(base_cmd + ['--end-node-names'] + nodes)
+        if code != 0:
+            print(f'[IRIV] Parse failed (exit {code})', flush=True); sys.exit(code)
+
+    print('STEP_OPTIMIZE', flush=True)
+    hn_files = sorted(glob.glob('/workspace/*.hn'))
+    if not hn_files:
+        print('[IRIV] ERROR: No .hn file found!', flush=True); sys.exit(1)
+    code = run_streaming(['hailo', 'optimize', hn_files[-1], '--hw-arch', hw_arch, '--calib-set-path', '/calib'])
+    if code != 0:
+        print(f'[IRIV] Optimize failed (exit {code})', flush=True); sys.exit(code)
+
+    print('STEP_COMPILE', flush=True)
+    har_files = sorted(glob.glob('/workspace/*.har'))
+    input_file = har_files[-1] if har_files else (sorted(glob.glob('/workspace/*.hn')) or [None])[-1]
+    if not input_file:
+        print('[IRIV] ERROR: No .har/.hn file found!', flush=True); sys.exit(1)
+    code = run_streaming(['hailo', 'compiler', input_file, '--hw-arch', hw_arch, '-o', f'/workspace/{model_name}.hef'])
+    if code != 0:
+        print(f'[IRIV] Compile failed (exit {code})', flush=True); sys.exit(code)
+
+    print('COMPILE_DONE', flush=True)
+
+if __name__ == '__main__':
+    main()
+'''
+
 app = FastAPI(title="IRIV Model Studio Backend", version="1.0.0")
+
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 BASE_DIR = Path(__file__).parent
@@ -519,6 +583,17 @@ async def run_local_compile(config: LocalCompileConfig, onnx_path_str: str, cali
 
     # Locate compile script (works both in dev and packaged/asar.unpacked)
     compile_script = Path(__file__).parent / "compile_hailo.py"
+
+    # Self-heal: if file is missing (older installation), write it now so
+    # Docker can mount it. Avoids requiring a full reinstall.
+    if not compile_script.exists():
+        await broadcast_compile_log({
+            "type": "status",
+            "message": "[IRIV] compile_hailo.py not found locally — writing embedded copy...",
+            "progress": 3
+        })
+        compile_script.write_text(_COMPILE_HAILO_SCRIPT, encoding="utf-8")
+
     compile_script_docker = docker_path(compile_script)
 
     await broadcast_compile_log({"type": "status", "message": "Starting Docker compilation...", "progress": 5})
