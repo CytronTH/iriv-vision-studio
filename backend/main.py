@@ -594,7 +594,12 @@ async def run_local_compile(config: LocalCompileConfig, onnx_path_str: str, cali
         })
         compile_script.write_text(_COMPILE_HAILO_SCRIPT, encoding="utf-8")
 
-    compile_script_docker = docker_path(compile_script)
+    import shlex
+    # Dockerfile ENTRYPOINT is ["/bin/bash", "-c"], so we must pass a single
+    # bash command string — NOT separate arguments.
+    # Separate args would make bash -c run only the first token ("python3")
+    # as the script, ignoring the rest → python3 interactive REPL → exit 0!
+    bash_cmd = f"python3 /compile_hailo.py {shlex.quote(config.model_name)} {shlex.quote(config.hailo_arch)}"
 
     await broadcast_compile_log({"type": "status", "message": "Starting Docker compilation...", "progress": 5})
 
@@ -605,7 +610,7 @@ async def run_local_compile(config: LocalCompileConfig, onnx_path_str: str, cali
         "-v", f"{calib_docker}:/calib:ro",
         "-v", f"{compile_script_docker}:/compile_hailo.py:ro",
         config.docker_image,
-        "python3", "/compile_hailo.py", config.model_name, config.hailo_arch,
+        bash_cmd,   # single string → /bin/bash -c "python3 /compile_hailo.py <name> <arch>"
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
     )
