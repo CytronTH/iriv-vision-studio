@@ -886,6 +886,9 @@ function SetupWizard({ onComplete }) {
             <BrainCircuit size={14} color="white" />
           </div>
           <span style={{ fontWeight: 700, fontSize: 14 }}>IRIV Model Studio</span>
+          {appVersion && (
+            <span style={{ fontSize: 11, color: '#4b5563', fontFamily: 'JetBrains Mono, monospace' }}>v{appVersion}</span>
+          )}
           <span style={{ color: '#374151', fontSize: 13 }}>— First Time Setup</span>
         </div>
         <div className="no-drag" style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
@@ -1173,6 +1176,11 @@ export default function App() {
   const [setupDone, setSetupDone] = useState(!needsSetup);
   const [updateStatus, setUpdateStatus] = useState(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
+  const [appVersion, setAppVersion] = useState('');
+
+  useEffect(() => {
+    window.electronAPI?.getAppVersion?.().then(v => setAppVersion(v)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!window.electronAPI?.onUpdateStatus) return;
@@ -1340,6 +1348,9 @@ export default function App() {
             <BrainCircuit size={14} color="white" />
           </div>
           <span style={{ fontWeight: 700, fontSize: 14, color: '#e2e8f0' }}>IRIV Model Studio</span>
+          {appVersion && (
+            <span style={{ fontSize: 11, color: '#4b5563', fontFamily: 'JetBrains Mono, monospace' }}>v{appVersion}</span>
+          )}
         </div>
 
         <div className="no-drag" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16 }}>
