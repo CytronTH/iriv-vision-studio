@@ -311,16 +311,44 @@ async def export_to_onnx(config: ExportConfig):
         raise HTTPException(404, "Model file not found")
 
     onnx_path = pt_path.with_suffix('.onnx')
+
+    # Use repr() to safely escape backslashes in Windows paths
+    pt_path_repr = repr(str(pt_path))
+
     script = f"""
-from ultralytics import YOLO
-model = YOLO('{pt_path}')
-model.export(format='onnx', imgsz={config.imgsz}, opset=11, simplify=True)
-print('EXPORT_COMPLETE')
+import sys, multiprocessing
+multiprocessing.freeze_support()
+sys.stdout.reconfigure(line_buffering=True)
+
+def main():
+    from ultralytics import YOLO
+    model = YOLO({pt_path_repr})
+    model.export(format='onnx', imgsz={config.imgsz}, opset=11, simplify=True)
+    print('EXPORT_COMPLETE', flush=True)
+
+if __name__ == '__main__':
+    main()
 """
-    result = subprocess.run([sys.executable, '-c', script], capture_output=True, text=True)
+    import tempfile
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False, encoding='utf-8') as f:
+        f.write(script)
+        script_path = f.name
+
+    try:
+        result = subprocess.run(
+            [sys.executable, script_path],
+            capture_output=True, text=True, timeout=300
+        )
+    finally:
+        try:
+            os.unlink(script_path)
+        except Exception:
+            pass
+
     if 'EXPORT_COMPLETE' in result.stdout:
         return {"status": "success", "onnx_path": str(onnx_path)}
-    return {"status": "error", "message": result.stderr}
+    error_msg = result.stderr or result.stdout or "Unknown export error"
+    return {"status": "error", "message": error_msg}
 
 # --- COMPILE (via IRIV Device) ---
 class CompileConfig(BaseModel):
