@@ -13,6 +13,15 @@ let mainWindow;
 let pythonProcess = null;
 let setupProcess = null;
 
+// Safe IPC sender — guards against "Object has been destroyed" when window
+// closes while a background process (Python backend, setup, Docker build, etc.)
+// is still running and tries to send to the already-destroyed window.
+function safeSend(channel, ...args) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try { mainWindow.webContents.send(channel, ...args); } catch {}
+  }
+}
+
 const isDev = !app.isPackaged;
 const BACKEND_PORT = 7654;
 const SETUP_FLAG  = path.join(app.getPath('userData'), 'setup_complete.flag');
@@ -180,7 +189,7 @@ function startPythonBackend() {
 
   if (!fs.existsSync(backendMain)) {
     console.error('[Backend] main.py not found at:', backendMain);
-    mainWindow?.webContents.send('backend-error', 'main.py not found: ' + backendMain);
+    safeSend('backend-error', 'main.py not found: ' + backendMain);
     return;
   }
 
@@ -224,7 +233,7 @@ function launchBackend(usePython, backendMain, backendDir) {
   pythonProcess.on('error', err => console.error('[Backend] spawn error:', err.message));
   pythonProcess.on('close', code => {
     console.log(`Python process exited: ${code}`);
-    mainWindow?.webContents.send('backend-error', `Python backend exited with code ${code}`);
+    safeSend('backend-error', `Python backend exited with code ${code}`);
   });
 }
 
@@ -413,7 +422,7 @@ ipcMain.handle('check-python', () => {
 ipcMain.handle('install-python', async () => {
   return new Promise((resolve) => {
     const isWin = os.platform() === 'win32';
-    const sendLog = (msg) => mainWindow?.webContents.send('python-install-log', msg);
+    const sendLog = (msg) => safeSend('python-install-log', msg);
 
     if (!isWin) {
       sendLog('Running: sudo apt install python3...');
@@ -484,7 +493,7 @@ ipcMain.handle('run-setup', async () => {
     console.log('[Setup] BackendDir:', backendDir);
     console.log('[Setup] VenvDir:', venvDir);
 
-    const sendLog = (text) => mainWindow?.webContents.send('setup-log', text);
+    const sendLog = (text) => safeSend('setup-log', text);
 
     sendLog(`[Setup] Script: ${scriptPath}`);
     sendLog(`[Setup] BackendDir: ${backendDir}`);
@@ -533,11 +542,11 @@ ipcMain.handle('run-setup', async () => {
 function initAutoUpdater() {
   // Forward all updater events to the renderer
   autoUpdater.on('checking-for-update', () => {
-    mainWindow?.webContents.send('update-status', { type: 'checking' });
+    safeSend('update-status', { type: 'checking' });
   });
 
   autoUpdater.on('update-available', (info) => {
-    mainWindow?.webContents.send('update-status', {
+    safeSend('update-status', {
       type: 'available',
       version: info.version,
       releaseNotes: info.releaseNotes || ''
@@ -546,11 +555,11 @@ function initAutoUpdater() {
   });
 
   autoUpdater.on('update-not-available', () => {
-    mainWindow?.webContents.send('update-status', { type: 'not-available' });
+    safeSend('update-status', { type: 'not-available' });
   });
 
   autoUpdater.on('download-progress', (progress) => {
-    mainWindow?.webContents.send('update-status', {
+    safeSend('update-status', {
       type: 'downloading',
       percent: Math.round(progress.percent),
       transferred: progress.transferred,
@@ -560,7 +569,7 @@ function initAutoUpdater() {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
-    mainWindow?.webContents.send('update-status', {
+    safeSend('update-status', {
       type: 'downloaded',
       version: info.version
     });
@@ -568,7 +577,7 @@ function initAutoUpdater() {
 
   autoUpdater.on('error', (err) => {
     console.error('[AutoUpdater] Error:', err.message);
-    mainWindow?.webContents.send('update-status', { type: 'error', message: err.message });
+    safeSend('update-status', { type: 'error', message: err.message });
   });
 
   // Kick off the check
@@ -641,7 +650,7 @@ ipcMain.handle('open-whl-dialog', async () => {
 });
 
 ipcMain.handle('build-hailo-image', async (e, whlPath) => {
-  const sendLog = (text) => mainWindow?.webContents.send('hailo-build-log', text);
+  const sendLog = (text) => safeSend('hailo-build-log', text);
   try {
     const buildDir = path.join(os.tmpdir(), 'iriv-hailo-build');
     if (!fs.existsSync(buildDir)) fs.mkdirSync(buildDir, { recursive: true });
