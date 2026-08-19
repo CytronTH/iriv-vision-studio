@@ -6,19 +6,15 @@ echo   IRIV Model Studio - Installing Dependencies
 echo ================================================
 echo.
 
-:: Use VENV_DIR from Electron if provided, else default to backend\venv
-if "%VENV_DIR%"=="" (
-    set "VENV_DIR=%~dp0venv"
-)
-if "%BACKEND_DIR%"=="" (
-    set "BACKEND_DIR=%~dp0"
-)
+:: Use VENV_DIR from Electron if provided
+if "%VENV_DIR%"=="" set "VENV_DIR=%~dp0venv"
+if "%BACKEND_DIR%"=="" set "BACKEND_DIR=%~dp0"
 
 echo Backend dir: %BACKEND_DIR%
 echo Venv dir:    %VENV_DIR%
 echo.
 
-:: Step 1 - Check Python
+:: ── Step 1: Check Python ──────────────────────────────────────────
 echo [1/5] Checking Python...
 python --version >nul 2>&1
 if errorlevel 1 (
@@ -26,16 +22,15 @@ if errorlevel 1 (
     if errorlevel 1 (
         echo __SETUP_FAILED__: Python not found
         exit /b 1
-    ) else (
-        set PYTHON_CMD=py
     )
+    set PYTHON_CMD=py
 ) else (
     set PYTHON_CMD=python
 )
 %PYTHON_CMD% --version
 echo.
 
-:: Step 2 - Create virtual environment
+:: ── Step 2: Create virtual environment ───────────────────────────
 echo [2/5] Creating virtual environment...
 %PYTHON_CMD% -m venv "%VENV_DIR%"
 if errorlevel 1 (
@@ -45,9 +40,10 @@ if errorlevel 1 (
 echo [OK] Virtual Environment created
 echo.
 
-:: Step 3 - Activate venv and upgrade pip
+:: ── Step 3: Install base packages ────────────────────────────────
 echo [3/5] Installing base packages...
 call "%VENV_DIR%\Scripts\activate.bat"
+
 python -m pip install --upgrade pip --quiet
 python -m pip install fastapi uvicorn python-multipart aiofiles requests --quiet
 echo [OK] FastAPI installed
@@ -59,27 +55,69 @@ python -m pip install onnx onnxruntime --quiet
 echo [OK] ONNX installed
 echo.
 
-:: Step 4 - Auto-detect CUDA and install matching PyTorch
+:: ── Step 4: Detect CUDA via Python script (no ^ line-continuation issues) ──
 echo [4/5] Detecting GPU and CUDA version...
 
-:: Use Python (system, before venv activation issues) to parse nvidia-smi
-%PYTHON_CMD% -c ^
-"import subprocess,re,sys; r=subprocess.run(['nvidia-smi'],capture_output=True,text=True,timeout=10); m=re.search(r'CUDA Version:\s*([\d.]+)',r.stdout); v=m.group(1) if m else '0.0'; p=v.split('.'); maj=int(p[0]); mn=int(p[1]) if len(p)>1 else 0; tag=('cu124' if maj>12 or(maj==12 and mn>=4) else 'cu121' if maj==12 and mn>=1 else 'cu118' if maj>=11 else 'cpu'); print(tag)" ^
-> "%TEMP%\cuda_tag.tmp" 2>nul
+:: Use Python to WRITE the detection script, then run it
+:: This avoids all bat escape/truncation issues with ^ and >
+set "DETECT_PY=%TEMP%\iriv_detect_cuda.py"
+set "DETECT_OUT=%TEMP%\iriv_cuda_tag.txt"
+
+python -c "open(r'%DETECT_PY%','w').write('''
+import subprocess, re, sys
+
+def find_cuda_tag():
+    candidates = [
+        'nvidia-smi',
+        r'C:\\Windows\\System32\\nvidia-smi.exe',
+        r'C:\\Program Files\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe',
+    ]
+    output = ''
+    for cmd in candidates:
+        try:
+            r = subprocess.run([cmd], capture_output=True, text=True, timeout=10)
+            if r.returncode == 0:
+                output = r.stdout
+                break
+        except Exception:
+            continue
+
+    m = re.search(r\"CUDA Version:\\s*([\\d.]+)\", output)
+    if not m:
+        return 'cpu'
+
+    parts = m.group(1).split('.')
+    maj = int(parts[0])
+    mn  = int(parts[1]) if len(parts) > 1 else 0
+
+    if maj > 12 or (maj == 12 and mn >= 4):
+        return 'cu124'
+    elif maj == 12 and mn >= 1:
+        return 'cu121'
+    elif maj >= 11:
+        return 'cu118'
+    else:
+        return 'cpu'
+
+print(find_cuda_tag())
+''')"
+
+python "%DETECT_PY%" > "%DETECT_OUT%" 2>nul
 
 set CUDA_TAG=cpu
-if exist "%TEMP%\cuda_tag.tmp" (
-    set /p CUDA_TAG=<"%TEMP%\cuda_tag.tmp"
-    del "%TEMP%\cuda_tag.tmp" 2>nul
+if exist "%DETECT_OUT%" (
+    set /p CUDA_TAG=<"%DETECT_OUT%"
+    del "%DETECT_OUT%" >nul 2>&1
 )
+if exist "%DETECT_PY%" del "%DETECT_PY%" >nul 2>&1
 
-:: Trim whitespace from CUDA_TAG
+:: Trim any trailing whitespace/CR
 for /f "tokens=* delims= " %%a in ("!CUDA_TAG!") do set CUDA_TAG=%%a
 
 echo Detected CUDA tag: !CUDA_TAG!
 
 if "!CUDA_TAG!"=="cpu" (
-    echo [GPU] No NVIDIA GPU or unsupported CUDA - installing CPU-only PyTorch
+    echo [GPU] No NVIDIA GPU or unsupported driver - installing CPU PyTorch
     python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu --quiet
     echo [OK] PyTorch CPU installed
 ) else (
@@ -89,14 +127,13 @@ if "!CUDA_TAG!"=="cpu" (
 )
 echo.
 
-:: Step 5 - Verify installation
+:: ── Step 5: Verify ────────────────────────────────────────────────
 echo [5/5] Verifying installation...
-python -c ^
-"import torch; cuda=torch.cuda.is_available(); gpu=torch.cuda.get_device_name(0) if cuda else 'N/A'; ver=torch.__version__; print('[CUDA] Available:',cuda,'| GPU:',gpu,'| Torch:',ver)"
+python -c "import torch; c=torch.cuda.is_available(); g=torch.cuda.get_device_name(0) if c else 'N/A'; print('[CUDA]',c,'| GPU:',g,'| Torch:',torch.__version__)"
 if errorlevel 1 (
-    echo [WARN] Could not verify PyTorch - check installation manually
+    echo [WARN] Verification failed
 ) else (
-    echo [OK] PyTorch verification complete
+    echo [OK] Done
 )
 
 echo.
