@@ -517,19 +517,9 @@ async def run_local_compile(config: LocalCompileConfig, onnx_path_str: str, cali
         })
         return
 
-    # Compilation bash script inside Docker
-    bash_script = (
-        "set -e && "
-        "cd /workspace && "
-        "echo 'STEP_PARSE' && "
-        f"hailo parser onnx model.onnx --net-name {config.model_name} --hw-arch {config.hailo_arch} 2>&1 && "
-        "echo 'STEP_OPTIMIZE' && "
-        f"hailo optimize {config.model_name}.hn --hw-arch {config.hailo_arch} --calib-set-path /calib 2>&1 && "
-        "echo 'STEP_COMPILE' && "
-        f"HN=$(find /workspace -name '*.hn' | sort | tail -1) && "
-        f"hailo compiler \"$HN\" --hw-arch {config.hailo_arch} -o /workspace/{config.model_name}.hef 2>&1 && "
-        "echo 'COMPILE_DONE'"
-    )
+    # Locate compile script (works both in dev and packaged/asar.unpacked)
+    compile_script = Path(__file__).parent / "compile_hailo.py"
+    compile_script_docker = docker_path(compile_script)
 
     await broadcast_compile_log({"type": "status", "message": "Starting Docker compilation...", "progress": 5})
 
@@ -538,8 +528,9 @@ async def run_local_compile(config: LocalCompileConfig, onnx_path_str: str, cali
         f"--name=iriv-compile-{int(asyncio.get_event_loop().time())}",
         "-v", f"{workspace_docker}:/workspace",
         "-v", f"{calib_docker}:/calib:ro",
+        "-v", f"{compile_script_docker}:/compile_hailo.py:ro",
         config.docker_image,
-        bash_script,
+        "python3", "/compile_hailo.py", config.model_name, config.hailo_arch,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
     )
