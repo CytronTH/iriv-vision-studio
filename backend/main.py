@@ -40,12 +40,33 @@ async def system_info():
     import torch
     cuda_available = torch.cuda.is_available()
     gpu_name = torch.cuda.get_device_name(0) if cuda_available else "N/A"
+    device_count = torch.cuda.device_count() if cuda_available else 0
+
+    # Diagnose why CUDA might not be available
+    cuda_reason = "OK"
+    if not cuda_available:
+        torch_ver = torch.__version__
+        if "+cpu" in torch_ver:
+            cuda_reason = "PyTorch is CPU-only build (+cpu). Need to reinstall with cu124."
+        else:
+            try:
+                import subprocess
+                r = subprocess.run(["nvidia-smi"], capture_output=True, text=True, timeout=5)
+                cuda_reason = "Driver OK but CUDA init failed. Try: reinstall PyTorch." if r.returncode == 0 else "No NVIDIA driver found."
+            except Exception as e:
+                cuda_reason = f"nvidia-smi check failed: {e}"
+
     return {
         "cuda": cuda_available,
         "gpu": gpu_name,
+        "device_count": device_count,
+        "torch_version": torch.__version__,
+        "cuda_build": torch.version.cuda or "N/A",
+        "cuda_reason": cuda_reason,
         "python": sys.version,
         "workspace": str(WORKSPACE_DIR)
     }
+
 
 # --- DATASET ---
 @app.get("/api/datasets")

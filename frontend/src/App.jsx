@@ -1176,6 +1176,26 @@ export default function App() {
                 ⚠️ Backend Error: {backendError}
               </div>
             )}
+            {/* PyTorch / CUDA info from backend */}
+            {sysInfo && (
+              <div style={{ background: sysInfo.cuda ? '#0a1a0f' : '#1a0f0a', border: `1px solid ${sysInfo.cuda ? '#166534' : '#7c2d12'}`, borderRadius: 8, padding: 12, marginBottom: 16, fontSize: 12, fontFamily: 'JetBrains Mono' }}>
+                <div style={{ fontWeight: 600, marginBottom: 6, color: sysInfo.cuda ? '#10b981' : '#f87171' }}>
+                  {sysInfo.cuda ? '⚡ CUDA OK' : '⚠️ CUDA Not Available'}
+                </div>
+                {[
+                  ['torch_version', sysInfo.torch_version],
+                  ['cuda_build', sysInfo.cuda_build],
+                  ['gpu', sysInfo.gpu],
+                  ['device_count', sysInfo.device_count],
+                  ['cuda_reason', sysInfo.cuda_reason],
+                ].map(([k, v]) => (
+                  <div key={k} style={{ display: 'flex', gap: 8, marginTop: 3 }}>
+                    <span style={{ color: '#6b7280', minWidth: 110 }}>{k}:</span>
+                    <span style={{ color: '#e2e8f0', wordBreak: 'break-all' }}>{String(v)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {debugInfo ? (
               <table style={{ width: '100%', fontSize: 12, borderCollapse: 'collapse' }}>
                 {Object.entries(debugInfo).map(([k, v]) => (
@@ -1236,9 +1256,17 @@ export default function App() {
 
         <div className="no-drag" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 16 }}>
           {sysInfo ? (
-            <div style={{ display: 'flex', gap: 10, fontSize: 12 }}>
-              <span className={`tag ${sysInfo.cuda ? 'tag-green' : 'tag-yellow'}`}>
-                {sysInfo.cuda ? `⚡ ${sysInfo.gpu}` : '⚠️ CPU only'}
+            <div style={{ display: 'flex', gap: 10, fontSize: 12, alignItems: 'center' }}>
+              <span
+                className={`tag ${sysInfo.cuda ? 'tag-green' : 'tag-yellow'}`}
+                title={sysInfo.cuda
+                  ? `Torch: ${sysInfo.torch_version} | CUDA build: ${sysInfo.cuda_build}`
+                  : `${sysInfo.cuda_reason || 'CUDA not available'} | Torch: ${sysInfo.torch_version}`
+                }
+                onClick={!sysInfo.cuda ? openDebug : undefined}
+                style={!sysInfo.cuda ? { cursor: 'pointer' } : {}}
+              >
+                {sysInfo.cuda ? `⚡ ${sysInfo.gpu}` : '⚠️ CPU only (คลิกดูสาเหตุ)'}
               </span>
             </div>
           ) : (
