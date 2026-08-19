@@ -181,6 +181,27 @@ function startPythonBackend() {
     return;
   }
 
+  // Ensure critical runtime packages are present (patches old venvs silently)
+  console.log('[Backend] Checking critical packages (websockets, uvicorn[standard])...');
+  const pipCheck = spawn(usePython, ['-m', 'pip', 'install', '--quiet',
+    'uvicorn[standard]', 'websockets'
+  ], { shell: false, stdio: 'pipe' });
+
+  pipCheck.on('close', (code) => {
+    if (code === 0) {
+      console.log('[Backend] Critical packages OK');
+    } else {
+      console.warn('[Backend] pip install check returned code', code, '(non-fatal)');
+    }
+    launchBackend(usePython, backendMain, backendDir);
+  });
+  pipCheck.on('error', (err) => {
+    console.warn('[Backend] pip check failed:', err.message, '— starting anyway');
+    launchBackend(usePython, backendMain, backendDir);
+  });
+}
+
+function launchBackend(usePython, backendMain, backendDir) {
   // Kill any stale process occupying the port (e.g. from previous crash)
   console.log('[Backend] Clearing port', BACKEND_PORT, '...');
   killPort(BACKEND_PORT);
@@ -203,6 +224,7 @@ function startPythonBackend() {
     mainWindow?.webContents.send('backend-error', `Python backend exited with code ${code}`);
   });
 }
+
 
 // ── Create browser window ─────────────────────────────────────────
 function createWindow(showSetup = false) {
