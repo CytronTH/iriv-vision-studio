@@ -911,6 +911,18 @@ function SetupWizard({ onComplete, appVersion }) {
   const [logCopied, setLogCopied] = useState(false);
   const logRef = useRef();
   const isElectron = !!window.electronAPI;
+  // Hailo-specific state
+  const [hailoStatus, setHailoStatus] = useState('idle'); // idle|checking
+  const [whlPath, setWhlPath] = useState(null);
+  const [hailoBuilding, setHailoBuilding] = useState(false);
+  const [hailoBuildProgress, setHailoBuildProgress] = useState(0);
+  const [hailoLogs, setHailoLogs] = useState([]);
+  const [hailoBuildDone, setHailoBuildDone] = useState(false);
+  const hailoLogRef = useRef();
+  const addHailoLog = (line) => {
+    if (!line?.trim()) return;
+    setHailoLogs(prev => [...prev.slice(-200), line.trim()]);
+  };
 
   // Helper: add a timestamped log line
   const addLog = (line) => {
@@ -978,8 +990,9 @@ function SetupWizard({ onComplete, appVersion }) {
       // Listen to dependency install logs
       window.electronAPI.onSetupLog((line) => {
         if (line === '__SETUP_COMPLETE__') {
-          setPhase('done');
           setProgress(100);
+          // After Python deps: check if Hailo Docker is ready
+          setPhase('hailo-check');
           return;
         }
         if (line.startsWith('__SETUP_FAILED__')) {
@@ -992,10 +1005,58 @@ function SetupWizard({ onComplete, appVersion }) {
         if (line.includes('[OK] ONNX'))        { setProgress(95); setCurrentStep('onnx'); }
         addLog(line);
       });
+
+      // Listen to hailo docker build logs
+      window.electronAPI.onHailoBuildLog((line) => {
+        if (line === '__HAILO_BUILD_COMPLETE__') {
+          setHailoBuildDone(true);
+          setHailoBuilding(false);
+          setHailoBuildProgress(100);
+          addHailoLog('✅ Docker image built successfully!');
+          setTimeout(() => setPhase('done'), 1200);
+          return;
+        }
+        if (line.startsWith('__HAILO_BUILD_FAILED__')) {
+          setHailoBuilding(false);
+          addHailoLog('❌ Build failed: ' + line.replace('__HAILO_BUILD_FAILED__:', ''));
+          return;
+        }
+        // Rough progress from docker build layers
+        if (line.startsWith('Step ')) {
+          const m = line.match(/Step (\d+)\/(\d+)/);
+          if (m) setHailoBuildProgress(Math.round((parseInt(m[1]) / parseInt(m[2])) * 95));
+        }
+        addHailoLog(line);
+      });
     } else {
       setPhase('done');
     }
   }, []);
+
+  // Auto-run hailo check when phase becomes 'hailo-check'
+  useEffect(() => {
+    if (phase !== 'hailo-check' || !isElectron) return;
+    setHailoStatus('checking');
+    (async () => {
+      // First check if hailo was already set up before
+      const hailoFlagOk = await window.electronAPI.checkHailoFlag();
+      if (hailoFlagOk) {
+        // Verify image still exists
+        const imgCheck = await window.electronAPI.checkHailoImage();
+        if (imgCheck.exists) { setPhase('done'); return; }
+        // Flag exists but image was deleted — rebuild
+      }
+      const dockerCheck = await window.electronAPI.checkDocker();
+      if (!dockerCheck.available) { setPhase('hailo-docker-missing'); return; }
+      const imgCheck = await window.electronAPI.checkHailoImage();
+      if (imgCheck.exists) {
+        await window.electronAPI.markHailoReady();
+        setPhase('done');
+      } else {
+        setPhase('hailo-setup');
+      }
+    })();
+  }, [phase]);
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
@@ -1283,6 +1344,110 @@ function SetupWizard({ onComplete, appVersion }) {
             </div>
           )}
 
+
+          {/* ── Hailo: checking ── */}
+          {phase === 'hailo-check' && (
+            <div className="card" style={{ textAlign: 'center', padding: 32 }}>
+              <RefreshCw size={36} color="#818cf8" className="animate-spin" style={{ margin: '0 auto 16px' }} />
+              <div style={{ fontWeight: 700, fontSize: 17, marginBottom: 8 }}>Checking Hailo Compiler Setup</div>
+              <div style={{ color: '#6b7280', fontSize: 13 }}>กำลังตรวจสอบ Docker + Hailo image...</div>
+            </div>
+          )}
+
+          {/* ── Hailo: Docker not installed ── */}
+          {phase === 'hailo-docker-missing' && (
+            <div className="card" style={{ borderColor: '#f59e0b' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+                <AlertTriangle size={28} color="#f59e0b" />
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 16, color: '#fbbf24' }}>Docker Desktop ยังไม่ได้ติดตั้ง</div>
+                  <div style={{ color: '#6b7280', fontSize: 12 }}>จำเป็นสำหรับการ compile .hef บนเครื่องนี้</div>
+                </div>
+              </div>
+              <div style={{ fontSize: 13, color: '#9ca3af', marginBottom: 16, lineHeight: 1.8 }}>
+                กรุณาติดตั้ง <strong style={{ color: '#e2e8f0' }}>Docker Desktop</strong> พร้อม <strong style={{ color: '#e2e8f0' }}>WSL2</strong> แล้วกด "ตรวจสอบอีกครั้ง"<br/>
+                <span style={{ color: '#4b5563', fontSize: 12 }}>หมายเหตุ: หากไม่ต้องการ compile บนเครื่องนี้ สามารถข้ามขั้นตอนนี้ได้</span>
+              </div>
+              <button className="btn-primary" style={{ width: '100%', justifyContent: 'center', marginBottom: 10 }}
+                onClick={() => window.electronAPI?.openExternal('https://www.docker.com/products/docker-desktop/')}>
+                <ExternalLink size={14} /> ดาวน์โหลด Docker Desktop
+              </button>
+              <div style={{ display: 'flex', gap: 10 }}>
+                <button className="btn-secondary" style={{ flex: 1, justifyContent: 'center' }}
+                  onClick={() => setPhase('hailo-check')}>
+                  <RefreshCw size={13} /> ตรวจสอบอีกครั้ง
+                </button>
+                <button className="btn-secondary" style={{ flex: 1, justifyContent: 'center', fontSize: 12 }}
+                  onClick={async () => { await window.electronAPI?.markHailoReady(); setPhase('done'); }}>
+                  ข้าม (ตั้งค่าทีหลัง)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Hailo: build image ── */}
+          {phase === 'hailo-setup' && (
+            <div>
+              <div className="card" style={{ marginBottom: 16, borderColor: 'rgba(99,102,241,0.4)', background: 'rgba(99,102,241,0.05)' }}>
+                <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 12 }}>🐳 ติดตั้ง Hailo Compiler Image</div>
+                <div style={{ fontSize: 13, color: '#9ca3af', lineHeight: 1.9, marginBottom: 16 }}>
+                  <strong style={{ color: '#e2e8f0' }}>ขั้นตอนที่ 1:</strong> ดาวน์โหลดไฟล์ <code style={{ background: '#0d1117', padding: '2px 6px', borderRadius: 4, color: '#818cf8' }}>hailo_dataflow_compiler-*.whl</code><br/>
+                  จาก{' '}
+                  <span style={{ color: '#6366f1', cursor: 'pointer', textDecoration: 'underline' }}
+                    onClick={() => window.electronAPI?.openExternal('https://hailo.ai/developer-zone/')}>
+                    hailo.ai/developer-zone → Software Downloads
+                  </span><br/>
+                  <strong style={{ color: '#e2e8f0' }}>ขั้นตอนที่ 2:</strong> เลือกไฟล์ด้านล่าง → กด Build
+                </div>
+
+                {/* WHL file picker */}
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 16 }}>
+                  <div style={{ flex: 1, padding: '10px 14px', background: '#060810', border: '1px solid #1e2130', borderRadius: 8, fontSize: 12, color: whlPath ? '#10b981' : '#4b5563', fontFamily: 'JetBrains Mono, monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {whlPath ? `✅ ${whlPath.split('\\').pop().split('/').pop()}` : 'ยังไม่ได้เลือกไฟล์ .whl'}
+                  </div>
+                  <button className="btn-secondary no-drag" style={{ whiteSpace: 'nowrap', flexShrink: 0 }}
+                    onClick={async () => {
+                      const p = await window.electronAPI.openWhlDialog();
+                      if (p) setWhlPath(p);
+                    }}>
+                    📂 เลือกไฟล์
+                  </button>
+                </div>
+
+                <button className="btn-primary no-drag" style={{ width: '100%', justifyContent: 'center' }}
+                  disabled={!whlPath || hailoBuilding}
+                  onClick={async () => {
+                    setHailoBuilding(true); setHailoLogs([]); setHailoBuildProgress(0);
+                    await window.electronAPI.buildHailoImage(whlPath);
+                  }}>
+                  {hailoBuilding ? <><RefreshCw size={14} className="animate-spin" /> Building Docker image... (10-20 min)</> : <><Cpu size={14} /> Build iriv-hailo-compiler Image</>}
+                </button>
+              </div>
+
+              {/* Build log */}
+              {(hailoBuilding || hailoLogs.length > 0) && (
+                <div className="card">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>🔧 Docker Build Log</span>
+                    <span style={{ fontSize: 12, color: '#6366f1', fontFamily: 'JetBrains Mono, monospace' }}>{hailoBuildProgress}%</span>
+                  </div>
+                  <div style={{ height: 4, background: '#1e2130', borderRadius: 4, marginBottom: 10, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${hailoBuildProgress}%`, background: 'linear-gradient(90deg,#6366f1,#8b5cf6)', borderRadius: 4, transition: 'width 0.5s ease' }} />
+                  </div>
+                  <div ref={hailoLogRef} style={{ background: '#020408', border: '1px solid #1e2130', borderRadius: 8, padding: 10, maxHeight: 180, overflowY: 'auto', fontFamily: 'JetBrains Mono, monospace', fontSize: 11, lineHeight: 1.6 }}>
+                    {hailoLogs.map((l, i) => (
+                      <div key={i} style={{ color: l.includes('✅') ? '#10b981' : l.includes('❌') ? '#ef4444' : l.startsWith('Step') ? '#818cf8' : '#4b5563' }}>{l}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button className="btn-secondary" style={{ width: '100%', justifyContent: 'center', marginTop: 12, fontSize: 12 }}
+                onClick={async () => { await window.electronAPI?.markHailoReady(); setPhase('done'); }}>
+                ข้ามขั้นตอนนี้ (ตั้งค่าทีหลังได้ใน Settings)
+              </button>
+            </div>
+          )}
 
         </div>
       </div>

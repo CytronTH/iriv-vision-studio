@@ -15,7 +15,10 @@ let setupProcess = null;
 
 const isDev = !app.isPackaged;
 const BACKEND_PORT = 7654;
-const SETUP_FLAG = path.join(app.getPath('userData'), 'setup_complete.flag');
+const SETUP_FLAG  = path.join(app.getPath('userData'), 'setup_complete.flag');
+const HAILO_FLAG  = path.join(app.getPath('userData'), 'hailo_ready.flag');
+function isHailoReady()  { return fs.existsSync(HAILO_FLAG); }
+function markHailoReady() { fs.writeFileSync(HAILO_FLAG, new Date().toISOString()); }
 
 // ── Resolve paths correctly for both dev and packaged mode ─────────
 function getBackendDir() {
@@ -591,6 +594,100 @@ ipcMain.handle('check-for-update', async () => {
 
 // IPC: Get current app version
 ipcMain.handle('get-app-version', () => app.getVersion());
+
+// ── Hailo Docker Setup IPC handlers ──────────────────────────────
+ipcMain.handle('check-hailo-flag', () => isHailoReady());
+ipcMain.handle('mark-hailo-ready', () => { markHailoReady(); return true; });
+
+ipcMain.handle('check-docker', async () => {
+  return new Promise((resolve) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (!done) { done = true; try { proc.kill(); } catch {} resolve({ available: false }); }
+    }, 8000);
+    const proc = spawn('docker', ['info'], { shell: true, stdio: 'pipe' });
+    proc.on('close', (code) => {
+      if (!done) { done = true; clearTimeout(timer); resolve({ available: code === 0 }); }
+    });
+    proc.on('error', () => {
+      if (!done) { done = true; clearTimeout(timer); resolve({ available: false }); }
+    });
+  });
+});
+
+ipcMain.handle('check-hailo-image', async (e, image = 'iriv-hailo-compiler:latest') => {
+  return new Promise((resolve) => {
+    let done = false;
+    const timer = setTimeout(() => {
+      if (!done) { done = true; try { proc.kill(); } catch {} resolve({ exists: false }); }
+    }, 6000);
+    const proc = spawn('docker', ['image', 'inspect', image], { shell: true, stdio: 'pipe' });
+    proc.on('close', (code) => {
+      if (!done) { done = true; clearTimeout(timer); resolve({ exists: code === 0 }); }
+    });
+    proc.on('error', () => {
+      if (!done) { done = true; clearTimeout(timer); resolve({ exists: false }); }
+    });
+  });
+});
+
+ipcMain.handle('open-whl-dialog', async () => {
+  const result = await dialog.showOpenDialog(mainWindow, {
+    title: 'Select Hailo Dataflow Compiler wheel file',
+    filters: [{ name: 'Python Wheel', extensions: ['whl'] }],
+    properties: ['openFile']
+  });
+  return result.canceled ? null : result.filePaths[0];
+});
+
+ipcMain.handle('build-hailo-image', async (e, whlPath) => {
+  const sendLog = (text) => mainWindow?.webContents.send('hailo-build-log', text);
+  try {
+    const buildDir = path.join(os.tmpdir(), 'iriv-hailo-build');
+    if (!fs.existsSync(buildDir)) fs.mkdirSync(buildDir, { recursive: true });
+
+    // Copy .whl into build context
+    const whlName = path.basename(whlPath);
+    fs.copyFileSync(whlPath, path.join(buildDir, whlName));
+
+    // Copy Dockerfile.hailo into build context (rename to Dockerfile)
+    const dockerfileSrc = path.join(process.resourcesPath, 'Dockerfile.hailo');
+    const dockerfileFallback = path.join(__dirname, '..', 'Dockerfile.hailo');
+    const dockerfilePath = fs.existsSync(dockerfileSrc) ? dockerfileSrc : dockerfileFallback;
+    fs.copyFileSync(dockerfilePath, path.join(buildDir, 'Dockerfile'));
+
+    sendLog(`[Build] Context: ${buildDir}`);
+    sendLog(`[Build] WHL: ${whlName}`);
+    sendLog('[Build] Running: docker build -t iriv-hailo-compiler:latest ...');
+
+    const proc = spawn('docker', ['build', '-t', 'iriv-hailo-compiler:latest', buildDir], {
+      shell: true, stdio: 'pipe'
+    });
+
+    proc.stdout.on('data', (d) => sendLog(d.toString().trim()));
+    proc.stderr.on('data', (d) => sendLog(d.toString().trim()));
+
+    return new Promise((resolve) => {
+      proc.on('close', (code) => {
+        if (code === 0) {
+          markHailoReady();
+          sendLog('__HAILO_BUILD_COMPLETE__');
+          resolve({ success: true });
+        } else {
+          sendLog(`__HAILO_BUILD_FAILED__:exit ${code}`);
+          resolve({ success: false, code });
+        }
+      });
+      proc.on('error', (err) => {
+        sendLog(`__HAILO_BUILD_FAILED__:${err.message}`);
+        resolve({ success: false, error: err.message });
+      });
+    });
+  } catch (err) {
+    sendLog(`__HAILO_BUILD_FAILED__:${err.message}`);
+    return { success: false, error: err.message };
+  }
+});
 
 // IPC: Reset setup and reinstall (clears flag, kills backend, reloads to setup)
 ipcMain.handle('reset-and-reinstall', () => {

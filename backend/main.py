@@ -484,14 +484,24 @@ async def run_local_compile(config: LocalCompileConfig, onnx_path_str: str, cali
     workspace_docker = docker_path(output_dir)
     calib_docker = docker_path(calib_dir)
 
-    # Check Docker image exists
+    # Check Docker image exists (with timeout so it never hangs)
     await broadcast_compile_log({"type": "status", "message": "Checking Docker image...", "progress": 2})
-    check = await asyncio.create_subprocess_exec(
-        "docker", "image", "inspect", config.docker_image,
-        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
-    )
-    await check.wait()
-    if check.returncode != 0:
+    docker_ok = False
+    try:
+        check = await asyncio.create_subprocess_exec(
+            "docker", "image", "inspect", config.docker_image,
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+        )
+        await asyncio.wait_for(check.wait(), timeout=8.0)
+        docker_ok = (check.returncode == 0)
+    except asyncio.TimeoutError:
+        try: check.kill()
+        except: pass
+        docker_ok = False
+    except Exception:
+        docker_ok = False
+
+    if not docker_ok:
         await broadcast_compile_log({
             "type": "done", "status": "error",
             "message": (

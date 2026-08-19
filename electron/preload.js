@@ -28,4 +28,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onBackendError: (cb) => ipcRenderer.on('backend-error', (_, data) => cb(data)),
   resetAndReinstall: () => ipcRenderer.invoke('reset-and-reinstall'),
   onDebugLog: (cb) => ipcRenderer.on('debug-log', (_, entry) => cb(entry)),
+  // Hailo Docker Setup
+  checkHailoFlag: () => ipcRenderer.invoke('check-hailo-flag'),
+  markHailoReady: () => ipcRenderer.invoke('mark-hailo-ready'),
+  checkDocker: () => ipcRenderer.invoke('check-docker'),
+  checkHailoImage: (img) => ipcRenderer.invoke('check-hailo-image', img),
+  openWhlDialog: () => ipcRenderer.invoke('open-whl-dialog'),
+  buildHailoImage: (whlPath) => ipcRenderer.invoke('build-hailo-image', whlPath),
+  onHailoBuildLog: (cb) => ipcRenderer.on('hailo-build-log', (_, line) => cb(line)),
 });
