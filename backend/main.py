@@ -68,6 +68,9 @@ def main():
         print("Usage: compile_hailo.py <model_name> <hw_arch>"); sys.exit(1)
     model_name, hw_arch = sys.argv[1], sys.argv[2]
     os.chdir('/workspace')
+    for pattern in ['*.har', '*.hn', '*.hef']:
+        for stale in glob.glob(f'/workspace/{pattern}'):
+            os.remove(stale); print(f'[IRIV] Removed stale: {stale}', flush=True)
 
     print('STEP_PARSE', flush=True)
     base_cmd = ['hailo', 'parser', 'onnx', 'model.onnx', '--net-name', model_name, '--hw-arch', hw_arch]
@@ -89,9 +92,13 @@ def main():
     calib_path = prepare_calib_npy('/calib', '/workspace/calib_npy')
 
     print('STEP_OPTIMIZE', flush=True)
-    har_files = sorted(glob.glob('/workspace/*.har'))
-    hn_files  = sorted(glob.glob('/workspace/*.hn'))
-    parse_output = (har_files or hn_files or [None])[-1]
+    parse_har = f'/workspace/{model_name}.har'
+    parse_hn  = f'/workspace/{model_name}.hn'
+    if os.path.exists(parse_har): parse_output = parse_har
+    elif os.path.exists(parse_hn): parse_output = parse_hn
+    else:
+        cands = sorted(glob.glob('/workspace/*.har') + glob.glob('/workspace/*.hn'), key=os.path.getmtime)
+        parse_output = cands[-1] if cands else None
     if not parse_output:
         print('[IRIV] ERROR: No .hn or .har file found after parsing!', flush=True); sys.exit(1)
     code = run_streaming(['hailo', 'optimize', parse_output, '--hw-arch', hw_arch, '--calib-set-path', calib_path])

@@ -96,6 +96,14 @@ def main():
 
     os.chdir('/workspace')
 
+    # ── Clean up stale intermediate files from previous runs ─────────────────
+    # Without cleanup, old .har/.hn/.hef from a previous (different) arch run
+    # would be picked up by glob, causing "wrong state" errors in hailo optimize.
+    for pattern in ['*.har', '*.hn', '*.hef']:
+        for stale in glob.glob(f'/workspace/{pattern}'):
+            os.remove(stale)
+            print(f'[IRIV] Removed stale file: {stale}', flush=True)
+
     # ── Step 1: Parse ONNX → .hn or .har ────────────────────────────────────
     print('STEP_PARSE', flush=True)
 
@@ -146,11 +154,21 @@ def main():
     # ── Step 3: Optimize .hn/.har → .har (quantization) ─────────────────────
     print('STEP_OPTIMIZE', flush=True)
 
-    # When parser ran with --end-node-names it saves .har directly.
-    # Standard parse saves .hn. Accept either.
-    har_files = sorted(glob.glob('/workspace/*.har'))
-    hn_files  = sorted(glob.glob('/workspace/*.hn'))
-    parse_output = (har_files or hn_files or [None])[-1]
+    # Look for the parser output by name first (avoids picking up stale files
+    # from a previous run if cleanup somehow missed them)
+    parse_har = f'/workspace/{model_name}.har'
+    parse_hn  = f'/workspace/{model_name}.hn'
+    if os.path.exists(parse_har):
+        parse_output = parse_har
+    elif os.path.exists(parse_hn):
+        parse_output = parse_hn
+    else:
+        # fallback: newest by modification time
+        candidates = sorted(
+            glob.glob('/workspace/*.har') + glob.glob('/workspace/*.hn'),
+            key=os.path.getmtime
+        )
+        parse_output = candidates[-1] if candidates else None
     if not parse_output:
         print('[IRIV] ERROR: No .hn or .har file found after parsing!', flush=True)
         sys.exit(1)
