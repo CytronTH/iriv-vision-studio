@@ -44,7 +44,7 @@ echo [3/4] Installing packages...
 call "%VENV_DIR%\Scripts\activate.bat"
 
 python -m pip install --upgrade pip --quiet
-python -m pip install fastapi uvicorn python-multipart aiofiles requests --quiet
+python -m pip install fastapi "uvicorn[standard]" python-multipart aiofiles requests --quiet
 echo [OK] FastAPI installed
 
 python -m pip install ultralytics --quiet
