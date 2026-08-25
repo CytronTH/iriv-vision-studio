@@ -1,0 +1,12 @@
+node_modules/
+dist/
+venv/
+__pycache__/
+*.pyc
+*.log
+.env
+.DS_Store
+.agents/
+*.patch
+test_*.py
+patch_nodes.py
