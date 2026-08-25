@@ -1,0 +1,110 @@
+@import "tailwindcss";
+
+@theme {
+  --color-gray-50: var(--app-gray-50);
+  --color-gray-100: var(--app-gray-100);
+  --color-gray-200: var(--app-gray-200);
+  --color-gray-300: var(--app-gray-300);
+  --color-gray-400: var(--app-gray-400);
+  --color-gray-500: var(--app-gray-500);
+  --color-gray-600: var(--app-gray-600);
+  --color-gray-700: var(--app-gray-700);
+  --color-gray-800: var(--app-gray-800);
+  --color-gray-900: var(--app-gray-900);
+  --color-gray-950: var(--app-gray-950);
+  --color-white: var(--app-white);
+  --color-black: var(--app-black);
+}
+
+:root {
+  /* LIGHT MODE (Inverted Gray Scale & High Contrast) */
+  --app-gray-950: #f8fafc;
+  --app-gray-900: #f1f5f9;
+  --app-gray-800: #e2e8f0;
+  --app-gray-700: #cbd5e1;
+  --app-gray-600: #94a3b8;
+  --app-gray-500: #64748b;
+  --app-gray-400: #475569;
+  --app-gray-300: #334155;
+  --app-gray-200: #1e293b;
+  --app-gray-100: #0f172a;
+  --app-gray-50:  #020617;
+  
+  --app-white: #0f172a; /* Make text-white become very dark gray in light mode */
+  --app-black: #ffffff; /* Make black backgrounds become white */
+  background-color: var(--color-gray-950);
+  color: var(--color-gray-100);
+}
+
+.dark {
+  /* DARK MODE (Standard Tailwind Gray Scale) */
+  --app-gray-950: #020617;
+  --app-gray-900: #0f172a;
+  --app-gray-800: #1e293b;
+  --app-gray-700: #334155;
+  --app-gray-600: #475569;
+  --app-gray-500: #64748b;
+  --app-gray-400: #94a3b8;
+  --app-gray-300: #cbd5e1;
+  --app-gray-200: #e2e8f0;
+  --app-gray-100: #f1f5f9;
+  --app-gray-50:  #f8fafc;
+  
+  --app-white: #ffffff;
+  --app-black: #000000;
+  background-color: var(--color-gray-950);
+  color: var(--color-gray-100);
+}
+
+/* Base styling for canvas overlay to ensure it sits above video */
+.overlay-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+/* Make react-grid-layout resize handle larger and easier to grab */
+.react-grid-item > .react-resizable-handle {
+  width: 25px !important;
+  height: 25px !important;
+  right: -5px !important;
+  bottom: -5px !important;
+  background-size: 15px !important;
+  background-position: bottom right !important;
+  padding: 5px !important;
+  cursor: se-resize !important;
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  content: "";
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 12px;
+  height: 12px;
+  border-right: 3px solid rgba(255, 255, 255, 0.4);
+  border-bottom: 3px solid rgba(255, 255, 255, 0.4);
+  border-radius: 2px;
+}
+
+/* Node Disabled State (applies only to the explicitly disabled node) */
+.node-disabled {
+  opacity: 0.5 !important;
+  filter: grayscale(100%) !important;
+}
+
+.node-disabled::after {
+  content: 'DISABLED';
+  position: absolute;
+  top: -12px;
+  right: -10px;
+  background: #dc2626;
+  color: white;
+  font-size: 10px;
+  font-weight: bold;
+  padding: 2px 6px;
+  border-radius: 9999px;
+  z-index: 50;
+  pointer-events: none;
+}
