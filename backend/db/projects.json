@@ -287,7 +287,8 @@
             "y": -326.0808686367026
           },
           "data": {
-            "label": "debugNode node"
+            "label": "debugNode node",
+            "disabled": false
           },
           "measured": {
             "width": 203,
@@ -306,13 +307,13 @@
           "data": {
             "label": "buzzerNode node",
             "triggerOn": false,
-            "disabled": false
+            "disabled": true
           },
           "measured": {
             "width": 256,
             "height": 243
           },
-          "selected": false,
+          "selected": true,
           "dragging": false
         },
         {
@@ -349,7 +350,7 @@
             "width": 256,
             "height": 310
           },
-          "selected": true,
+          "selected": false,
           "dragging": false
         }
       ],

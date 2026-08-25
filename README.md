@@ -35,6 +35,14 @@
 
 ---
 
+## 💻 Companion PC Software: IRIV Model Studio
+**IRIV Model Studio** is a dedicated PC desktop application designed to bridge the gap between AI training and edge deployment.
+- **Seamless Model Compilation:** Easily convert ONNX models into Hailo `.hef` format without dealing with complex command-line tools.
+- **Direct Edge Deployment:** One-click upload and deployment of compiled `.hef` models directly to the **IRIV Vision Studio** running on the Raspberry Pi over the local network.
+- **Optimized Workflow:** Designed to work hand-in-hand with this platform, ensuring that updating AI models on the factory floor is as simple as a click of a button.
+
+---
+
 ## 🏗️ System Architecture
 
 ```mermaid
