@@ -770,3 +770,17 @@ except Exception as e:
             "message": "Hailo compilation failed. Make sure Hailo Dataflow Compiler (hailo_sdk_client) is installed.",
             "log": combined_output[-2000:]  # Last 2000 chars of log
         }
+
+@app.post("/api/system/restart")
+async def restart_system():
+    logger.warning("System reboot requested via API")
+    import os
+    os.system("sudo reboot")
+    return {"status": "success", "message": "Rebooting..."}
+
+@app.post("/api/system/shutdown")
+async def shutdown_system():
+    logger.warning("System shutdown requested via API")
+    import os
+    os.system("sudo shutdown now")
+    return {"status": "success", "message": "Shutting down..."}

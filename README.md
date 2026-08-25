@@ -194,6 +194,13 @@ HAILO_DEVICE_ID=0000:01:00.0
 - [ ] **Self-Hosted Documentation:** Fully offline, bundled interactive tutorials and node documentation.
 
 ### 📅 Future Work
+- [ ] **User Management & RBAC (Role-Based Access Control):**
+  - **Multi-tier roles (Admin, Operator, Viewer):** Admins have full access, Operators can acknowledge alerts and view dashboards but cannot edit pipelines, and Viewers have read-only access.
+  - **Audit Logging & Accountability:** Track user actions such as pipeline modifications, system overrides, and alert acknowledgments for factory compliance.
+  - **Personalized Dashboards (Layouts):** Save distinct widget layouts per user account (e.g., Admins see system resources, Operators see video feeds).
+  - **Targeted Alert Routing:** Dispatch alerts via Line/Email to specific users based on their roles, shifts, or assigned production lines.
+  - **Multi-Tenancy / Workspaces:** Isolate projects and pipelines between different departments (e.g., QC team vs Security team).
+  - **Secure API Integration (API Keys):** Require user-bound API Keys for external system (SCADA/ERP) integrations to prevent unauthorized access.
 - [ ] Support for multi-camera parallel pipeline execution
 - [ ] Modbus Industrial Protocol integrations
 

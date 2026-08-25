@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, Server, LayoutDashboard, GitMerge, Settings as SettingsIcon, ChevronLeft, Home, Sun, Moon } from 'lucide-react';
+import { Activity, Server, LayoutDashboard, GitMerge, Settings as SettingsIcon, ChevronLeft, Home, Sun, Moon, Power, RefreshCw } from 'lucide-react';
 import LiveDashboard from './components/LiveDashboard';
 import PipelineBuilder from './components/PipelineBuilder/PipelineBuilder';
 import Settings from './components/Settings/Settings';
@@ -13,6 +13,7 @@ function App() {
   const [connected, setConnected] = useState(false);
   const [activeTab, setActiveTab] = useState('home');
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -23,6 +24,21 @@ function App() {
     localStorage.setItem('theme', theme);
   }, [theme]);
   
+  const handleSystemAction = async (action) => {
+    const actionText = action === 'restart' ? 'Restart' : 'Shutdown';
+    if (!window.confirm(`Are you sure you want to ${actionText} the system?`)) return;
+    try {
+      await fetch(`http://${window.location.hostname}:8000/api/system/${action}`, { method: 'POST' });
+      if (action === 'restart') {
+        alert("System is restarting. Please wait a minute and refresh the page.");
+      } else {
+        alert("System is shutting down. It is now safe to unplug the power.");
+      }
+    } catch (err) {
+      console.error(err);
+      alert(`Failed to send ${actionText} command`);
+    }
+  };
   const toggleTheme = () => {
     setTheme(prev => prev === 'dark' ? 'light' : 'dark');
   };
@@ -122,101 +138,112 @@ function App() {
   return (
     <div className="h-screen bg-gray-950 text-white font-sans flex overflow-hidden">
       {/* Left Sidebar */}
-      <aside className="w-64 bg-gray-900 border-r border-gray-800 flex flex-col shrink-0 relative z-20">
-        <div className="h-16 flex items-center px-6 border-b border-gray-800 shrink-0">
-          <h1 className="text-xl font-bold flex items-center gap-3">
-            <Activity className="text-blue-500 animate-pulse" />
-            IRIV Vision
-          </h1>
+      <aside className={`${isSidebarOpen ? 'w-64' : 'w-20'} transition-all duration-300 ease-in-out bg-gray-900 border-r border-gray-800 flex flex-col shrink-0 relative z-20`}>
+        <button 
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="absolute -right-3 top-5 bg-gray-800 border border-gray-700 text-gray-400 hover:text-white rounded-full p-1.5 z-50 transition-transform shadow-md hover:scale-110"
+        >
+          <ChevronLeft size={14} className={`transition-transform duration-300 ${!isSidebarOpen ? 'rotate-180' : ''}`} />
+        </button>
+        <div className={`h-16 flex items-center ${isSidebarOpen ? 'px-6' : 'justify-center'} border-b border-gray-800 shrink-0 overflow-hidden whitespace-nowrap`}>
+          <div className="flex items-center gap-3">
+            <Activity className="text-blue-500 animate-pulse shrink-0" />
+            <h1 className={`text-xl font-bold transition-opacity duration-300 ${!isSidebarOpen ? 'opacity-0 w-0 hidden' : 'opacity-100'}`}>
+              IRIV Vision Studio
+            </h1>
+          </div>
         </div>
         
-        <div className="flex-1 overflow-y-auto py-6 flex flex-col gap-1 px-3">
-          <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-3">Menu</div>
+        <div className={`flex-1 overflow-y-auto py-6 flex flex-col gap-1 ${isSidebarOpen ? 'px-3' : 'px-2 items-center'}`}>
+          {isSidebarOpen && <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-3">Menu</div>}
           <button
             onClick={() => {
               setActiveProject(null);
               setActiveTab('home');
             }}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${!isSidebarOpen && 'justify-center w-12 h-12'} ${
               activeTab === 'home' && !activeProject
                 ? 'bg-blue-600/10 text-blue-400' 
                 : 'text-gray-400 hover:text-white hover:bg-gray-800'
             }`}
+            title={!isSidebarOpen ? "Projects" : ""}
           >
-            <Home size={18} />
-            Projects
+            <Home size={18} className="shrink-0" />
+            {isSidebarOpen && <span>Projects</span>}
           </button>
           <button
             onClick={() => {
               setActiveProject(null);
               setActiveTab('settings');
             }}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${!isSidebarOpen && 'justify-center w-12 h-12'} ${
               activeTab === 'settings' && !activeProject
                 ? 'bg-blue-600/10 text-blue-400' 
                 : 'text-gray-400 hover:text-white hover:bg-gray-800'
             }`}
+            title={!isSidebarOpen ? "Global Settings" : ""}
           >
-            <SettingsIcon size={18} />
-            Global Settings
+            <SettingsIcon size={18} className="shrink-0" />
+            {isSidebarOpen && <span>Global Settings</span>}
           </button>
 
           {activeProject && (
             <>
-              <div className="mt-8 mb-2 px-3 flex items-center justify-between group">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider line-clamp-1 flex-1">
-                  {activeProject.name}
+              {isSidebarOpen ? (
+                <div className="mt-8 mb-2 px-3 flex items-center justify-between group">
+                  <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider line-clamp-1 flex-1">
+                    {activeProject.name}
+                  </div>
+                  <button 
+                    onClick={() => setActiveProject(null)}
+                    className="text-gray-500 hover:text-red-400 p-1 rounded-md hover:bg-gray-800 transition-colors opacity-0 group-hover:opacity-100"
+                    title="Close Project"
+                  >
+                    <ChevronLeft size={16} />
+                  </button>
                 </div>
-                <button 
-                  onClick={() => setActiveProject(null)}
-                  className="text-gray-500 hover:text-red-400 p-1 rounded-md hover:bg-gray-800 transition-colors opacity-0 group-hover:opacity-100"
-                  title="Close Project"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-              </div>
+              ) : (
+                <div className="mt-6 mb-2 border-t border-gray-800 w-full"></div>
+              )}
               <button
                 onClick={() => setActiveTab('dashboard')}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${!isSidebarOpen && 'justify-center w-12 h-12'} ${
                   activeTab === 'dashboard' 
                     ? 'bg-blue-600/10 text-blue-400' 
                     : 'text-gray-400 hover:text-white hover:bg-gray-800'
                 }`}
+                title={!isSidebarOpen ? "Live Dashboard" : ""}
               >
-                <LayoutDashboard size={18} />
-                Live Dashboard
+                <LayoutDashboard size={18} className="shrink-0" />
+                {isSidebarOpen && <span>Live Dashboard</span>}
               </button>
               <button
                 onClick={() => setActiveTab('pipeline')}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${!isSidebarOpen && 'justify-center w-12 h-12'} ${
                   activeTab === 'pipeline' 
                     ? 'bg-blue-600/10 text-blue-400' 
                     : 'text-gray-400 hover:text-white hover:bg-gray-800'
                 }`}
+                title={!isSidebarOpen ? "Pipeline Builder" : ""}
               >
-                <GitMerge size={18} />
-                Pipeline Builder
+                <GitMerge size={18} className="shrink-0" />
+                {isSidebarOpen && <span>Pipeline Builder</span>}
               </button>
             </>
           )}
         </div>
 
-        <div className="p-4 border-t border-gray-800 flex flex-col gap-3 shrink-0">
+        <div className={`p-4 border-t border-gray-800 flex flex-col gap-3 shrink-0 ${!isSidebarOpen && 'items-center px-2'}`}>
           {activeProject && (
-             <div className="flex items-center gap-2 text-xs bg-gray-950 px-3 py-2.5 rounded-lg border border-gray-800 justify-center shadow-inner">
-              <Server size={14} className={connected ? 'text-green-500' : 'text-red-500'} />
-              <span className={connected ? 'text-green-500 font-medium' : 'text-red-500 font-medium'}>
-                {connected ? 'Connected' : 'Disconnected'}
-              </span>
+             <div className={`flex items-center gap-2 text-xs bg-gray-950 px-3 py-2.5 rounded-lg border border-gray-800 justify-center shadow-inner ${!isSidebarOpen && 'w-12 h-12 !px-0'}`} title={connected ? 'Connected' : 'Disconnected'}>
+              <Server size={14} className={connected ? 'text-green-500 shrink-0' : 'text-red-500 shrink-0'} />
+              {isSidebarOpen && (
+                <span className={connected ? 'text-green-500 font-medium' : 'text-red-500 font-medium'}>
+                  {connected ? 'Connected' : 'Disconnected'}
+                </span>
+              )}
             </div>
           )}
-          <button
-            onClick={toggleTheme}
-            className="flex items-center justify-center gap-2 w-full p-2.5 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 hover:text-white transition-colors shadow-sm"
-            title="Toggle Theme"
-          >
-            {theme === 'dark' ? <><Sun size={16} /> Light Mode</> : <><Moon size={16} /> Dark Mode</>}
-          </button>
         </div>
       </aside>
 
@@ -246,6 +273,29 @@ function App() {
           </div>
           <div className="flex items-center gap-4">
             <ResourceMonitor />
+            <div className="flex items-center gap-2 border-l border-gray-800 pl-4">
+              <button
+                onClick={toggleTheme}
+                className="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 hover:text-white hover:bg-gray-700 transition-colors shadow-sm flex items-center justify-center"
+                title="Toggle Theme"
+              >
+                {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+              </button>
+              <button
+                onClick={() => handleSystemAction('restart')}
+                className="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 hover:text-blue-400 hover:bg-blue-900/20 transition-colors shadow-sm flex items-center justify-center"
+                title="Restart System"
+              >
+                <RefreshCw size={18} />
+              </button>
+              <button
+                onClick={() => handleSystemAction('shutdown')}
+                className="p-2 rounded-lg bg-gray-800 border border-gray-700 text-gray-400 hover:text-red-400 hover:bg-red-900/20 transition-colors shadow-sm flex items-center justify-center"
+                title="Shutdown System"
+              >
+                <Power size={18} />
+              </button>
+            </div>
           </div>
         </header>
 
