@@ -6,8 +6,9 @@
 
 ## 📸 Screenshots
 > **Note:** Add actual screenshots of the application here.
-<!-- ![Pipeline Builder](docs/images/pipeline_builder.png) -->
-<!-- ![Live Dashboard](docs/images/dashboard.png) -->
+<img width="1870" height="919" alt="image" src="https://github.com/user-attachments/assets/70253d37-5793-4971-a0d4-8761b6145824" />
+
+<img width="1908" height="932" alt="image" src="https://github.com/user-attachments/assets/2432bb6c-1296-4917-ae14-c619c0711649" />
 
 ---
 
