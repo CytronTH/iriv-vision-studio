@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
-from ai_engine.message_router import MessageRouter, LogicNode, RateLimitNode, FunctionNode, ActionNode, HardwareOutputNode, DashboardOutputNode
+from ai_engine.message_router import MessageRouter, LogicNode, RateLimitNode, FunctionNode, ActionNode, HardwareOutputNode, DashboardOutputNode, CounterNode
 
 class CameraStreamConfig:
     def __init__(self, stream_id: str):
@@ -81,6 +81,8 @@ class PipelineParser:
             
             if ntype == "logicNode":
                 router.add_node(nid, LogicNode(nid, ndata, router))
+            elif ntype == "counterNode":
+                router.add_node(nid, CounterNode(nid, ndata, router))
             elif ntype == "rateLimitNode":
                 router.add_node(nid, RateLimitNode(nid, ndata, router))
             elif ntype == "functionNode":

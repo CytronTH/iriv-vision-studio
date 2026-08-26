@@ -58,6 +58,18 @@ export default function Sidebar() {
       </div>
 
       <div 
+        className="flex items-center gap-3 p-3 bg-emerald-900/30 border border-emerald-700/50 rounded-lg cursor-grab hover:bg-emerald-800/40 transition-colors group"
+        onDragStart={(event) => onDragStart(event, 'counterNode')}
+        draggable
+      >
+        <span className="text-emerald-400 font-bold">∑</span>
+        <span className="text-emerald-100 font-medium text-sm">Counter</span>
+        <button onClick={(e) => handleInfoClick(e, 'counterNode')} className="ml-auto text-emerald-400/50 hover:text-emerald-300 opacity-0 group-hover:opacity-100 transition-all p-1 hover:bg-emerald-800/50 rounded">
+          <Info size={16} />
+        </button>
+      </div>
+
+      <div 
         className="flex items-center gap-3 p-3 bg-green-900/30 border border-green-700/50 rounded-lg cursor-grab hover:bg-green-800/40 transition-colors group"
         onDragStart={(event) => onDragStart(event, 'actionNode')}
         draggable

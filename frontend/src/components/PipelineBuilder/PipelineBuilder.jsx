@@ -24,6 +24,7 @@ import DashboardLogNode from './nodes/DashboardLogNode';
 import DebugNode from './nodes/DebugNode';
 import DebugOutputNode from './nodes/DebugOutputNode';
 import FunctionNode from './nodes/FunctionNode';
+import CounterNode from './nodes/CounterNode';
 import ButtonEdge from './edges/ButtonEdge';
 
 const edgeTypes = {
@@ -48,6 +49,7 @@ const nodeTypes = {
   debugOutputNode: DebugOutputNode,
   functionNode: FunctionNode,
   rateLimitNode: RateLimitNode,
+  counterNode: CounterNode,
 };
 
 let id = 0;

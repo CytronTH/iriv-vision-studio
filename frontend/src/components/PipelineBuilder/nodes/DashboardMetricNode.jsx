@@ -31,6 +31,12 @@ export default function DashboardMetricNode({ id, data }) {
       ];
     }
     
+    if (upstreamNode.type === 'counterNode') {
+      return [
+        { value: 'msg.payload', label: 'msg.payload (Counter Value)' }
+      ];
+    }
+    
     return [
       { value: 'msg.payload.count', label: 'msg.payload.count (Number)' },
       { value: 'msg.payload', label: 'msg.payload (Number)' }
@@ -38,6 +44,7 @@ export default function DashboardMetricNode({ id, data }) {
   };
 
   const availableProperties = getAvailableProperties();
+
 
   return (
     <div className="bg-gray-900 border-2 border-pink-600 rounded-xl shadow-lg shadow-pink-900/20 w-64 text-white overflow-hidden">

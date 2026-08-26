@@ -109,8 +109,8 @@
           "id": "dndnode_1787169952845_5",
           "type": "dashboardVideoNode",
           "position": {
-            "x": 1117.576669771432,
-            "y": 834.6129244813806
+            "x": 1071.576669771432,
+            "y": 1354.6129244813806
           },
           "data": {
             "label": "congee1ul"
@@ -283,8 +283,8 @@
           "id": "dndnode_1787652895046_1",
           "type": "debugNode",
           "position": {
-            "x": 1822.5912176056947,
-            "y": -326.0808686367026
+            "x": 1830.5912176056947,
+            "y": -24.080868636702576
           },
           "data": {
             "label": "debugNode node",
@@ -293,43 +293,6 @@
           "measured": {
             "width": 203,
             "height": 119
-          },
-          "selected": false,
-          "dragging": false
-        },
-        {
-          "id": "dndnode_1787661271872_0",
-          "type": "buzzerNode",
-          "position": {
-            "x": 1821.0871026904435,
-            "y": 139.50447316296788
-          },
-          "data": {
-            "label": "buzzerNode node",
-            "triggerOn": false,
-            "disabled": true
-          },
-          "measured": {
-            "width": 256,
-            "height": 243
-          },
-          "selected": true,
-          "dragging": false
-        },
-        {
-          "id": "dndnode_1787685284188_0",
-          "type": "digitalOutputNode",
-          "position": {
-            "x": 1822.378382080907,
-            "y": -182.45327021238114
-          },
-          "data": {
-            "label": "digitalOutputNode node",
-            "triggerOn": false
-          },
-          "measured": {
-            "width": 256,
-            "height": 311
           },
           "selected": false,
           "dragging": false
@@ -349,6 +312,114 @@
           "measured": {
             "width": 256,
             "height": 310
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "id": "dndnode_1787713424909_0",
+          "type": "logicNode",
+          "position": {
+            "x": 1428.4397933351845,
+            "y": 1101.4416068969263
+          },
+          "data": {
+            "label": "logicNode node",
+            "expression": "has(\"cup\")  and   not  has(\"expire_date\") ",
+            "isAdvancedMode": false,
+            "equationHtml": "<span contenteditable=\"false\" class=\"inline-flex items-center px-1.5 py-0.5 mx-0.5 my-0.5 rounded text-[11px] font-mono border shadow-sm align-middle select-none bg-blue-900/40 text-blue-300 border-blue-500/50\" data-code=\"has(&quot;cup&quot;)\">Has cup</span>&nbsp;<span contenteditable=\"false\" class=\"inline-flex items-center px-1.5 py-0.5 mx-0.5 my-0.5 rounded text-[11px] font-mono border shadow-sm align-middle select-none bg-indigo-900/40 text-indigo-300 border-indigo-500/50\" data-code=\" and \">AND</span>&nbsp;<span contenteditable=\"false\" class=\"inline-flex items-center px-1.5 py-0.5 mx-0.5 my-0.5 rounded text-[11px] font-mono border shadow-sm align-middle select-none bg-indigo-900/40 text-indigo-300 border-indigo-500/50\" data-code=\" not \">NOT</span>&nbsp;<span contenteditable=\"false\" class=\"inline-flex items-center px-1.5 py-0.5 mx-0.5 my-0.5 rounded text-[11px] font-mono border shadow-sm align-middle select-none bg-blue-900/40 text-blue-300 border-blue-500/50\" data-code=\"has(&quot;expire_date&quot;)\">Has expire_date</span>&nbsp;",
+            "debounceMs": 500
+          },
+          "measured": {
+            "width": 320,
+            "height": 567
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "id": "dndnode_1787713489373_1",
+          "type": "counterNode",
+          "position": {
+            "x": 1880.680001558239,
+            "y": 1104.2763655724953
+          },
+          "data": {
+            "label": "NG"
+          },
+          "measured": {
+            "width": 256,
+            "height": 280
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "id": "dndnode_1787713739355_2",
+          "type": "debugNode",
+          "position": {
+            "x": 1881.5745918474136,
+            "y": 1644.6910787211893
+          },
+          "data": {
+            "label": "debugNode node"
+          },
+          "measured": {
+            "width": 203,
+            "height": 119
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "id": "dndnode_1787713790714_3",
+          "type": "counterNode",
+          "position": {
+            "x": 1826.1573691575195,
+            "y": 104.37885260702546
+          },
+          "data": {
+            "label": "OK"
+          },
+          "measured": {
+            "width": 256,
+            "height": 280
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "id": "dndnode_1787713885801_4",
+          "type": "dashboardMetricNode",
+          "position": {
+            "x": 2142.269037535514,
+            "y": 122.25900182745704
+          },
+          "data": {
+            "label": "OK",
+            "sourcePath": "msg.payload"
+          },
+          "measured": {
+            "width": 256,
+            "height": 240
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "id": "dndnode_1787713906172_5",
+          "type": "dashboardMetricNode",
+          "position": {
+            "x": 2173.196990983547,
+            "y": 1122.837939956772
+          },
+          "data": {
+            "label": "NG",
+            "sourcePath": "msg.payload"
+          },
+          "measured": {
+            "width": 256,
+            "height": 240
           },
           "selected": false,
           "dragging": false
@@ -515,28 +586,6 @@
         },
         {
           "source": "dndnode_1787285240465_1",
-          "target": "dndnode_1787661271872_0",
-          "type": "buttonEdge",
-          "animated": true,
-          "style": {
-            "stroke": "#3b82f6",
-            "strokeWidth": 2
-          },
-          "id": "xy-edge__dndnode_1787285240465_1-dndnode_1787661271872_0"
-        },
-        {
-          "source": "dndnode_1787285240465_1",
-          "target": "dndnode_1787685284188_0",
-          "type": "buttonEdge",
-          "animated": true,
-          "style": {
-            "stroke": "#3b82f6",
-            "strokeWidth": 2
-          },
-          "id": "xy-edge__dndnode_1787285240465_1-dndnode_1787685284188_0"
-        },
-        {
-          "source": "dndnode_1787285240465_1",
           "target": "dndnode_1787685333534_1",
           "type": "buttonEdge",
           "animated": true,
@@ -545,6 +594,72 @@
             "strokeWidth": 2
           },
           "id": "xy-edge__dndnode_1787285240465_1-dndnode_1787685333534_1"
+        },
+        {
+          "source": "dndnode_1787165412501_1",
+          "target": "dndnode_1787713424909_0",
+          "type": "buttonEdge",
+          "animated": true,
+          "style": {
+            "stroke": "#3b82f6",
+            "strokeWidth": 2
+          },
+          "id": "xy-edge__dndnode_1787165412501_1-dndnode_1787713424909_0"
+        },
+        {
+          "source": "dndnode_1787713424909_0",
+          "target": "dndnode_1787713489373_1",
+          "type": "buttonEdge",
+          "animated": true,
+          "style": {
+            "stroke": "#3b82f6",
+            "strokeWidth": 2
+          },
+          "id": "xy-edge__dndnode_1787713424909_0-dndnode_1787713489373_1"
+        },
+        {
+          "source": "dndnode_1787713424909_0",
+          "target": "dndnode_1787713739355_2",
+          "type": "buttonEdge",
+          "animated": true,
+          "style": {
+            "stroke": "#3b82f6",
+            "strokeWidth": 2
+          },
+          "id": "xy-edge__dndnode_1787713424909_0-dndnode_1787713739355_2"
+        },
+        {
+          "source": "dndnode_1787285240465_1",
+          "target": "dndnode_1787713790714_3",
+          "type": "buttonEdge",
+          "animated": true,
+          "style": {
+            "stroke": "#3b82f6",
+            "strokeWidth": 2
+          },
+          "id": "xy-edge__dndnode_1787285240465_1-dndnode_1787713790714_3"
+        },
+        {
+          "source": "dndnode_1787713790714_3",
+          "target": "dndnode_1787713885801_4",
+          "type": "buttonEdge",
+          "animated": true,
+          "style": {
+            "stroke": "#3b82f6",
+            "strokeWidth": 2
+          },
+          "id": "xy-edge__dndnode_1787713790714_3-dndnode_1787713885801_4"
+        },
+        {
+          "source": "dndnode_1787713489373_1",
+          "target": "dndnode_1787713906172_5",
+          "type": "buttonEdge",
+          "animated": true,
+          "style": {
+            "stroke": "#3b82f6",
+            "strokeWidth": 2
+          },
+          "id": "xy-edge__dndnode_1787713489373_1-dndnode_1787713906172_5"
         }
       ]
     },
@@ -553,6 +668,16 @@
         "id": "dashboard.dndnode_1787600277200_2.value",
         "name": "status1",
         "dataType": "text"
+      },
+      {
+        "id": "dashboard.dndnode_1787713885801_4.value",
+        "name": "OK",
+        "dataType": "number"
+      },
+      {
+        "id": "dashboard.dndnode_1787713906172_5.value",
+        "name": "NG",
+        "dataType": "number"
       },
       {
         "id": "stream.rtsp.dndnode_1787166814228_0_0",
@@ -623,6 +748,40 @@
           "config": {
             "title": "New Text",
             "dataPath": "dashboard.dndnode_1787600277200_2.value",
+            "unit": ""
+          }
+        },
+        {
+          "i": "metric_1787713984855",
+          "x": 2,
+          "y": 6,
+          "w": 2,
+          "h": 2,
+          "minW": 2,
+          "minH": 2,
+          "moved": false,
+          "static": false,
+          "type": "metric",
+          "config": {
+            "title": "OK",
+            "dataPath": "dashboard.dndnode_1787713885801_4.value",
+            "unit": ""
+          }
+        },
+        {
+          "i": "metric_1787713988229",
+          "x": 4,
+          "y": 6,
+          "w": 2,
+          "h": 2,
+          "minW": 2,
+          "minH": 2,
+          "moved": false,
+          "static": false,
+          "type": "metric",
+          "config": {
+            "title": "NG",
+            "dataPath": "dashboard.dndnode_1787713906172_5.value",
             "unit": ""
           }
         }

@@ -139,6 +139,39 @@ class LogicNode(PipelineNode):
 
         return msg
 
+class CounterNode(PipelineNode):
+    def __init__(self, node_id, data, router):
+        super().__init__(node_id, data, router)
+        self.count = 0
+        self.last_payload = False
+        self.edge_type = data.get("edgeType", "rising")
+
+    def process(self, msg: dict):
+        current_payload = bool(msg.get("payload"))
+        
+        if self.edge_type == "falling":
+            # Edge trigger: True -> False
+            if not current_payload and self.last_payload:
+                self.count += 1
+        else:
+            # Edge trigger: False -> True
+            if current_payload and not self.last_payload:
+                self.count += 1
+            
+        self.last_payload = current_payload
+        msg["payload"] = self.count
+        
+        # Send state for UI Dashboard (metadata_callback)
+        if self.router.metadata_callback:
+            self.router.metadata_callback({
+                "type": "dashboard_update",
+                "node_id": f"dashboard.{self.node_id}.value",
+                "value": self.count,
+                "camera_id": msg.get("camera_id", msg.get("metadata", {}).get("camera_id"))
+            })
+            
+        return msg
+
 class FunctionNode(PipelineNode):
     def __init__(self, node_id, data, router):
         super().__init__(node_id, data, router)
