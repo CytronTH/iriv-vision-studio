@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Camera, BrainCircuit, Filter, Bell, ToggleLeft, ToggleRight, Lightbulb, BellRing, Settings2, Info } from 'lucide-react';
+import { Camera, BrainCircuit, Filter, Bell, ToggleLeft, ToggleRight, Lightbulb, BellRing, Settings2, Info, Camera as CameraIcon } from 'lucide-react';
 import TutorialModal from './TutorialModal';
 
 export default function Sidebar() {
@@ -77,6 +77,18 @@ export default function Sidebar() {
         <Bell className="text-green-400" size={20} />
         <span className="text-green-100 font-medium text-sm">Action / Alert</span>
         <button onClick={(e) => handleInfoClick(e, 'actionNode')} className="ml-auto text-green-400/50 hover:text-green-300 opacity-0 group-hover:opacity-100 transition-all p-1 hover:bg-green-800/50 rounded">
+          <Info size={16} />
+        </button>
+      </div>
+
+      <div 
+        className="flex items-center gap-3 p-3 bg-pink-900/30 border border-pink-700/50 rounded-lg cursor-grab hover:bg-pink-800/40 transition-colors group"
+        onDragStart={(event) => onDragStart(event, 'snapshotNode')}
+        draggable
+      >
+        <CameraIcon className="text-pink-400" size={20} />
+        <span className="text-pink-100 font-medium text-sm">Snapshot</span>
+        <button onClick={(e) => handleInfoClick(e, 'snapshotNode')} className="ml-auto text-pink-400/50 hover:text-pink-300 opacity-0 group-hover:opacity-100 transition-all p-1 hover:bg-pink-800/50 rounded">
           <Info size={16} />
         </button>
       </div>

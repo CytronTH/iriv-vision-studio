@@ -423,6 +423,40 @@
           },
           "selected": false,
           "dragging": false
+        },
+        {
+          "id": "dndnode_1787717728480_0",
+          "type": "snapshotNode",
+          "position": {
+            "x": 2140.4397933351847,
+            "y": 370.23737313740736
+          },
+          "data": {
+            "label": "OK"
+          },
+          "measured": {
+            "width": 256,
+            "height": 238
+          },
+          "selected": false,
+          "dragging": false
+        },
+        {
+          "id": "dndnode_1787717755913_1",
+          "type": "snapshotNode",
+          "position": {
+            "x": 2176.6164684037076,
+            "y": 1376.9873099676563
+          },
+          "data": {
+            "label": "NG"
+          },
+          "measured": {
+            "width": 256,
+            "height": 238
+          },
+          "selected": false,
+          "dragging": false
         }
       ],
       "edges": [
@@ -660,6 +694,28 @@
             "strokeWidth": 2
           },
           "id": "xy-edge__dndnode_1787713489373_1-dndnode_1787713906172_5"
+        },
+        {
+          "source": "dndnode_1787285240465_1",
+          "target": "dndnode_1787717728480_0",
+          "type": "buttonEdge",
+          "animated": true,
+          "style": {
+            "stroke": "#3b82f6",
+            "strokeWidth": 2
+          },
+          "id": "xy-edge__dndnode_1787285240465_1-dndnode_1787717728480_0"
+        },
+        {
+          "source": "dndnode_1787713424909_0",
+          "target": "dndnode_1787717755913_1",
+          "type": "buttonEdge",
+          "animated": true,
+          "style": {
+            "stroke": "#3b82f6",
+            "strokeWidth": 2
+          },
+          "id": "xy-edge__dndnode_1787713424909_0-dndnode_1787717755913_1"
         }
       ]
     },
@@ -678,6 +734,16 @@
         "id": "dashboard.dndnode_1787713906172_5.value",
         "name": "NG",
         "dataType": "number"
+      },
+      {
+        "id": "dashboard.dndnode_1787717728480_0.value",
+        "name": "OK",
+        "dataType": "text"
+      },
+      {
+        "id": "dashboard.dndnode_1787717755913_1.value",
+        "name": "NG",
+        "dataType": "text"
       },
       {
         "id": "stream.rtsp.dndnode_1787166814228_0_0",

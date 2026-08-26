@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
-from ai_engine.message_router import MessageRouter, LogicNode, RateLimitNode, FunctionNode, ActionNode, HardwareOutputNode, DashboardOutputNode, CounterNode
+from ai_engine.message_router import MessageRouter, LogicNode, RateLimitNode, FunctionNode, ActionNode, HardwareOutputNode, DashboardOutputNode, CounterNode, SnapshotNode
 
 class CameraStreamConfig:
     def __init__(self, stream_id: str):
@@ -55,7 +55,7 @@ class PipelineParser:
             logger.error(f"Failed to load entities.json: {e}")
             return {"cameras": [], "models": [], "integrations": []}
             
-    def parse(self, payload: Dict[str, Any]) -> ParsedPipelineConfig:
+    def parse(self, payload: Dict[str, Any], project_id: str = "default") -> ParsedPipelineConfig:
         config = ParsedPipelineConfig()
         raw_nodes = payload.get("nodes", [])
         raw_edges = payload.get("edges", [])
@@ -70,7 +70,7 @@ class PipelineParser:
         entities = self._load_entities()
         
         # Build MessageRouter graph
-        router = MessageRouter()
+        router = MessageRouter(project_id=project_id)
         config.router = router
         
         # 1. Create Router Nodes for Data Flow
@@ -105,6 +105,11 @@ class PipelineParser:
                 router.add_node(nid, DashboardOutputNode(nid, ndata, router))
                 config.dashboard_nodes.append({
                     "id": f"dashboard.{nid}.value", "name": ndata.get("label", "Metric"), "dataType": "number"
+                })
+            elif ntype == "snapshotNode":
+                router.add_node(nid, SnapshotNode(nid, ndata, router))
+                config.dashboard_nodes.append({
+                    "id": f"dashboard.{nid}.value", "name": ndata.get("label", "Text"), "dataType": "text"
                 })
             elif ntype == "dashboardTextNode":
                 router.add_node(nid, DashboardOutputNode(nid, ndata, router))

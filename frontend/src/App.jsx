@@ -6,6 +6,7 @@ import Settings from './components/Settings/Settings';
 import ProjectList from './components/Home/ProjectList';
 import ResourceMonitor from './components/ResourceMonitor';
 import ErrorBoundary from './components/ErrorBoundary';
+import LogsViewer from './components/LogsViewer';
 
 function App() {
   const [activeProject, setActiveProject] = useState(null);
@@ -229,6 +230,18 @@ function App() {
                 <GitMerge size={18} className="shrink-0" />
                 {isSidebarOpen && <span>Pipeline Builder</span>}
               </button>
+              <button
+                onClick={() => setActiveTab('logs')}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${!isSidebarOpen && 'justify-center w-12 h-12'} ${
+                  activeTab === 'logs' 
+                    ? 'bg-blue-600/10 text-blue-400' 
+                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+                title={!isSidebarOpen ? "Database Logs" : ""}
+              >
+                <Server size={18} className="shrink-0" />
+                {isSidebarOpen && <span>Database Logs</span>}
+              </button>
             </>
           )}
         </div>
@@ -260,7 +273,7 @@ function App() {
                  <span className="text-gray-300 font-medium">{activeProject.name}</span>
                  <span className="text-gray-600">/</span>
                  <span className="text-blue-400 font-medium">
-                   {activeTab === 'dashboard' ? 'Live Dashboard' : 'Pipeline Builder'}
+                   {activeTab === 'dashboard' ? 'Live Dashboard' : activeTab === 'pipeline' ? 'Pipeline Builder' : 'Database Logs'}
                  </span>
                </>
              )}
@@ -328,6 +341,12 @@ function App() {
           {activeProject && activeTab === 'pipeline' && (
              <div className="h-full flex flex-col p-6">
                <PipelineBuilder projectId={activeProject.id} />
+             </div>
+          )}
+          
+          {activeProject && activeTab === 'logs' && (
+             <div className="h-full bg-gray-950">
+               <LogsViewer />
              </div>
           )}
         </main>

@@ -280,9 +280,70 @@ class HardwareOutputNode(PipelineNode):
             
         return msg
 
+class SnapshotNode(PipelineNode):
+    def __init__(self, node_id, data, router):
+        super().__init__(node_id, data, router)
+        self.label = data.get("label", "Snapshot")
+        self.last_payload = False
+
+    def process(self, msg: dict):
+        current_payload = bool(msg.get("payload"))
+        if current_payload and not self.last_payload:
+            camera_id = msg.get("camera_id", msg.get("metadata", {}).get("camera_id"))
+            if camera_id:
+                import subprocess
+                from pathlib import Path
+                import time
+                
+                snapshots_dir = Path("/home/pi/iriv-vision-studio/snapshots")
+                snapshots_dir.mkdir(parents=True, exist_ok=True)
+                
+                timestamp = int(time.time() * 1000)
+                filename = f"{camera_id}_{timestamp}.jpg"
+                filepath = snapshots_dir / filename
+                
+                rtsp_url = f"rtsp://127.0.0.1:8554/{self.router.project_id}_{camera_id}"
+                
+                try:
+                    # Run ffmpeg to grab a frame in background
+                    subprocess.Popen([
+                        "ffmpeg", "-y", "-rtsp_transport", "tcp", "-i", rtsp_url, 
+                        "-vframes", "1", "-q:v", "2", str(filepath)
+                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    
+                    # Log to DB
+                    import sys
+                    import os
+                    # add backend dir to sys.path if needed
+                    backend_dir = Path("/home/pi/iriv-vision-studio/backend")
+                    if str(backend_dir) not in sys.path:
+                        sys.path.insert(0, str(backend_dir))
+                    from db.database import db
+                    
+                    # Include count if available
+                    payload = msg.get("payload")
+                    if isinstance(payload, int):
+                        pass # It might be the count from CounterNode
+                        
+                    db.log_event(
+                        node_id=self.node_id,
+                        event_type=f"SNAPSHOT",
+                        payload={"label": self.label, "trigger": payload},
+                        camera_id=camera_id,
+                        snapshot_path=str(filepath)
+                    )
+                except Exception as e:
+                    import logging
+                    logging.getLogger("ai_engine").error(f"Snapshot error: {e}")
+                    
+        self.last_payload = current_payload
+        return msg
+
 class MessageRouter:
-    def __init__(self, metadata_callback=None):
-        self.nodes = {}       
+    def __init__(self, metadata_callback=None, project_id="default"):
+        self.nodes = {}
+        self.metadata_callback = metadata_callback
+        self.project_id = project_id       
         self.edges = {}       
         self.msg_queue = queue.Queue(maxsize=30)
         self.running = False

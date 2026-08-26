@@ -120,6 +120,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi.staticfiles import StaticFiles
+import os
+snapshots_dir = "/home/pi/iriv-vision-studio/snapshots"
+os.makedirs(snapshots_dir, exist_ok=True)
+app.mount("/api/snapshots", StaticFiles(directory=snapshots_dir), name="snapshots")
+
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "IRIV Vision Studio Backend is running."}
@@ -593,7 +599,7 @@ async def deploy_pipeline(payload: PipelinePayload):
     try:
         base_dir = Path(__file__).resolve().parent.parent
         parser = PipelineParser(base_dir)
-        config = parser.parse({"nodes": payload.nodes, "edges": payload.edges})
+        config = parser.parse({"nodes": payload.nodes, "edges": payload.edges}, project_id=project_id)
         
         # Stop existing worker for this project if any
         if project_id in active_workers:
@@ -777,6 +783,15 @@ async def restart_system():
     import os
     os.system("sudo reboot")
     return {"status": "success", "message": "Rebooting..."}
+
+@app.get("/api/logs")
+def get_logs(limit: int = 100, node_id: str = None):
+    try:
+        from db.database import db
+        logs = db.get_logs(limit=limit, node_id=node_id)
+        return {"status": "success", "data": logs}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.post("/api/system/shutdown")
 async def shutdown_system():
