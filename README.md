@@ -186,6 +186,7 @@ HAILO_DEVICE_ID=0000:01:00.0
 - [x] Advanced logic nodes (Function Node, Rate Limit Node)
 - [x] Enhanced stream quality auto-adjustments (`stream_quality.py`)
 - [x] Extended hardware protocol integrations (RS485)
+- [x] USB Camera (V4L2) integration and WebRTC streaming fixes
 
 ### 🚧 In Progress (WIP)
 - [ ] Export pipeline configurations to standalone Docker containers

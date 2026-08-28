@@ -107,8 +107,8 @@ export default memo(({ data, isConnectable, id }) => {
   
   if (sourceNode?.type === 'inputNode') {
     if (projectId) {
-      whepUrl = `http://${window.location.hostname}:8889/loop_${projectId}_${sourceNode.id}/whep`;
       currentStreamId = `cam_${sourceNode.id}`;
+      whepUrl = `http://${window.location.hostname}:8889/${projectId}_${currentStreamId}/whep`;
     }
   } else if (sourceNode?.type === 'aiNode') {
     const aiIncomingEdge = edges.find(e => e.target === sourceNode.id);

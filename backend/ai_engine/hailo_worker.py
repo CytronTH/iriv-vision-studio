@@ -206,7 +206,10 @@ class HailoPipelineWorker:
                         speed_filter = f"! videorate rate={speed} "
                     source_bin = f"filesrc location={video_src} ! decodebin {speed_filter}"
             else:
-                source_bin = "libcamerasrc"
+                if video_src.startswith("/dev/video"):
+                    source_bin = f"v4l2src device={video_src}"
+                else:
+                    source_bin = "libcamerasrc"
             
             if len(group) == 1:
                 # Single stream from this source — use original simple pipeline
