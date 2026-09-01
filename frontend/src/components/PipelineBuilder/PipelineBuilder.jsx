@@ -11,7 +11,7 @@ import { nodeTypes, edgeTypes } from './nodeTypes';
 let id = 0;
 const getId = () => `dndnode_${Date.now()}_${id++}`;
 
-export default function PipelineBuilder({ projectId }) {
+export default function PipelineBuilder({ projectId, onOpenWiki }) {
   const reactFlowWrapper = useRef(null);
   const [reactFlowInstance, setReactFlowInstance] = React.useState(null);
   const [isSelectMode, setIsSelectMode] = useState(false);
@@ -178,7 +178,7 @@ export default function PipelineBuilder({ projectId }) {
         {/* Collapsible Sidebar Container */}
         <div className={`transition-all duration-300 ease-in-out overflow-hidden flex shrink-0 ${isSidebarOpen ? 'w-64' : 'w-0'}`}>
           <div className="w-64 shrink-0 flex h-full">
-            <Sidebar />
+            <Sidebar onOpenWiki={onOpenWiki} />
           </div>
         </div>
       </ReactFlowProvider>

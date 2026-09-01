@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, Server, LayoutDashboard, GitMerge, Settings as SettingsIcon, ChevronLeft, Home, Sun, Moon, Power, RefreshCw } from 'lucide-react';
+import { Activity, Server, LayoutDashboard, GitMerge, Settings as SettingsIcon, ChevronLeft, Home, Sun, Moon, Power, RefreshCw, BookOpen } from 'lucide-react';
 import LiveDashboard from './components/LiveDashboard';
 import PipelineBuilder from './components/PipelineBuilder/PipelineBuilder';
 import Settings from './components/Settings/Settings';
@@ -7,6 +7,7 @@ import ProjectList from './components/Home/ProjectList';
 import ResourceMonitor from './components/ResourceMonitor';
 import ErrorBoundary from './components/ErrorBoundary';
 import LogsViewer from './components/LogsViewer';
+import NodeWiki from './components/Wiki/NodeWiki';
 
 function App() {
   const [activeProject, setActiveProject] = useState(null);
@@ -15,6 +16,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'dark');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [wikiNode, setWikiNode] = useState(null);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -242,6 +244,21 @@ function App() {
                 <Server size={18} className="shrink-0" />
                 {isSidebarOpen && <span>Database Logs</span>}
               </button>
+              <button
+                onClick={() => {
+                  setWikiNode(null);
+                  setActiveTab('wiki');
+                }}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${!isSidebarOpen && 'justify-center w-12 h-12'} ${
+                  activeTab === 'wiki' 
+                    ? 'bg-blue-600/10 text-blue-400' 
+                    : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                }`}
+                title={!isSidebarOpen ? "Node Wiki" : ""}
+              >
+                <BookOpen size={18} className="shrink-0" />
+                {isSidebarOpen && <span>Node Wiki</span>}
+              </button>
             </>
           )}
         </div>
@@ -273,7 +290,7 @@ function App() {
                  <span className="text-gray-300 font-medium">{activeProject.name}</span>
                  <span className="text-gray-600">/</span>
                  <span className="text-blue-400 font-medium">
-                   {activeTab === 'dashboard' ? 'Live Dashboard' : activeTab === 'pipeline' ? 'Pipeline Builder' : 'Database Logs'}
+                   {activeTab === 'dashboard' ? 'Live Dashboard' : activeTab === 'pipeline' ? 'Pipeline Builder' : activeTab === 'wiki' ? 'Node Wiki' : 'Database Logs'}
                  </span>
                </>
              )}
@@ -341,9 +358,21 @@ function App() {
           {activeProject && activeTab === 'pipeline' && (
              <ErrorBoundary>
                <div className="h-full flex flex-col p-6">
-                 <PipelineBuilder projectId={activeProject.id} />
+                 <PipelineBuilder 
+                   projectId={activeProject.id} 
+                   onOpenWiki={(nodeType) => {
+                     setWikiNode(nodeType);
+                     setActiveTab('wiki');
+                   }}
+                 />
                </div>
              </ErrorBoundary>
+          )}
+          
+          {activeProject && activeTab === 'wiki' && (
+             <div className="h-full bg-gray-950">
+               <NodeWiki initialNode={wikiNode} />
+             </div>
           )}
           
           {activeProject && activeTab === 'logs' && (

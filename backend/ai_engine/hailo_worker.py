@@ -43,6 +43,7 @@ class HailoPipelineWorker:
         self.ffmpeg_procs = []
         self._ffmpeg_launched = {}   # Persists across quality-change restarts (reuses running ffmpeg)
         self._restarting = False     # Guards against concurrent pipeline restarts
+        self.fps_counters = {}       # {camera_id: {"count": 0, "start": time.time(), "fps": 0}}
 
         # State tracking for debounce
         self.logic_state_history = {}
@@ -229,22 +230,40 @@ class HailoPipelineWorker:
                 
                 if has_ai:
                     config_path_arg = self._generate_label_config(cam_stream, stream_id)
+                    overlay_str = ""
+                    stream_W, stream_H, stream_kbps = W, H, kbps
+                    fps_throttle_str = ""
+                    
+                    backend_res = getattr(cam_stream, 'backend_resolution', 'auto')
+                    if getattr(cam_stream, 'bbox_draw_mode', 'frontend') == 'backend':
+                        overlay_str = f"hailooverlay line-thickness={getattr(cam_stream, 'bbox_line_thickness', 2)} font-thickness={getattr(cam_stream, 'bbox_font_thickness', 1)} ! "
+                        if backend_res != 'auto' and not self.quality_mgr.emergency_override:
+                            if backend_res == '360p':
+                                stream_W, stream_H, stream_kbps = 640, 360, 400
+                            elif backend_res == '480p':
+                                stream_W, stream_H, stream_kbps = 854, 480, 700
+                                fps_throttle_str = "videorate drop-only=true max-rate=15 ! "
+                            elif backend_res == '720p':
+                                stream_W, stream_H, stream_kbps = 1280, 720, 2000
+                                fps_throttle_str = "videorate drop-only=true max-rate=15 ! "
+                    
                     # Single-branch pipeline — tee AFTER Hailo so display and bbox share the same frame:
                     #   source → 640×640 (letterbox) → hailonet → hailofilter → tee
                     #   ├─ Display: crop(140,140) → scale {W}×{H} → encode → stream
                     #   └─ Metadata: fakesink probe → correct_y → WebSocket
-                    # {W}×{H} is selected by StreamQualityManager (adaptive per CPU / stream count).
                     sub_str = (
                         f"{source_bin} ! "
                         f"videoconvert ! videoscale ! "
                         f"video/x-raw,format=RGB,width=640,height=640,pixel-aspect-ratio=1/1 ! "
                         f"hailonet hef-path={hef} force-writable=true vdevice-group-id=1 ! "
                         f"hailofilter name=filter_{i} so-path={so} {config_path_arg} qos=false ! "
+                        f"{overlay_str}"
                         f"tee name=ai_tee_{i} "
                         f"ai_tee_{i}. ! queue max-size-buffers=3 leaky=downstream ! "
                         f"videocrop top=140 bottom=140 ! "
-                        f"videoconvert ! videoscale ! video/x-raw,width={W},height={H} ! "
-                        f"x264enc tune=zerolatency speed-preset=ultrafast bitrate={kbps} key-int-max=30 ! "
+                        f"videoconvert ! videoscale ! video/x-raw,width={stream_W},height={stream_H} ! "
+                        f"{fps_throttle_str}"
+                        f"x264enc tune=zerolatency speed-preset=ultrafast bitrate={stream_kbps} key-int-max=30 ! "
                         f"video/x-h264,pixel-aspect-ratio=1/1 ! "
                         f"h264parse config-interval=1 ! "
                         f"rtspclientsink location=rtsp://127.0.0.1:8554/{self.project_id}_{stream_id} protocols=tcp "
@@ -281,16 +300,35 @@ class HailoPipelineWorker:
                     
                     if has_ai:
                         config_path_arg = self._generate_label_config(cam_stream, stream_id)
+                        overlay_str = ""
+                        stream_W, stream_H, stream_kbps = W, H, kbps
+                        fps_throttle_str = ""
+                        
+                        backend_res = getattr(cam_stream, 'backend_resolution', 'auto')
+                        if getattr(cam_stream, 'bbox_draw_mode', 'frontend') == 'backend':
+                            overlay_str = f"hailooverlay line-thickness={getattr(cam_stream, 'bbox_line_thickness', 2)} font-thickness={getattr(cam_stream, 'bbox_font_thickness', 1)} ! "
+                            if backend_res != 'auto' and not self.quality_mgr.emergency_override:
+                                if backend_res == '360p':
+                                    stream_W, stream_H, stream_kbps = 640, 360, 400
+                                elif backend_res == '480p':
+                                    stream_W, stream_H, stream_kbps = 854, 480, 700
+                                    fps_throttle_str = "videorate drop-only=true max-rate=15 ! "
+                                elif backend_res == '720p':
+                                    stream_W, stream_H, stream_kbps = 1280, 720, 2000
+                                    fps_throttle_str = "videorate drop-only=true max-rate=15 ! "
+
                         branches.append(
                             f"{tee_name}. ! queue max-size-buffers=3 leaky=downstream ! videoconvert ! videoscale ! "
                             f"video/x-raw,format=RGB,width=640,height=640,pixel-aspect-ratio=1/1 ! "
                             f"hailonet hef-path={hef} force-writable=true vdevice-group-id=1 ! "
                             f"hailofilter name=filter_{i} so-path={so} {config_path_arg} qos=false ! "
+                            f"{overlay_str}"
                             f"tee name=ai_tee_{i} "
                             f"ai_tee_{i}. ! queue max-size-buffers=3 leaky=downstream ! "
                             f"videocrop top=140 bottom=140 ! "
-                            f"videoconvert ! videoscale ! video/x-raw,width={W},height={H} ! "
-                            f"x264enc tune=zerolatency speed-preset=ultrafast bitrate={kbps} key-int-max=30 ! "
+                            f"videoconvert ! videoscale ! video/x-raw,width={stream_W},height={stream_H} ! "
+                            f"{fps_throttle_str}"
+                            f"x264enc tune=zerolatency speed-preset=ultrafast bitrate={stream_kbps} key-int-max=30 ! "
                             f"video/x-h264,pixel-aspect-ratio=1/1 ! "
                             f"h264parse config-interval=1 ! "
                             f"rtspclientsink location=rtsp://127.0.0.1:8554/{self.project_id}_{stream_id} protocols=tcp "
@@ -362,6 +400,20 @@ class HailoPipelineWorker:
                 if stream_cfg:
                     ai_task = getattr(stream_cfg, "ai_task", "detection")
                     
+            # Calculate FPS
+            now = time.time()
+            if camera_id not in self.fps_counters:
+                self.fps_counters[camera_id] = {"count": 0, "start": now, "fps": 0}
+            
+            self.fps_counters[camera_id]["count"] += 1
+            elapsed = now - self.fps_counters[camera_id]["start"]
+            if elapsed >= 1.0:
+                self.fps_counters[camera_id]["fps"] = round(self.fps_counters[camera_id]["count"] / elapsed, 1)
+                self.fps_counters[camera_id]["count"] = 0
+                self.fps_counters[camera_id]["start"] = now
+            
+            current_fps = self.fps_counters[camera_id]["fps"]
+
             parsed_results = []
             object_count_threshold = 0
             
@@ -486,7 +538,6 @@ class HailoPipelineWorker:
 
                         
             # ── Send to MessageRouter ─────────────────────────────────────────
-            import time
             if getattr(self.config, 'router', None):
                 labels = list(set([o.get("label") for o in parsed_results if "label" in o]))
                 max_conf = max([o.get("confidence", 0) for o in parsed_results], default=0.0)
@@ -501,7 +552,11 @@ class HailoPipelineWorker:
                     "metadata": {
                         "camera_id": camera_id,
                         "timestamp": time.time(),
-                        "ai_task": ai_task
+                        "ai_task": ai_task,
+                        "fps": current_fps,
+                        "bbox_draw_mode": getattr(stream_cfg, 'bbox_draw_mode', 'frontend') if stream_cfg else 'frontend',
+                        "bbox_line_thickness": getattr(stream_cfg, 'bbox_line_thickness', 2) if stream_cfg else 2,
+                        "bbox_font_thickness": getattr(stream_cfg, 'bbox_font_thickness', 1) if stream_cfg else 1
                     }
                 }
                 ai_node_id = getattr(stream_cfg, 'ai_node_id', None) if stream_cfg else None
@@ -510,9 +565,13 @@ class HailoPipelineWorker:
                                 
             if self.metadata_callback:
                 # We send the metadata to the frontend
-                metadata = {"type": ai_task, "data": parsed_results, "camera_id": camera_id, "msg": msg}
+                metadata = {"type": ai_task, "data": parsed_results, "camera_id": camera_id, "fps": current_fps, "msg": msg}
                 if stream_cfg and getattr(stream_cfg, 'roi_enabled', False) and getattr(stream_cfg, 'show_roi', False) and getattr(stream_cfg, 'roi', None):
                     metadata["roi"] = stream_cfg.roi
+                if msg.get("metadata"):
+                    metadata["bbox_draw_mode"] = msg["metadata"].get("bbox_draw_mode", "frontend")
+                    metadata["bbox_line_thickness"] = msg["metadata"].get("bbox_line_thickness", 2)
+                    metadata["bbox_font_thickness"] = msg["metadata"].get("bbox_font_thickness", 1)
                 self.metadata_callback(metadata)
                 
         except Exception as e:

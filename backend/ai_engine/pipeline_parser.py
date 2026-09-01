@@ -17,11 +17,16 @@ class CameraStreamConfig:
         self.hef_path = ""
         self.so_path = ""
         self.roi = {"x": 0, "y": 0, "w": 1, "h": 1}
+        self.backend_resolution = "auto"
         self.dashboard_video_nodes = []
         self.input_node_id = None
         self.ai_node_id = None
         self.loop = True
         self.speed = 1.0
+        
+        self.bbox_draw_mode = "frontend"
+        self.bbox_line_thickness = 2
+        self.bbox_font_thickness = 1
         
         self.classes = []
         self.class_filter = None
@@ -218,6 +223,11 @@ class PipelineParser:
                     stream_config.show_roi = ai_data.get("showRoi", False)
                     stream_config.confidence_threshold = float(ai_data.get("confidenceThreshold", 0.5))
                     stream_config.class_confidences = ai_data.get("classConfidences", {})
+                    
+                    stream_config.bbox_draw_mode = ai_data.get("bboxDrawMode", "frontend")
+                    stream_config.bbox_line_thickness = int(ai_data.get("bboxLineThickness", 2))
+                    stream_config.bbox_font_thickness = int(ai_data.get("bboxFontThickness", 1))
+                    stream_config.backend_resolution = ai_data.get("backendResolution", "auto")
                     
                     raw_filter = ai_data.get("classFilter", None)
                     stream_config.class_filter = raw_filter if raw_filter and isinstance(raw_filter, list) else None

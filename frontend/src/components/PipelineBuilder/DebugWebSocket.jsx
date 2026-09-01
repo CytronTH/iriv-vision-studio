@@ -91,9 +91,11 @@ export default function DebugWebSocket() {
             }
           } else if (data.camera_id) {
             if (cameras.has(data.camera_id)) {
-              isMonitored = true;
-              sourceDebugNodeIds = cameras.get(data.camera_id);
-              if (setDebugData) setDebugData(data.camera_id, data);
+              if (data.type === 'detection' || data.type === 'classification' || data.type === 'pose' || data.type === 'segmentation' || !data.type) {
+                isMonitored = true;
+                sourceDebugNodeIds = cameras.get(data.camera_id);
+                if (setDebugData) setDebugData(data.camera_id, data);
+              }
             }
           }
 

@@ -50,6 +50,8 @@ class StreamQualityManager:
         self._current_tier: int = 2          # Start at 360p (safe default for Pi 5)
         self._pending_tier: Optional[int]  = None
         self._pending_since: Optional[float] = None
+        self.emergency_override: bool = False
+        self._overload_since: Optional[float] = None
         self._stop_event = threading.Event()
         self._monitor_thread: Optional[threading.Thread] = None
 
@@ -166,6 +168,28 @@ class StreamQualityManager:
                     continue
 
                 cpu          = self._get_cpu()
+                
+                # ── Emergency Overload Protection ──
+                if cpu > 95.0:
+                    if self._overload_since is None:
+                        self._overload_since = time.time()
+                    elif time.time() - self._overload_since >= 15.0 and not self.emergency_override:
+                        logger.warning("[StreamQuality] CPU > 95% for 15s! Triggering EMERGENCY OVERRIDE for forced resolutions.")
+                        self.emergency_override = True
+                        try:
+                            on_tier_change(self._current_tier, QUALITY_TIERS[self._current_tier])
+                        except Exception as exc:
+                            pass
+                else:
+                    self._overload_since = None
+                    if cpu < 70.0 and self.emergency_override:
+                        logger.info("[StreamQuality] CPU recovered. Disabling emergency override.")
+                        self.emergency_override = False
+                        try:
+                            on_tier_change(self._current_tier, QUALITY_TIERS[self._current_tier])
+                        except Exception as exc:
+                            pass
+
                 desired_tier = self.select_tier(cpu, num_streams)
 
                 if desired_tier != self._current_tier:

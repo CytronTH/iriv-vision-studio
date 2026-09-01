@@ -1,9 +1,7 @@
-import React, { useState } from 'react';
-import { Camera, BrainCircuit, Filter, Bell, ToggleLeft, ToggleRight, Lightbulb, BellRing, Settings2, Info, Camera as CameraIcon } from 'lucide-react';
-import TutorialModal from './TutorialModal';
+import React from 'react';
+import { Camera, BrainCircuit, Filter, Bell, ToggleLeft, ToggleRight, Lightbulb, BellRing, Settings2, Info, Camera as CameraIcon, BookOpen } from 'lucide-react';
 
-export default function Sidebar() {
-  const [tutorialNode, setTutorialNode] = useState(null);
+export default function Sidebar({ onOpenWiki }) {
 
   const onDragStart = (event, nodeType) => {
     event.dataTransfer.setData('application/reactflow', nodeType);
@@ -12,12 +10,20 @@ export default function Sidebar() {
 
   const handleInfoClick = (e, nodeType) => {
     e.stopPropagation();
-    setTutorialNode(nodeType);
+    if (onOpenWiki) onOpenWiki(nodeType);
   };
 
   return (
     <aside className="w-64 bg-gray-900 border-l border-gray-800 p-4 flex flex-col gap-4 overflow-y-auto">
-      <div className="text-gray-300 font-semibold text-sm uppercase tracking-wider mb-2">
+      <button 
+        onClick={() => onOpenWiki && onOpenWiki(null)}
+        className="flex items-center gap-2 mb-2 p-3 bg-blue-600/20 hover:bg-blue-600/30 border border-blue-500/50 rounded-lg text-blue-100 font-medium text-sm transition-all shadow-sm"
+      >
+        <BookOpen size={18} className="text-blue-400" />
+        📖 เปิดดู Node Wiki (หน้าหลัก)
+      </button>
+
+      <div className="text-gray-300 font-semibold text-sm uppercase tracking-wider mb-2 mt-2">
         Nodes
       </div>
       
@@ -228,14 +234,6 @@ export default function Sidebar() {
       <div className="mt-auto text-xs text-gray-500 italic text-center p-4">
         Drag and drop nodes onto the canvas to build your pipeline.
       </div>
-      
-      {/* Tutorial Modal */}
-      {tutorialNode && (
-        <TutorialModal 
-          nodeType={tutorialNode} 
-          onClose={() => setTutorialNode(null)} 
-        />
-      )}
     </aside>
   );
 }

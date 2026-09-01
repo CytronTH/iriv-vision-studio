@@ -131,19 +131,29 @@ export default memo(({ data, isConnectable, id }) => {
   const canvasRef = useRef(null);
   const videoRef = useRef(null);
   const { status, reconnect } = useWhepStream(whepUrl, videoRef);
+  const [resolution, setResolution] = useState(null);
 
   const shouldDrawBoxes = sourceNode?.type === 'aiNode' && !data?.isPaused;
   const lastBoxesRef = useRef({ items: [], time: 0 });
+  const latestDataRef = useRef(null);
+
+  useEffect(() => {
+    if (debugData && currentStreamId) {
+      latestDataRef.current = debugData[currentStreamId];
+    }
+  }, [debugData, currentStreamId]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
+    let animationFrameId;
     
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    
-    if (shouldDrawBoxes && currentStreamId && debugData[currentStreamId]) {
-      const payload = debugData[currentStreamId];
+    const render = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      const payload = latestDataRef.current;
+      
+      if (shouldDrawBoxes && currentStreamId && payload) {
       const W = canvas.width, H = canvas.height;
       
       if (payload?.roi) {
@@ -170,6 +180,7 @@ export default memo(({ data, isConnectable, id }) => {
       }
 
       const taskType = payload.type || "detection";
+      const drawMode = payload.bbox_draw_mode || "frontend";
 
       if (taskType === "detection") {
         items.forEach(det => {
@@ -177,14 +188,16 @@ export default memo(({ data, isConnectable, id }) => {
           const x = xmin * W, y = ymin * H;
           const width = (xmax - xmin) * W, height = (ymax - ymin) * H;
 
-          ctx.strokeStyle = '#00FF00'; ctx.lineWidth = 2;
-          ctx.strokeRect(x, y, width, height);
+          if (drawMode !== 'backend') {
+            ctx.strokeStyle = '#FF8C00'; ctx.lineWidth = 2;
+            ctx.strokeRect(x, y, width, height);
 
-          const lbl = `${det.label} ${det.confidence}`;
-          ctx.fillStyle = 'rgba(0,255,0,0.7)';
-          ctx.fillRect(x, y - 14, ctx.measureText(lbl).width + 8, 14);
-          ctx.fillStyle = '#000'; ctx.font = '10px sans-serif';
-          ctx.fillText(lbl, x + 4, y - 3);
+            const lbl = `${det.label} ${det.confidence}`;
+            ctx.fillStyle = 'rgba(255,140,0,0.85)';
+            ctx.fillRect(x, y - 14, ctx.measureText(lbl).width + 8, 14);
+            ctx.fillStyle = '#000'; ctx.font = '10px sans-serif';
+            ctx.fillText(lbl, x + 4, y - 3);
+          }
         });
       } else if (taskType === "pose") {
         const SKEL = [[0,1],[0,2],[1,3],[2,4],[5,6],[5,7],[7,9],[6,8],[8,10],
@@ -203,7 +216,31 @@ export default memo(({ data, isConnectable, id }) => {
         });
       }
     }
-  }, [debugData, currentStreamId, shouldDrawBoxes]);
+      
+      // Draw FPS if available
+      const currentMeta = latestDataRef.current;
+      if (currentMeta && currentMeta.fps !== undefined) {
+        const fpsStr = `AI FPS: ${currentMeta.fps}`;
+        let fpsColor = '#22c55e'; // green
+        if (currentMeta.fps < 10) fpsColor = '#ef4444'; // red
+        else if (currentMeta.fps < 20) fpsColor = '#eab308'; // yellow
+        
+        ctx.font = 'bold 10px monospace';
+        const tw = ctx.measureText(fpsStr).width + 8;
+        const cw = canvas.width;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(cw - tw - 6, 4, tw, 16);
+        ctx.fillStyle = fpsColor;
+        ctx.fillText(fpsStr, cw - tw - 2, 16);
+      }
+
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [shouldDrawBoxes, currentStreamId]);
 
   let content = null;
   
@@ -244,6 +281,7 @@ export default memo(({ data, isConnectable, id }) => {
           autoPlay 
           playsInline 
           muted 
+          onLoadedMetadata={(e) => setResolution(`${e.target.videoWidth}x${e.target.videoHeight}`)}
         />
         
         {!whepUrl && (
@@ -258,7 +296,10 @@ export default memo(({ data, isConnectable, id }) => {
         )}
         
         <canvas ref={canvasRef} width={640} height={360} className="absolute inset-0 w-full h-full pointer-events-none" />
-        <div className="absolute top-1 left-1 bg-black/60 text-white text-[10px] px-1 rounded">Live Preview</div>
+        <div className="absolute top-1 left-1 bg-black/60 text-white text-[10px] px-1 rounded flex gap-2">
+          <span>Live Preview</span>
+          {resolution && <span className="text-gray-300 font-mono">{resolution}</span>}
+        </div>
       </div>
     );
   } else {

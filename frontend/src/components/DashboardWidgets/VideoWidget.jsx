@@ -147,46 +147,65 @@ export default function VideoWidget({ metadata, projectId, config }) {
   const { status, reconnect } = useWhepStream(whepUrl, videoRef);
 
   const lastBoxesRef = useRef({ items: [], time: 0 });
+  const latestMetadataRef = useRef(null);
+
+  useEffect(() => {
+    latestMetadataRef.current = metadata;
+  }, [metadata]);
 
   // ── Canvas overlay (bbox + debug grid) ────────────────────────────────────
   useEffect(() => {
     // Handle quality badge update messages
     if (metadata?.type === 'stream_quality_update') {
       setQualityLabel(metadata.label);
-      return;   // no drawing for quality messages
     }
+  }, [metadata]);
 
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let animationFrameId;
 
-    if (showSource) return; // no overlays in source view
+    const render = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    const W = canvas.width, H = canvas.height;
+      if (showSource) {
+        animationFrameId = requestAnimationFrame(render);
+        return; // no overlays in source view
+      }
 
-    // Debug grid
-    if (debugMode) {
-      const cols = 4, rows = 4;
-      ctx.strokeStyle = 'rgba(255,255,0,0.45)';
-      ctx.lineWidth = 1;
-      for (let c = 0; c <= cols; c++) { const x = (c/cols)*W; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
-      for (let r = 0; r <= rows; r++) { const y = (r/rows)*H; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
-      ctx.font = '10px monospace'; ctx.fillStyle = 'rgba(255,255,0,0.9)';
-      ctx.fillText('(0,0)', 2, 12);
-      ctx.fillText('(1,0)', W - 32, 12);
-      ctx.fillText('(0.5,0.5)', W/2 - 24, H/2 + 4);
-    }
+      const W = canvas.width, H = canvas.height;
 
-    if (!metadata) return;
+      // Debug grid
+      if (debugMode) {
+        const cols = 4, rows = 4;
+        ctx.strokeStyle = 'rgba(255,255,0,0.45)';
+        ctx.lineWidth = 1;
+        for (let c = 0; c <= cols; c++) { const x = (c/cols)*W; ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+        for (let r = 0; r <= rows; r++) { const y = (r/rows)*H; ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+        ctx.font = '10px monospace'; ctx.fillStyle = 'rgba(255,255,0,0.9)';
+        ctx.fillText('(0,0)', 2, 12);
+        ctx.fillText('(1,0)', W - 32, 12);
+        ctx.fillText('(0.5,0.5)', W/2 - 24, H/2 + 4);
+      }
 
-    const isMatchingCamera = config?.has_ai !== false &&
-      (!metadata.camera_id || metadata.camera_id === config?.stream_id);
-    if (!isMatchingCamera) return;
+      const currentMetadata = latestMetadataRef.current;
+      if (!currentMetadata) {
+        animationFrameId = requestAnimationFrame(render);
+        return;
+      }
 
-    // Draw ROI if present in metadata
-    if (metadata.roi) {
-      const { x, y, w, h } = metadata.roi;
+      const isMatchingCamera = config?.has_ai !== false &&
+        (!currentMetadata.camera_id || currentMetadata.camera_id === config?.stream_id);
+      if (!isMatchingCamera) {
+        animationFrameId = requestAnimationFrame(render);
+        return;
+      }
+
+      // Draw ROI if present in metadata
+      if (currentMetadata.roi) {
+        const { x, y, w, h } = currentMetadata.roi;
       ctx.strokeStyle = 'rgba(255, 165, 0, 0.9)';
       ctx.lineWidth = 2;
       ctx.setLineDash([8, 6]);
@@ -198,39 +217,44 @@ export default function VideoWidget({ metadata, projectId, config }) {
       ctx.fillRect(x * W, y * H - 16, ctx.measureText(roiLbl).width + 8, 16);
       ctx.fillStyle = '#000'; ctx.font = 'bold 10px sans-serif';
       ctx.fillText(roiLbl, x * W + 4, y * H - 4);
-    }
-
-    let items    = metadata.data || metadata.detections || [];
-    const now = Date.now();
-    
-    if (items.length > 0) {
-      lastBoxesRef.current = { items, time: now };
-    } else {
-      if (now - lastBoxesRef.current.time < 300) {
-        items = lastBoxesRef.current.items;
-      } else {
-        lastBoxesRef.current = { items: [], time: now };
       }
-    }
-    
-    const taskType = metadata.type || 'detection';
+
+      let items = currentMetadata.data || currentMetadata.detections || [];
+      const now = Date.now();
+      
+      if (items.length > 0) {
+        lastBoxesRef.current = { items, time: now };
+      } else {
+        if (now - lastBoxesRef.current.time < 300) {
+          items = lastBoxesRef.current.items;
+        } else {
+          lastBoxesRef.current = { items: [], time: now };
+        }
+      }
+      
+      const taskType = currentMetadata.type || 'detection';
+      const drawMode = currentMetadata.bbox_draw_mode || 'frontend';
+      const lineThickness = currentMetadata.bbox_line_thickness || 2;
+      const fontThickness = currentMetadata.bbox_font_thickness || 1;
 
     if (taskType === 'detection') {
-      items.forEach(det => {
+      if (drawMode !== 'backend') {
+        items.forEach(det => {
         const [xmin, ymin, xmax, ymax] = det.bbox;
         const x = xmin * W, y = ymin * H;
         const w = (xmax - xmin) * W, h = (ymax - ymin) * H;
 
-        ctx.strokeStyle = '#00FF00'; ctx.lineWidth = 2;
+        ctx.strokeStyle = '#FF8C00'; ctx.lineWidth = lineThickness;
         ctx.strokeRect(x, y, w, h);
 
         const label = `${det.label} ${(det.confidence * 100).toFixed(0)}%`;
-        ctx.font = 'bold 12px sans-serif';
+        const fontSize = 10 + (fontThickness * 2);
+        ctx.font = `bold ${fontSize}px sans-serif`;
         const tw = ctx.measureText(label).width + 8;
-        ctx.fillStyle = 'rgba(0,180,0,0.85)';
-        ctx.fillRect(x, Math.max(y - 18, 0), tw, 18);
+        ctx.fillStyle = 'rgba(255,140,0,0.85)';
+        ctx.fillRect(x, Math.max(y - (fontSize + 6), 0), tw, fontSize + 6);
         ctx.fillStyle = '#000';
-        ctx.fillText(label, x + 4, Math.max(y - 4, 14));
+        ctx.fillText(label, x + 4, Math.max(y - 4, fontSize + 2));
 
         if (debugMode) {
           const cx = x + w/2, cy = y + h/2;
@@ -243,8 +267,8 @@ export default function VideoWidget({ metadata, projectId, config }) {
             Math.max(cx - 60, 2), Math.max(cy - 14, 10)
           );
         }
-      });
-
+        });
+      }
     } else if (taskType === 'classification') {
       items.forEach((cls, idx) => {
         const yPos = 30 + idx * 24;
@@ -278,7 +302,28 @@ export default function VideoWidget({ metadata, projectId, config }) {
       });
     }
 
-  }, [metadata, debugMode, showSource, config]);
+      // Draw FPS if available
+      if (currentMetadata.fps !== undefined) {
+        const fpsStr = `AI FPS: ${currentMetadata.fps}`;
+        let fpsColor = '#22c55e'; // green
+        if (currentMetadata.fps < 10) fpsColor = '#ef4444'; // red
+        else if (currentMetadata.fps < 20) fpsColor = '#eab308'; // yellow
+        
+        ctx.font = 'bold 12px monospace';
+        const tw = ctx.measureText(fpsStr).width + 10;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(W - tw - 10, 10, tw, 20);
+        ctx.fillStyle = fpsColor;
+        ctx.fillText(fpsStr, W - tw - 5, 24);
+      }
+
+      animationFrameId = requestAnimationFrame(render);
+    };
+
+    render();
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [debugMode, showSource, config]);
 
   const statusColor = {
     connected: '#22c55e', connecting: '#f59e0b',
