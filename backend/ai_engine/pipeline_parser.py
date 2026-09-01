@@ -46,13 +46,26 @@ class PipelineParser:
         self.entities_path = base_dir / "db" / "entities.json"
         
     def _load_entities(self):
-        if not self.entities_path.exists():
-            return {"cameras": [], "models": [], "integrations": []}
         try:
-            with open(self.entities_path, "r") as f:
-                return json.load(f)
+            from sqlmodel import Session, select
+            from db.database import db
+            from db.models import Camera, AIModel, Integration
+            with Session(db.engine) as session:
+                cameras = [c.model_dump() for c in session.exec(select(Camera)).all()]
+                models = []
+                for m in session.exec(select(AIModel)).all():
+                    md = m.model_dump()
+                    try: md["tags"] = json.loads(md["tags_json"])
+                    except: md["tags"] = []
+                    try: md["classes"] = json.loads(md["classes_json"])
+                    except: md["classes"] = []
+                    del md["tags_json"]
+                    del md["classes_json"]
+                    models.append(md)
+                integrations = [i.model_dump() for i in session.exec(select(Integration)).all()]
+                return {"cameras": cameras, "models": models, "integrations": integrations}
         except Exception as e:
-            logger.error(f"Failed to load entities.json: {e}")
+            logger.error(f"Failed to load entities from DB: {e}")
             return {"cameras": [], "models": [], "integrations": []}
             
     def parse(self, payload: Dict[str, Any], project_id: str = "default") -> ParsedPipelineConfig:

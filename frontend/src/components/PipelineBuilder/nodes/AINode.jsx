@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, useHandleConnections, useNodesData } from '@xyflow/react';
 import { BrainCircuit, Filter, Crosshair } from 'lucide-react';
 import NodeMenu from './NodeMenu';
 import usePipelineStore from '../../../store/usePipelineStore';
@@ -7,8 +7,6 @@ import ROIEditorModal from './ROIEditorModal';
 
 export default function AINode({ id, data }) {
   const updateNodeData = usePipelineStore((state) => state.updateNodeData);
-  const nodes = usePipelineStore((state) => state.nodes);
-  const edges = usePipelineStore((state) => state.edges);
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showROIEditor, setShowROIEditor] = useState(false);
@@ -16,8 +14,8 @@ export default function AINode({ id, data }) {
   // ── Find upstream Input Node ──────────────────────────────────────────────
   // Walk edges backwards: find an edge whose target === this node id,
   // then look up the source node (should be an inputNode).
-  const upstreamEdge = edges.find(e => e.target === id);
-  const upstreamNode = upstreamEdge ? nodes.find(n => n.id === upstreamEdge.source) : null;
+  const connections = useHandleConnections({ type: 'target' });
+  const upstreamNode = useNodesData(connections[0]?.source || 'empty-id');
   const isInputNode = upstreamNode?.type === 'inputNode';
 
   // Resolve camera entity from upstream InputNode data

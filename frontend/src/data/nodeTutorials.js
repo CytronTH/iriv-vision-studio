@@ -1,4 +1,19 @@
-import { Camera, BrainCircuit, Filter, Bell, ToggleLeft, ToggleRight, Lightbulb, BellRing, Settings2, Terminal } from 'lucide-react';
+export const mockNodeData = {
+  inputNode: { label: 'Input Source', source: 'rtsp://192.168.1.100/stream' },
+  aiNode: { label: 'AI Model (YOLO)', model: 'yolov8n.hef' },
+  logicNode: { label: 'Logic (person > 0)' },
+  actionNode: { label: 'Action / Alert', url: 'https://notify-api.line.me/api/notify' },
+  digitalInputNode: { label: 'Digital Input (Door Sensor)' },
+  digitalOutputNode: { label: 'Digital Output (Door Lock)' },
+  ledNode: { label: 'LED Driver' },
+  buzzerNode: { label: 'Active Buzzer' },
+  rs485Node: { label: 'RS485 Modbus', payload: '01 05 00 00 FF 00' },
+  dashboardVideoNode: { label: 'Video Stream (Dashboard)' },
+  dashboardMetricNode: { label: 'Number / Metric' },
+  dashboardTextNode: { label: 'Text Value', defaultText: 'Door is closed' },
+  dashboardLogNode: { label: 'Log History (Dashboard)' },
+  debugNode: { label: 'Debug Node' }
+};
 
 export const nodeTutorials = {
   inputNode: {
@@ -15,7 +30,9 @@ export const nodeTutorials = {
     output: {
       desc: "ภาพวิดีโอ (Video Frames) สำหรับส่งต่อให้โหนด AI หรือโหนดแสดงผล",
       example: "Video Stream"
-    }
+    },
+    supportedInputs: [],
+    supportedOutputs: ['aiNode', 'dashboardVideoNode', 'debugNode']
   },
   aiNode: {
     title: "AI Model",
@@ -31,7 +48,9 @@ export const nodeTutorials = {
     output: {
       desc: "ข้อมูลอธิบายภาพ (AI Metadata) พร้อมพิกัดกรอบวัตถุและรายชื่อวัตถุที่พบ",
       example: "[ { label: 'person', confidence: 0.89, bbox: [...] } ]"
-    }
+    },
+    supportedInputs: ['inputNode'],
+    supportedOutputs: ['logicNode', 'dashboardVideoNode', 'debugNode']
   },
   logicNode: {
     title: "Logic / Filter",
@@ -47,7 +66,9 @@ export const nodeTutorials = {
     output: {
       desc: "สถานะความจริง (True / False) และจำนวนวัตถุที่นับได้ที่ผ่านเงื่อนไข",
       example: "{ value: true, count: 2 }"
-    }
+    },
+    supportedInputs: ['aiNode', 'digitalInputNode'],
+    supportedOutputs: ['actionNode', 'digitalOutputNode', 'ledNode', 'buzzerNode', 'rs485Node', 'dashboardMetricNode', 'dashboardLogNode']
   },
   actionNode: {
     title: "Action / Alert",
@@ -63,7 +84,9 @@ export const nodeTutorials = {
     output: {
       desc: "ไม่ส่งออกข้อมูลไปยังโหนดอื่น (เป็นจุดสิ้นสุด)",
       example: "N/A"
-    }
+    },
+    supportedInputs: ['logicNode', 'digitalInputNode'],
+    supportedOutputs: []
   },
   digitalInputNode: {
     title: "Digital Input",
@@ -79,7 +102,9 @@ export const nodeTutorials = {
     output: {
       desc: "สถานะความจริง (True / False) สำหรับส่งไปสั่งงาน Logic หรือ Action",
       example: "{ value: true }"
-    }
+    },
+    supportedInputs: [],
+    supportedOutputs: ['logicNode', 'actionNode', 'dashboardTextNode', 'dashboardLogNode']
   },
   digitalOutputNode: {
     title: "Digital Output",
@@ -95,7 +120,9 @@ export const nodeTutorials = {
     output: {
       desc: "ไม่ส่งข้อมูลในระบบ (สั่งการด้วยไฟฟ้าจริงออกนอกบอร์ด)",
       example: "N/A"
-    }
+    },
+    supportedInputs: ['logicNode', 'digitalInputNode'],
+    supportedOutputs: []
   },
   ledNode: {
     title: "LED Driver",
@@ -111,7 +138,9 @@ export const nodeTutorials = {
     output: {
       desc: "ไม่ส่งข้อมูลในระบบ (แสดงผลเป็นแสงไฟจริง)",
       example: "N/A"
-    }
+    },
+    supportedInputs: ['logicNode', 'digitalInputNode'],
+    supportedOutputs: []
   },
   buzzerNode: {
     title: "Active Buzzer",
@@ -127,7 +156,9 @@ export const nodeTutorials = {
     output: {
       desc: "ไม่ส่งข้อมูลในระบบ (แสดงผลเป็นเสียงจริง)",
       example: "N/A"
-    }
+    },
+    supportedInputs: ['logicNode', 'digitalInputNode'],
+    supportedOutputs: []
   },
   rs485Node: {
     title: "RS485 Modbus",
@@ -143,7 +174,9 @@ export const nodeTutorials = {
     output: {
       desc: "ไม่ส่งข้อมูลในระบบ (ส่งออกเป็นสัญญาณ Serial)",
       example: "N/A"
-    }
+    },
+    supportedInputs: ['logicNode', 'digitalInputNode'],
+    supportedOutputs: []
   },
   dashboardVideoNode: {
     title: "Video Stream (Dashboard)",
@@ -159,7 +192,9 @@ export const nodeTutorials = {
     output: {
       desc: "ส่งภาพไปยังหน้า Dashboard (ฝั่ง UI)",
       example: "N/A"
-    }
+    },
+    supportedInputs: ['aiNode', 'inputNode'],
+    supportedOutputs: []
   },
   dashboardMetricNode: {
     title: "Number / Metric (Dashboard)",
@@ -175,7 +210,9 @@ export const nodeTutorials = {
     output: {
       desc: "ส่งข้อมูลตัวเลขไปยังหน้า Dashboard (ฝั่ง UI)",
       example: "N/A"
-    }
+    },
+    supportedInputs: ['logicNode'],
+    supportedOutputs: []
   },
   dashboardTextNode: {
     title: "Text Value (Dashboard)",
@@ -191,7 +228,9 @@ export const nodeTutorials = {
     output: {
       desc: "ส่งข้อมูลข้อความไปยังหน้า Dashboard (ฝั่ง UI)",
       example: "N/A"
-    }
+    },
+    supportedInputs: ['digitalInputNode', 'logicNode'],
+    supportedOutputs: []
   },
   dashboardLogNode: {
     title: "Log History (Dashboard)",
@@ -207,7 +246,9 @@ export const nodeTutorials = {
     output: {
       desc: "ส่งข้อมูลรายการ Log ไปยังหน้า Dashboard (ฝั่ง UI)",
       example: "N/A"
-    }
+    },
+    supportedInputs: ['logicNode', 'digitalInputNode'],
+    supportedOutputs: []
   },
   debugNode: {
     title: "Debug Node",
@@ -223,6 +264,8 @@ export const nodeTutorials = {
     output: {
       desc: "ไม่เปลี่ยนแปลงข้อมูลใดๆ (ทำหน้าที่เพียง Observer)",
       example: "N/A"
-    }
+    },
+    supportedInputs: ['aiNode', 'logicNode', 'inputNode', 'digitalInputNode'],
+    supportedOutputs: ['logicNode', 'dashboardVideoNode', 'dashboardMetricNode', 'actionNode']
   }
 };

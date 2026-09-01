@@ -1,10 +1,13 @@
-import sqlite3
 import json
 import logging
 from pathlib import Path
 from queue import Queue
 import threading
 import time
+from typing import Generator
+from sqlmodel import SQLModel, create_engine, Session
+# Import models to ensure they are registered with SQLModel before create_all
+from .models import *
 
 logger = logging.getLogger("ai_engine")
 
@@ -15,6 +18,13 @@ class DatabaseManager:
             db_path = str(base_dir / "vision_studio.sqlite")
         
         self.db_path = db_path
+        # sqlite:/// requires an absolute path or relative, 
+        # using absolute path here
+        sqlite_url = f"sqlite:///{self.db_path}"
+        
+        connect_args = {"check_same_thread": False}
+        self.engine = create_engine(sqlite_url, connect_args=connect_args)
+        
         self._init_db()
         
         self.log_queue = Queue()
@@ -22,49 +32,21 @@ class DatabaseManager:
         self.writer_thread = threading.Thread(target=self._background_writer, daemon=True)
         self.writer_thread.start()
         
-    def _get_connection(self):
-        conn = sqlite3.connect(self.db_path, check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        return conn
-        
     def _init_db(self):
-        conn = self._get_connection()
         try:
-            # Enable WAL mode for better concurrency
-            conn.execute('PRAGMA journal_mode=WAL;')
-            
-            # Create event_logs table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS event_logs (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    node_id TEXT,
-                    event_type TEXT,
-                    payload TEXT,
-                    camera_id TEXT,
-                    snapshot_path TEXT
-                )
-            ''')
-            
-            # Create system_metrics table
-            conn.execute('''
-                CREATE TABLE IF NOT EXISTS system_metrics (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    cpu_percent REAL,
-                    ram_percent REAL,
-                    temp_c REAL
-                )
-            ''')
-            
-            conn.commit()
+            # Create all tables (this is safe to call multiple times)
+            SQLModel.metadata.create_all(self.engine)
             logger.info(f"Database initialized successfully at {self.db_path}")
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
-        finally:
-            conn.close()
+            
+    def get_session(self) -> Generator[Session, None, None]:
+        """Provides a database session for FastAPI dependencies."""
+        with Session(self.engine) as session:
+            yield session
             
     def _background_writer(self):
+        """Background thread for high-frequency logs to avoid locking main threads."""
         while self.running:
             try:
                 # Wait for logs to process
@@ -72,35 +54,28 @@ class DatabaseManager:
                 if log_entry is None:
                     break
                     
-                conn = self._get_connection()
-                try:
-                    if log_entry['table'] == 'event_logs':
-                        conn.execute(
-                            '''INSERT INTO event_logs (node_id, event_type, payload, camera_id, snapshot_path) 
-                               VALUES (?, ?, ?, ?, ?)''',
-                            (
-                                log_entry.get('node_id'), 
-                                log_entry.get('event_type'),
-                                json.dumps(log_entry.get('payload')) if log_entry.get('payload') else None,
-                                log_entry.get('camera_id'),
-                                log_entry.get('snapshot_path')
+                with Session(self.engine) as session:
+                    try:
+                        if log_entry['table'] == 'event_logs':
+                            event = EventLog(
+                                node_id=log_entry.get('node_id'),
+                                event_type=log_entry.get('event_type'),
+                                payload=json.dumps(log_entry.get('payload')) if log_entry.get('payload') else None,
+                                camera_id=log_entry.get('camera_id'),
+                                snapshot_path=log_entry.get('snapshot_path')
                             )
-                        )
-                    elif log_entry['table'] == 'system_metrics':
-                        conn.execute(
-                            '''INSERT INTO system_metrics (cpu_percent, ram_percent, temp_c) 
-                               VALUES (?, ?, ?)''',
-                            (
-                                log_entry.get('cpu_percent'), 
-                                log_entry.get('ram_percent'),
-                                log_entry.get('temp_c')
+                            session.add(event)
+                        elif log_entry['table'] == 'system_metrics':
+                            metric = SystemMetric(
+                                cpu_percent=log_entry.get('cpu_percent'),
+                                ram_percent=log_entry.get('ram_percent'),
+                                temp_c=log_entry.get('temp_c')
                             )
-                        )
-                    conn.commit()
-                except Exception as e:
-                    logger.error(f"Error writing to database: {e}")
-                finally:
-                    conn.close()
+                            session.add(metric)
+                        session.commit()
+                    except Exception as e:
+                        logger.error(f"Error writing to database: {e}")
+                
                 self.log_queue.task_done()
             except Exception:
                 # Timeout on queue, loop continues
@@ -124,30 +99,43 @@ class DatabaseManager:
             'temp_c': temp_c
         })
         
-    def get_logs(self, limit: int = 100, node_id: str = None):
-        conn = self._get_connection()
-        try:
-            query = "SELECT * FROM event_logs"
-            params = []
-            if node_id:
-                query += " WHERE node_id = ?"
-                params.append(node_id)
-            query += " ORDER BY timestamp DESC LIMIT ?"
-            params.append(limit)
+    def get_logs(self, limit: int = 100, node_id: str = None, event_type: str = None, camera_id: str = None, page: int = 1):
+        """Helper to get raw dict logs for backwards compatibility, with pagination and filters."""
+        from sqlmodel import select, func
+        with Session(self.engine) as session:
+            statement = select(EventLog)
+            count_statement = select(func.count(EventLog.id))
             
-            cursor = conn.execute(query, params)
-            results = []
-            for row in cursor:
-                d = dict(row)
-                if d['payload']:
+            if node_id:
+                statement = statement.where(EventLog.node_id == node_id)
+                count_statement = count_statement.where(EventLog.node_id == node_id)
+            if event_type:
+                statement = statement.where(EventLog.event_type == event_type)
+                count_statement = count_statement.where(EventLog.event_type == event_type)
+            if camera_id:
+                statement = statement.where(EventLog.camera_id == camera_id)
+                count_statement = count_statement.where(EventLog.camera_id == camera_id)
+                
+            total = session.exec(count_statement).one()
+            
+            offset = (page - 1) * limit
+            statement = statement.order_by(EventLog.timestamp.desc()).offset(offset).limit(limit)
+            
+            results = session.exec(statement).all()
+            
+            out = []
+            for r in results:
+                d = r.model_dump()
+                if d.get('payload'):
                     try:
                         d['payload'] = json.loads(d['payload'])
                     except:
                         pass
-                results.append(d)
-            return results
-        finally:
-            conn.close()
+                # ensure timestamp is string for old API clients if necessary
+                if d.get('timestamp'):
+                    d['timestamp'] = d['timestamp'].isoformat()
+                out.append(d)
+            return {"data": out, "total": total, "page": page, "limit": limit}
         
     def stop(self):
         self.running = False

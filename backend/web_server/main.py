@@ -161,20 +161,41 @@ from pathlib import Path
 from ai_engine.pipeline_parser import PipelineParser
 
 import os
+from sqlmodel import Session, select
+from db.database import db
+from db.models import Project, Camera, AIModel, Integration
 
 # --- Entity Management APIs ---
-DB_PATH = Path(__file__).resolve().parent.parent / "db" / "entities.json"
-PROJECTS_DB_PATH = Path(__file__).resolve().parent.parent / "db" / "projects.json"
 
 def read_entities():
-    if not DB_PATH.exists():
-        return {"cameras": [], "models": [], "integrations": [], "data_sources": []}
-    with open(DB_PATH, "r") as f:
-        return json.load(f)
+    with Session(db.engine) as session:
+        cameras = [c.model_dump() for c in session.exec(select(Camera)).all()]
+        models = []
+        for m in session.exec(select(AIModel)).all():
+            md = m.model_dump()
+            try: md["tags"] = json.loads(md["tags_json"])
+            except: md["tags"] = []
+            try: md["classes"] = json.loads(md["classes_json"])
+            except: md["classes"] = []
+            del md["tags_json"]
+            del md["classes_json"]
+            models.append(md)
+        integrations = [i.model_dump() for i in session.exec(select(Integration)).all()]
+        return {"cameras": cameras, "models": models, "integrations": integrations, "data_sources": []}
 
 def write_entities(data):
-    with open(DB_PATH, "w") as f:
-        json.dump(data, f, indent=2)
+    with Session(db.engine) as session:
+        for c in session.exec(select(Camera)).all(): session.delete(c)
+        for m in session.exec(select(AIModel)).all(): session.delete(m)
+        for i in session.exec(select(Integration)).all(): session.delete(i)
+        
+        for c in data.get("cameras", []):
+            session.add(Camera(id=c["id"], name=c["name"], type=c.get("type",""), path=c.get("path","")))
+        for m in data.get("models", []):
+            session.add(AIModel(id=m["id"], name=m["name"], type=m.get("type","model"), hardware=m.get("hardware",""), hef_path=m.get("hef_path",""), so_path=m.get("so_path",""), task=m.get("task",""), tags_json=json.dumps(m.get("tags",[])), classes_json=json.dumps(m.get("classes",[]))))
+        for i in data.get("integrations", []):
+            session.add(Integration(id=i["id"], name=i["name"], type=i.get("type",""), target=i.get("target","")))
+        session.commit()
 
 @app.get("/api/entities")
 async def get_entities():
@@ -299,6 +320,17 @@ async def list_so_files():
     except Exception as e:
         logger.error(f"Failed to list .so files: {e}")
         return {"status": "error", "files": [], "message": str(e)}
+
+@app.get("/api/system/video-devices")
+async def list_video_devices():
+    """Return list of available video devices on the system."""
+    import glob
+    try:
+        devices = sorted(glob.glob("/dev/video*"))
+        return {"status": "success", "devices": devices}
+    except Exception as e:
+        logger.error(f"Failed to list video devices: {e}")
+        return {"status": "error", "devices": [], "message": str(e)}
 
 @app.post("/api/models/upload")
 async def upload_model(
@@ -567,14 +599,39 @@ async def get_data_sources(project_id: str = None):
 
 # --- Project Management APIs ---
 def read_projects():
-    if not PROJECTS_DB_PATH.exists():
-        return []
-    with open(PROJECTS_DB_PATH, "r") as f:
-        return json.load(f)
+    with Session(db.engine) as session:
+        projects = []
+        for p in session.exec(select(Project)).all():
+            pd = p.model_dump()
+            try: pd["pipeline"] = json.loads(pd["pipeline_json"])
+            except: pd["pipeline"] = {"nodes": [], "edges": []}
+            try: pd["dashboard_layout"] = json.loads(pd["dashboard_layout_json"])
+            except: pd["dashboard_layout"] = {}
+            try: pd["exposed_data_sources"] = json.loads(pd["exposed_data_sources_json"])
+            except: pd["exposed_data_sources"] = []
+            
+            # Use runtime state if available, fallback to db state
+            pd["is_running"] = pd["is_running"]
+            del pd["pipeline_json"]
+            del pd["dashboard_layout_json"]
+            del pd["exposed_data_sources_json"]
+            projects.append(pd)
+        return projects
 
 def write_projects(data):
-    with open(PROJECTS_DB_PATH, "w") as f:
-        json.dump(data, f, indent=2)
+    with Session(db.engine) as session:
+        for p in session.exec(select(Project)).all(): session.delete(p)
+        for p in data:
+            session.add(Project(
+                id=p["id"],
+                name=p["name"],
+                description=p.get("description", ""),
+                pipeline_json=json.dumps(p.get("pipeline", {})),
+                dashboard_layout_json=json.dumps(p.get("dashboard_layout", {})),
+                exposed_data_sources_json=json.dumps(p.get("exposed_data_sources", [])),
+                is_running=p.get("is_running", False)
+            ))
+        session.commit()
 
 @app.get("/api/projects")
 async def get_projects():
@@ -785,11 +842,11 @@ async def restart_system():
     return {"status": "success", "message": "Rebooting..."}
 
 @app.get("/api/logs")
-def get_logs(limit: int = 100, node_id: str = None):
+def get_logs(limit: int = 100, node_id: str = None, event_type: str = None, camera_id: str = None, page: int = 1):
     try:
         from db.database import db
-        logs = db.get_logs(limit=limit, node_id=node_id)
-        return {"status": "success", "data": logs}
+        result = db.get_logs(limit=limit, node_id=node_id, event_type=event_type, camera_id=camera_id, page=page)
+        return {"status": "success", **result}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

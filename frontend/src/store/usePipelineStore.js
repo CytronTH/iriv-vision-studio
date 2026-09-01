@@ -41,6 +41,58 @@ const usePipelineStore = create((set, get) => ({
         }));
         set({ nodes, edges: processedEdges });
       },
+
+      setMockPipeline: (mockNodes, mockEdges) => {
+        set((state) => {
+          const mainNodes = state.nodes.filter(n => !n.data?.isTutorialMock);
+          const mainEdges = state.edges.filter(e => !e.data?.isTutorialMock);
+          return {
+            nodes: [...mainNodes, ...mockNodes],
+            edges: [...mainEdges, ...mockEdges],
+          };
+        });
+      },
+
+      clearMockPipeline: () => {
+        set((state) => ({
+          nodes: state.nodes.filter(n => !n.data?.isTutorialMock),
+          edges: state.edges.filter(e => !e.data?.isTutorialMock),
+        }));
+      },
+
+      deployMockPipeline: () => {
+        set((state) => {
+          const mainNodes = state.nodes.filter(n => !n.data?.isTutorialMock);
+          const mockNodes = state.nodes.filter(n => n.data?.isTutorialMock);
+          
+          if (mockNodes.length === 0) return state;
+
+          const maxY = mainNodes.length > 0 ? Math.max(...mainNodes.map(n => n.position.y)) : 0;
+          const offsetY = maxY > 0 ? maxY + 300 : 50;
+
+          const deployedNodes = mockNodes.map(n => {
+            const { isTutorialMock, ...restData } = n.data || {};
+            return {
+              ...n,
+              position: { x: n.position.x, y: n.position.y + offsetY },
+              data: restData
+            };
+          });
+
+          const deployedEdges = state.edges.filter(e => e.data?.isTutorialMock).map(e => {
+            const { isTutorialMock, ...restData } = e.data || {};
+            return {
+              ...e,
+              data: restData
+            };
+          });
+          
+          return {
+            nodes: [...mainNodes, ...deployedNodes],
+            edges: [...state.edges.filter(e => !e.data?.isTutorialMock), ...deployedEdges]
+          };
+        });
+      },
       
       onNodesChange: (changes) => {
         set({

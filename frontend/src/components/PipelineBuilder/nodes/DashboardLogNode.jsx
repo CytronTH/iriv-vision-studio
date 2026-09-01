@@ -1,13 +1,13 @@
 import React from 'react';
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, useHandleConnections, useNodesData } from '@xyflow/react';
 import { List } from 'lucide-react';
 import NodeMenu from './NodeMenu';
 import usePipelineStore from '../../../store/usePipelineStore';
 
 export default function DashboardLogNode({ id, data }) {
   const updateNodeData = usePipelineStore((state) => state.updateNodeData);
-  const edges = usePipelineStore((state) => state.edges);
-  const nodes = usePipelineStore((state) => state.nodes);
+  const connections = useHandleConnections({ type: 'target' });
+  const upstreamNode = useNodesData(connections[0]?.source || 'empty-id');
 
   const handleLabelChange = (e) => {
     updateNodeData(id, { label: e.target.value });
@@ -17,8 +17,7 @@ export default function DashboardLogNode({ id, data }) {
     updateNodeData(id, { sourcePath: e.target.value });
   };
 
-  const upstreamEdge = edges.find(e => e.target === id);
-  const upstreamNode = upstreamEdge ? nodes.find(n => n.id === upstreamEdge.source) : null;
+
 
   const getAvailableProperties = () => {
     if (!upstreamNode) return [];

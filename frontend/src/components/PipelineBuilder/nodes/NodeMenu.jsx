@@ -7,9 +7,7 @@ export default function NodeMenu({ id }) {
   const menuRef = useRef(null);
   const deleteNode = usePipelineStore((state) => state.deleteNode);
   const updateNodeData = usePipelineStore((state) => state.updateNodeData);
-  const node = usePipelineStore((state) => state.nodes.find(n => n.id === id));
-  
-  const isDisabled = node?.data?.disabled || false;
+  const isDisabled = usePipelineStore((state) => state.nodes.find(n => n.id === id)?.data?.disabled || false);
   
   const toggleDisable = () => {
     updateNodeData(id, { disabled: !isDisabled });

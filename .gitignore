@@ -10,3 +10,4 @@ __pycache__/
 *.patch
 test_*.py
 patch_nodes.py
+snapshots/

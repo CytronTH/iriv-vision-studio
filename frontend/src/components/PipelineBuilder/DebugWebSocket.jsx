@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import usePipelineStore from '../../store/usePipelineStore';
+import { useShallow } from 'zustand/react/shallow';
 
 export default function DebugWebSocket() {
   const nodes = usePipelineStore((state) => state.nodes);

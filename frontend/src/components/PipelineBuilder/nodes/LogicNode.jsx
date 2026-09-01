@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, useHandleConnections, useNodesData } from '@xyflow/react';
 import { Filter, ChevronDown, ChevronRight, Zap, Code, LayoutList, GripVertical, Plus } from 'lucide-react';
 import NodeMenu from './NodeMenu';
 import usePipelineStore from '../../../store/usePipelineStore';
@@ -25,8 +25,8 @@ const VARS_REF = [
 
 export default function LogicNode({ id, data }) {
   const updateNodeData = usePipelineStore(s => s.updateNodeData);
-  const edges = usePipelineStore(s => s.edges);
-  const nodes = usePipelineStore(s => s.nodes);
+  const connections = useHandleConnections({ type: 'target' });
+  const upstreamNode = useNodesData(connections[0]?.source || 'empty-id');
   
   const [showRef, setShowRef] = useState(false);
   const [models, setModels] = useState([]);
@@ -51,8 +51,7 @@ export default function LogicNode({ id, data }) {
       .catch(e => console.warn('Failed to fetch entities', e));
   }, []);
 
-  const upstreamEdge = edges.find(e => e.target === id);
-  const upstreamNode = upstreamEdge ? nodes.find(n => n.id === upstreamEdge.source) : null;
+
   let availableClasses = [];
   if (upstreamNode?.type === 'aiNode' && upstreamNode.data?.entityId) {
     const aiModel = models.find(m => m.id === upstreamNode.data.entityId);

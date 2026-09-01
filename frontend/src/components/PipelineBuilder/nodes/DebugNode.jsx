@@ -1,5 +1,5 @@
 import React, { memo, useState, useEffect, useRef, useCallback } from 'react';
-import { Handle, Position } from '@xyflow/react';
+import { Handle, Position, useHandleConnections, useNodesData, useReactFlow } from '@xyflow/react';
 import { Bug, Pause, Play, Code, MonitorPlay } from 'lucide-react';
 import usePipelineStore from '../../../store/usePipelineStore';
 import NodeMenu from './NodeMenu';
@@ -76,26 +76,15 @@ function useWhepStream(whepUrl, videoRef) {
 }
 
 export default memo(({ data, isConnectable, id }) => {
-  const edges = usePipelineStore((state) => state.edges);
   const nodes = usePipelineStore((state) => state.nodes);
+  const edges = usePipelineStore((state) => state.edges);
   const debugData = usePipelineStore((state) => state.debugData || {});
   const projectId = usePipelineStore((state) => state.projectId);
   const highlightedNodeIds = usePipelineStore((state) => state.highlightedNodeIds);
   const updateNodeData = usePipelineStore((state) => state.updateNodeData);
   
-  const [sourceNode, setSourceNode] = useState(null);
-  const canvasRef = useRef(null);
-  const videoRef = useRef(null);
-  
-  useEffect(() => {
-    const incomingEdge = edges.find(e => e.target === id);
-    if (incomingEdge) {
-      const src = nodes.find(n => n.id === incomingEdge.source);
-      setSourceNode(src);
-    } else {
-      setSourceNode(null);
-    }
-  }, [edges, nodes, id]);
+  const connections = useHandleConnections({ type: 'target' });
+  const sourceNode = useNodesData(connections[0]?.source || 'empty-id');
 
   const isHighlighted = highlightedNodeIds?.includes(id);
   const isPaused = data?.isPaused;
@@ -108,7 +97,12 @@ export default memo(({ data, isConnectable, id }) => {
   if (sourceNode?.type === 'inputNode') {
     if (projectId) {
       currentStreamId = `cam_${sourceNode.id}`;
-      whepUrl = `http://${window.location.hostname}:8889/${projectId}_${currentStreamId}/whep`;
+      const isFile = sourceNode.data?.entityId?.startsWith('cam_file');
+      if (isFile) {
+        whepUrl = `http://${window.location.hostname}:8889/loop_${projectId}_${sourceNode.id}/whep`;
+      } else {
+        whepUrl = `http://${window.location.hostname}:8889/${projectId}_${currentStreamId}/whep`;
+      }
     }
   } else if (sourceNode?.type === 'aiNode') {
     const aiIncomingEdge = edges.find(e => e.target === sourceNode.id);
@@ -134,6 +128,8 @@ export default memo(({ data, isConnectable, id }) => {
     }
   }
   
+  const canvasRef = useRef(null);
+  const videoRef = useRef(null);
   const { status, reconnect } = useWhepStream(whepUrl, videoRef);
 
   const shouldDrawBoxes = sourceNode?.type === 'aiNode' && !data?.isPaused;

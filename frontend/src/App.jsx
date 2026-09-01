@@ -339,9 +339,11 @@ function App() {
           )}
           
           {activeProject && activeTab === 'pipeline' && (
-             <div className="h-full flex flex-col p-6">
-               <PipelineBuilder projectId={activeProject.id} />
-             </div>
+             <ErrorBoundary>
+               <div className="h-full flex flex-col p-6">
+                 <PipelineBuilder projectId={activeProject.id} />
+               </div>
+             </ErrorBoundary>
           )}
           
           {activeProject && activeTab === 'logs' && (

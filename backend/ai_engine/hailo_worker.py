@@ -36,7 +36,7 @@ class HailoPipelineWorker:
         self.config = config
         self.metadata_callback = metadata_callback
         self.project_id = project_id
-        self.pipeline = None
+        self.pipelines = []
         self.loop = None
         self.thread = None
         self.start_time = None
@@ -131,8 +131,6 @@ class HailoPipelineWorker:
         """Build the GStreamer pipeline string from config. Called by build_pipeline()."""
         import os
 
-        pipeline_substrings = []
-        
         camera_streams = getattr(self.config, 'camera_streams', [])
         
         if not camera_streams:
@@ -163,6 +161,7 @@ class HailoPipelineWorker:
         ffmpeg_launched = self._ffmpeg_launched
 
         for input_key, group in source_groups.items():
+            pipeline_substrings = []
             # Use first stream in group for source properties (they all share the same input)
             first_stream = group[0][1]
             video_src_type = getattr(first_stream, 'video_source_type', 'local')
@@ -308,30 +307,31 @@ class HailoPipelineWorker:
                 
                 pipeline_substrings.append(source_str + " " + " ".join(branches))
         
-        pipeline_str = " ".join(pipeline_substrings)
-        logger.info(f"Building pipeline: {pipeline_str}")
-        
-        try:
-            self.pipeline = Gst.parse_launch(pipeline_str)
+            pipeline_str = " ".join(pipeline_substrings)
+            logger.info(f"Building pipeline for {input_key}: {pipeline_str}")
             
-            # Attach probe to extract metadata from each fakesink
-            for i, cam_stream in enumerate(camera_streams):
-                if getattr(cam_stream, 'has_ai_node', False):
-                    sink = self.pipeline.get_by_name(f"sink_{i}")
-                    if sink:
-                        pad = sink.get_static_pad("sink")
-                        pad.add_probe(Gst.PadProbeType.BUFFER, functools.partial(self.on_buffer_probe, camera_id=cam_stream.stream_id))
-                    else:
-                        logger.warning(f"Could not find sink_{i} to attach metadata probe.")
+            try:
+                pipeline = Gst.parse_launch(pipeline_str)
+                
+                # Attach probe to extract metadata from each fakesink
+                for i, cam_stream in group:
+                    if getattr(cam_stream, 'has_ai_node', False):
+                        sink = pipeline.get_by_name(f"sink_{i}")
+                        if sink:
+                            pad = sink.get_static_pad("sink")
+                            pad.add_probe(Gst.PadProbeType.BUFFER, functools.partial(self.on_buffer_probe, camera_id=cam_stream.stream_id))
+                        else:
+                            logger.warning(f"Could not find sink_{i} to attach metadata probe.")
 
-            # Attach bus watch for EOS and errors
-            bus = self.pipeline.get_bus()
-            bus.add_signal_watch()
-            bus.connect("message::eos", self._on_eos)
-            bus.connect("message::error", self._on_bus_error)
-        except GLib.Error as e:
-            logger.error(f"Failed to parse GStreamer pipeline: {e}")
-            self.pipeline = None
+                # Attach bus watch for EOS and errors
+                bus = pipeline.get_bus()
+                bus.add_signal_watch()
+                bus.connect("message::eos", self._on_eos)
+                bus.connect("message::error", self._on_bus_error)
+                
+                self.pipelines.append(pipeline)
+            except GLib.Error as e:
+                logger.error(f"Failed to parse GStreamer pipeline for {input_key}: {e}")
 
     def _on_eos(self, bus, message):
         """Handle End-of-Stream — only fires for non-looping sources (looping uses ffmpeg)."""
@@ -524,8 +524,8 @@ class HailoPipelineWorker:
         self.loop = GLib.MainLoop()
         
         # Attach bus watch for debugging GStreamer issues
-        if self.pipeline:
-            bus = self.pipeline.get_bus()
+        for pipeline in self.pipelines:
+            bus = pipeline.get_bus()
             bus.add_signal_watch()
             bus.connect("message", self.on_bus_message)
             
@@ -547,12 +547,13 @@ class HailoPipelineWorker:
 
     def start(self):
         import time
-        if not self.pipeline:
+        if not self.pipelines:
             self.build_pipeline()
 
-        if self.pipeline:
-            logger.info("Starting Hailo Pipeline...")
-            self.pipeline.set_state(Gst.State.PLAYING)
+        if self.pipelines:
+            logger.info(f"Starting {len(self.pipelines)} Hailo Pipeline(s)...")
+            for pipeline in self.pipelines:
+                pipeline.set_state(Gst.State.PLAYING)
 
             self.thread = threading.Thread(target=self._run_loop, daemon=True)
             self.thread.start()
@@ -585,9 +586,10 @@ class HailoPipelineWorker:
         except Exception as e:
             logger.error(f"Error closing GPIO: {e}")
 
-        if self.pipeline:
-            self.pipeline.set_state(Gst.State.NULL)
-            self.pipeline = None
+        if hasattr(self, 'pipelines') and self.pipelines:
+            for pipeline in self.pipelines:
+                pipeline.set_state(Gst.State.NULL)
+            self.pipelines = []
         if self.loop:
             self.loop.quit()
         if self.thread:
@@ -666,9 +668,10 @@ class HailoPipelineWorker:
         logger.info("Pipeline-only restart (quality change, ffmpeg preserved)...")
 
         self.is_running = False
-        if self.pipeline:
-            self.pipeline.set_state(Gst.State.NULL)
-            self.pipeline = None
+        if hasattr(self, 'pipelines') and self.pipelines:
+            for pipeline in self.pipelines:
+                pipeline.set_state(Gst.State.NULL)
+            self.pipelines = []
         if self.loop:
             self.loop.quit()
         if self.thread:
@@ -679,8 +682,9 @@ class HailoPipelineWorker:
         # Rebuild with the new quality tier (quality_mgr.current_tier already updated)
         self._build_pipeline_string(measure_quality=False)
 
-        if self.pipeline:
-            self.pipeline.set_state(Gst.State.PLAYING)
+        if self.pipelines:
+            for pipeline in self.pipelines:
+                pipeline.set_state(Gst.State.PLAYING)
             self.thread = threading.Thread(target=self._run_loop, daemon=True)
             self.thread.start()
             self.is_running = True

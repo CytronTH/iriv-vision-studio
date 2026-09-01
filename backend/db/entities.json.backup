@@ -1,0 +1,112 @@
+{
+  "cameras": [
+    {
+      "id": "cam_002",
+      "name": "CCTV",
+      "type": "rtsp",
+      "path": "rtsp://kmmnutchanon:yomost2026@10.10.10.90:554/stream1"
+    },
+    {
+      "id": "cam_file_1787165388",
+      "name": "Conveyor_belt_inspecting_congee_\u2026_202608181434.mp4",
+      "type": "file",
+      "path": "/home/pi/iriv-vision-studio/backend/videos/Conveyor_belt_inspecting_congee_\u2026_202608181434.mp4"
+    },
+    {
+      "id": "cam_1787888752117",
+      "name": "USB camera",
+      "type": "local",
+      "path": "/dev/video0"
+    }
+  ],
+  "models": [
+    {
+      "id": "model_001",
+      "name": "YOLOv8s Default (Object Detection)",
+      "type": "model",
+      "hardware": "hailo-8l",
+      "hef_path": "yolov8s.hef",
+      "so_path": "libyolo_hailortpp_post.so",
+      "task": "detection",
+      "tags": [
+        "object_detection",
+        "yolo",
+        "general"
+      ]
+    },
+    {
+      "id": "model_002",
+      "name": "Custom Forklift Model",
+      "type": "model",
+      "hardware": "hailo-8l",
+      "hef_path": "forklift_yolov8.hef",
+      "so_path": "libyolo_hailortpp_post.so",
+      "task": "detection",
+      "tags": [
+        "object_detection",
+        "custom",
+        "safety"
+      ]
+    },
+    {
+      "id": "model_003",
+      "name": "YOLOv8s Pose (Pose Estimation)",
+      "type": "model",
+      "hardware": "hailo-8l",
+      "hef_path": "yolov8s_pose_h8l_pi.hef",
+      "so_path": "libyolov8pose_post.so",
+      "task": "pose",
+      "tags": [
+        "pose_estimation",
+        "yolo",
+        "human"
+      ]
+    },
+    {
+      "id": "model_004",
+      "name": "YOLOv8s Seg (Instance Segmentation)",
+      "type": "model",
+      "hardware": "hailo-8l",
+      "hef_path": "yolov8s_seg.hef",
+      "so_path": "libyolo_hailortpp_post.so",
+      "task": "segmentation",
+      "tags": [
+        "segmentation",
+        "yolo",
+        "general"
+      ]
+    },
+    {
+      "id": "model_1787165367",
+      "name": "congee1ul",
+      "task": "detection",
+      "hef_path": "best.hef",
+      "so_path": "libyolo_hailortpp_post.so"
+    },
+    {
+      "id": "model_1787166758",
+      "name": "congee2ul",
+      "task": "detection",
+      "hef_path": "congee2ul.hef",
+      "so_path": "libyolo_hailortpp_post.so",
+      "classes": [
+        "cup",
+        "expire_date"
+      ]
+    }
+  ],
+  "integrations": [
+    {
+      "id": "int_001",
+      "name": "Terminal Logger",
+      "type": "console_log",
+      "target": ""
+    },
+    {
+      "id": "cm5_hardware",
+      "name": "IRIV EdgeAI CM5 (Hardware I/O)",
+      "type": "cm5_hardware",
+      "target": "local"
+    }
+  ]
+}

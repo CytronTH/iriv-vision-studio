@@ -11,12 +11,24 @@ export default function Settings() {
   const [videoFiles, setVideoFiles] = useState([]);
   const [videoUploading, setVideoUploading] = useState(false);
   const [soFiles, setSoFiles] = useState([]);
+  const [videoDevices, setVideoDevices] = useState([]);
 
   useEffect(() => {
     fetchEntities();
     fetchVideos();
     fetchSoFiles();
+    fetchVideoDevices();
   }, []);
+
+  const fetchVideoDevices = async () => {
+    try {
+      const res = await fetch('/api/system/video-devices');
+      const data = await res.json();
+      if (data.status === 'success') setVideoDevices(data.devices || []);
+    } catch (err) {
+      console.error('Failed to fetch video devices', err);
+    }
+  };
 
   const fetchSoFiles = async () => {
     try {
@@ -246,7 +258,22 @@ export default function Settings() {
                   </label>
                   <label className="flex flex-col gap-1 text-sm text-gray-400 col-span-2">
                     Source Path / URL
-                    <input type="text" value={cam.path} onChange={e => handleUpdate('cameras', cam.id, 'path', e.target.value)} className="bg-gray-900 border border-gray-700 rounded p-2 text-white" />
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        value={cam.path} 
+                        onChange={e => handleUpdate('cameras', cam.id, 'path', e.target.value)} 
+                        list={cam.type === 'local' ? "video-devices" : undefined}
+                        className="bg-gray-900 border border-gray-700 rounded p-2 text-white flex-1" 
+                      />
+                      {cam.type === 'local' && (
+                        <datalist id="video-devices">
+                          {videoDevices.map(dev => (
+                            <option key={dev} value={dev}>{dev}</option>
+                          ))}
+                        </datalist>
+                      )}
+                    </div>
                   </label>
                 </div>
                 <button onClick={() => handleDelete('cameras', cam.id)} className="p-2 text-red-500 hover:bg-red-500/20 rounded mt-6">
