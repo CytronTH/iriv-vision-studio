@@ -47,17 +47,17 @@ class Integration(SQLModel, table=True):
 class EventLog(SQLModel, table=True):
     __tablename__ = "event_logs"
     id: Optional[int] = Field(default=None, primary_key=True)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
-    node_id: Optional[str] = None
-    event_type: Optional[str] = None
+    timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
+    node_id: Optional[str] = Field(default=None, index=True)
+    event_type: Optional[str] = Field(default=None, index=True)
     payload: Optional[str] = None
-    camera_id: Optional[str] = None
+    camera_id: Optional[str] = Field(default=None, index=True)
     snapshot_path: Optional[str] = None
 
 class SystemMetric(SQLModel, table=True):
     __tablename__ = "system_metrics"
     id: Optional[int] = Field(default=None, primary_key=True)
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: datetime = Field(default_factory=datetime.utcnow, index=True)
     cpu_percent: Optional[float] = None
     ram_percent: Optional[float] = None
     temp_c: Optional[float] = None

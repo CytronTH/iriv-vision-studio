@@ -25,6 +25,34 @@
 - 
 -->
 
+## [2026-09-03] - ระบบ Storage Maintenance & Auto-Pruning ป้องกันดิสก์เต็ม
+
+### 🎯 เป้าหมาย (Goals)
+- [x] เพิ่มระบบบริหารจัดการพื้นที่จัดเก็บข้อมูล (Storage Maintenance) ทั้งประวัติ Logs และไฟล์ภาพ Snapshots
+- [x] ป้องกันปัญหาฐานข้อมูล SQLite ขยายตัวจนกินพื้นที่ Flash/SD card ของ Raspberry Pi / Edge Device
+- [x] เพิ่มหน้า UI ให้ผู้ใช้ตั้งค่านโยบาย Retention (อายุ Log) และสั่ง Run Cleanup ได้ด้วยตนเอง
+
+### 🛠️ สิ่งที่ทำเสร็จแล้ว (Accomplished)
+- **Backend Database (`backend/db/database.py` & `models.py`)**:
+  - เพิ่มฟังก์ชัน `purge_old_logs()` ลบ EventLog เก่าตามอายุวัน และจำกัดจำนวน Record สูงสุด โดยลบเป็น Chunk ละ 500 rows ป้องกัน SQLite lock
+  - ลบไฟล์ภาพ Snapshot บน Disk อัตโนมัติตาม Log ที่ถูกล้าง
+  - เพิ่มฟังก์ชัน `get_db_stats()` ดึงขนาดไฟล์ `.sqlite`, `.sqlite-wal`, จำนวน records, และขนาดโฟลเดอร์ภาพ snapshots
+  - ใส่ Index บน `timestamp`, `node_id`, `event_type`, `camera_id` ในโมเดลเพื่อความเร็วในการค้นหาและล้างข้อมูล
+  - กำหนด Max Queue Size (10,000) ใน log queue ป้องกัน RAM ล้น
+- **API Server (`backend/web_server/main.py`)**:
+  - เพิ่ม Endpoint `GET /api/database/stats` และ `POST /api/database/maintenance/cleanup`
+  - ปรับ `write_entities` และ `write_projects` เป็นแบบ Smart Upsert
+  - เพิ่มการสั่ง `db.stop()` ใน Application Shutdown Event
+- **Frontend UI (`frontend/src/components/LogsViewer.jsx`)**:
+  - เพิ่ม Storage Maintenance Modal แสดงสรุปขนาด Database และ Disk usage ของ Snapshots
+  - เพิ่มตัวเลือกกำหนด Retention Policy (7, 14, 30, 60 วัน), จำนวน Record สูงสุด, และ Checkbox สั่งลบไฟล์ภาพออกจากดิสก์
+
+### 🧠 การตัดสินใจทางเทคนิค (Decisions & Context)
+- **เรื่องที่ตัดสินใจ:** ลบ SQLite rows เป็นชุดๆ (Batch of 500) และลบไฟล์รูปภาพออกจากดิสก์ไปพร้อมกัน
+- **เหตุผล:** บน Edge device อย่าง Raspberry Pi การลบข้อมูลหลักแสนแถวในคำสั่งเดียวจะทำให้ SQLite lock เป็นเวลานานและกระทบ realtime pipeline การลบเป็น chunk จึงปลอดภัยและเสถียรกว่า
+
+---
+
 ## [2026-08-14] - เปลี่ยนสถาปัตยกรรมเป็น Entity-Based System
 
 ### 🎯 เป้าหมาย (Goals)

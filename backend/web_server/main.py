@@ -2,6 +2,7 @@ import logging
 import asyncio
 import json
 import yaml
+from datetime import datetime
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -44,8 +45,9 @@ def on_metadata_received(project_id, metadata):
 
 
 async def system_monitor_task():
-    """Background task to broadcast system metrics"""
+    """Background task to broadcast and periodically log system metrics"""
     logger.info("System monitor task started!")
+    log_counter = 0
     while True:
         try:
             metrics = {
@@ -60,11 +62,28 @@ async def system_monitor_task():
             except:
                 pass
             
-            # logger.info(f"Broadcasting metrics: {metrics}") # uncomment if needed
             await manager.broadcast_json(metrics, room_id="system")
+            
+            # Periodically log system metrics to DB (every 10s = 5 cycles of 2s)
+            log_counter += 1
+            if log_counter >= 5:
+                log_counter = 0
+                db.log_metric(metrics["cpu_percent"], metrics["ram_percent"], metrics["temp_c"])
         except Exception as e:
             logger.error(f"System monitor error: {e}")
         await asyncio.sleep(2)
+
+async def database_maintenance_task():
+    """Background task to periodically prune old logs and snapshots (every 24 hours)."""
+    await asyncio.sleep(60)  # Wait 1 minute after startup
+    while True:
+        try:
+            logger.info("Running automatic database maintenance & log pruning...")
+            res = db.purge_old_logs(days=30, max_records=50000, delete_files=True)
+            logger.info(f"Database maintenance completed: {res}")
+        except Exception as e:
+            logger.error(f"Database maintenance error: {e}")
+        await asyncio.sleep(86400)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -74,10 +93,15 @@ async def lifespan(app: FastAPI):
     
     logger.info("Initializing System Monitor and active projects...")
     
-    # Start the system monitor and keep a strong reference to prevent garbage collection
+    # Start the system monitor
     sys_task = asyncio.create_task(system_monitor_task())
     background_tasks.add(sys_task)
     sys_task.add_done_callback(background_tasks.discard)
+
+    # Start the periodic DB maintenance task
+    maint_task = asyncio.create_task(database_maintenance_task())
+    background_tasks.add(maint_task)
+    maint_task.add_done_callback(background_tasks.discard)
     
     # Define absolute paths
     base_dir = Path(__file__).resolve().parent.parent
@@ -103,6 +127,8 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down AI Pipeline Workers...")
     for worker in active_workers.values():
         worker.stop()
+    logger.info("Stopping DatabaseManager...")
+    db.stop()
 
 app = FastAPI(
     title="IRIV Vision Studio API",
@@ -185,16 +211,71 @@ def read_entities():
 
 def write_entities(data):
     with Session(db.engine) as session:
-        for c in session.exec(select(Camera)).all(): session.delete(c)
-        for m in session.exec(select(AIModel)).all(): session.delete(m)
-        for i in session.exec(select(Integration)).all(): session.delete(i)
-        
-        for c in data.get("cameras", []):
-            session.add(Camera(id=c["id"], name=c["name"], type=c.get("type",""), path=c.get("path","")))
-        for m in data.get("models", []):
-            session.add(AIModel(id=m["id"], name=m["name"], type=m.get("type","model"), hardware=m.get("hardware",""), hef_path=m.get("hef_path",""), so_path=m.get("so_path",""), task=m.get("task",""), tags_json=json.dumps(m.get("tags",[])), classes_json=json.dumps(m.get("classes",[]))))
-        for i in data.get("integrations", []):
-            session.add(Integration(id=i["id"], name=i["name"], type=i.get("type",""), target=i.get("target","")))
+        # 1. Cameras: Upsert & delete removed
+        incoming_cams = {c["id"]: c for c in data.get("cameras", []) if "id" in c}
+        existing_cams = {c.id: c for c in session.exec(select(Camera)).all()}
+        for cid, cam_obj in existing_cams.items():
+            if cid not in incoming_cams:
+                session.delete(cam_obj)
+        for cid, c in incoming_cams.items():
+            if cid in existing_cams:
+                cam_obj = existing_cams[cid]
+                cam_obj.name = c["name"]
+                cam_obj.type = c.get("type", "")
+                cam_obj.path = c.get("path", "")
+                session.add(cam_obj)
+            else:
+                session.add(Camera(id=c["id"], name=c["name"], type=c.get("type", ""), path=c.get("path", "")))
+
+        # 2. Models: Upsert & delete removed
+        incoming_models = {m["id"]: m for m in data.get("models", []) if "id" in m}
+        existing_models = {m.id: m for m in session.exec(select(AIModel)).all()}
+        for mid, model_obj in existing_models.items():
+            if mid not in incoming_models:
+                session.delete(model_obj)
+        for mid, m in incoming_models.items():
+            tags_str = json.dumps(m.get("tags", []))
+            classes_str = json.dumps(m.get("classes", []))
+            if mid in existing_models:
+                model_obj = existing_models[mid]
+                model_obj.name = m["name"]
+                model_obj.type = m.get("type", "model")
+                model_obj.hardware = m.get("hardware", "")
+                model_obj.hef_path = m.get("hef_path", "")
+                model_obj.so_path = m.get("so_path", "")
+                model_obj.task = m.get("task", "")
+                model_obj.tags_json = tags_str
+                model_obj.classes_json = classes_str
+                session.add(model_obj)
+            else:
+                session.add(AIModel(
+                    id=m["id"],
+                    name=m["name"],
+                    type=m.get("type", "model"),
+                    hardware=m.get("hardware", ""),
+                    hef_path=m.get("hef_path", ""),
+                    so_path=m.get("so_path", ""),
+                    task=m.get("task", ""),
+                    tags_json=tags_str,
+                    classes_json=classes_str
+                ))
+
+        # 3. Integrations: Upsert & delete removed
+        incoming_integs = {i["id"]: i for i in data.get("integrations", []) if "id" in i}
+        existing_integs = {i.id: i for i in session.exec(select(Integration)).all()}
+        for iid, integ_obj in existing_integs.items():
+            if iid not in incoming_integs:
+                session.delete(integ_obj)
+        for iid, i in incoming_integs.items():
+            if iid in existing_integs:
+                integ_obj = existing_integs[iid]
+                integ_obj.name = i["name"]
+                integ_obj.type = i.get("type", "")
+                integ_obj.target = i.get("target", "")
+                session.add(integ_obj)
+            else:
+                session.add(Integration(id=i["id"], name=i["name"], type=i.get("type", ""), target=i.get("target", "")))
+
         session.commit()
 
 @app.get("/api/entities")
@@ -620,17 +701,44 @@ def read_projects():
 
 def write_projects(data):
     with Session(db.engine) as session:
-        for p in session.exec(select(Project)).all(): session.delete(p)
-        for p in data:
-            session.add(Project(
-                id=p["id"],
-                name=p["name"],
-                description=p.get("description", ""),
-                pipeline_json=json.dumps(p.get("pipeline", {})),
-                dashboard_layout_json=json.dumps(p.get("dashboard_layout", {})),
-                exposed_data_sources_json=json.dumps(p.get("exposed_data_sources", [])),
-                is_running=p.get("is_running", False)
-            ))
+        incoming_projects = {p["id"]: p for p in data if "id" in p}
+        existing_projects = {p.id: p for p in session.exec(select(Project)).all()}
+        
+        # Remove projects no longer in incoming list
+        for pid, proj_obj in existing_projects.items():
+            if pid not in incoming_projects:
+                session.delete(proj_obj)
+                
+        # Upsert incoming projects
+        for pid, p in incoming_projects.items():
+            pipe_str = json.dumps(p.get("pipeline", {}))
+            dash_str = json.dumps(p.get("dashboard_layout", {}))
+            ds_str = json.dumps(p.get("exposed_data_sources", []))
+            is_run = p.get("is_running", False)
+            now = datetime.utcnow()
+            
+            if pid in existing_projects:
+                proj_obj = existing_projects[pid]
+                proj_obj.name = p["name"]
+                proj_obj.description = p.get("description", "")
+                proj_obj.pipeline_json = pipe_str
+                proj_obj.dashboard_layout_json = dash_str
+                proj_obj.exposed_data_sources_json = ds_str
+                proj_obj.is_running = is_run
+                proj_obj.updated_at = now
+                session.add(proj_obj)
+            else:
+                session.add(Project(
+                    id=p["id"],
+                    name=p["name"],
+                    description=p.get("description", ""),
+                    pipeline_json=pipe_str,
+                    dashboard_layout_json=dash_str,
+                    exposed_data_sources_json=ds_str,
+                    is_running=is_run,
+                    created_at=now,
+                    updated_at=now
+                ))
         session.commit()
 
 @app.get("/api/projects")
@@ -847,6 +955,34 @@ def get_logs(limit: int = 100, node_id: str = None, event_type: str = None, came
         from db.database import db
         result = db.get_logs(limit=limit, node_id=node_id, event_type=event_type, camera_id=camera_id, page=page)
         return {"status": "success", **result}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# --- Database Maintenance APIs ---
+@app.get("/api/database/stats")
+async def get_database_stats():
+    try:
+        from db.database import db
+        stats = db.get_db_stats()
+        return {"status": "success", "data": stats}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+class MaintenancePayload(BaseModel):
+    days: Optional[int] = 30
+    max_records: Optional[int] = 50000
+    delete_files: Optional[bool] = True
+
+@app.post("/api/database/maintenance/cleanup")
+async def cleanup_database(payload: MaintenancePayload = MaintenancePayload()):
+    try:
+        from db.database import db
+        result = db.purge_old_logs(
+            days=payload.days or 30,
+            max_records=payload.max_records or 50000,
+            delete_files=payload.delete_files if payload.delete_files is not None else True
+        )
+        return {"status": "success", "result": result}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
