@@ -44,6 +44,7 @@ class HailoPipelineWorker:
         self._ffmpeg_launched = {}   # Persists across quality-change restarts (reuses running ffmpeg)
         self._restarting = False     # Guards against concurrent pipeline restarts
         self.fps_counters = {}       # {camera_id: {"count": 0, "start": time.time(), "fps": 0}}
+        self._probes = []            # [(pad, probe_id)] to cleanly detach probes on stop/restart
 
         # State tracking for debounce
         self.logic_state_history = {}
@@ -53,6 +54,15 @@ class HailoPipelineWorker:
 
         # We start with the config provided, or build a fallback pipeline later
         self.is_running = False
+
+    def _remove_probes(self):
+        """Remove all attached pad probes to prevent buffers firing during teardown."""
+        for pad, probe_id in self._probes:
+            try:
+                pad.remove_probe(probe_id)
+            except Exception as e:
+                logger.debug(f"Error removing probe: {e}")
+        self._probes = []
 
     def build_pipeline(self):
         """
@@ -172,7 +182,11 @@ class HailoPipelineWorker:
             
             # Build source_bin (shared across all streams in this group)
             if video_src_type == "rtsp":
-                source_bin = f"rtspsrc location={video_src} ! rtph264depay ! h264parse ! avdec_h264"
+                source_bin = (
+                    f"rtspsrc location={video_src} protocols=tcp latency=100 buffer-mode=slave ! "
+                    f"rtph264depay ! h264parse ! avdec_h264 ! "
+                    f"queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream"
+                )
             elif video_src_type == "file":
                 if loop:
                     if input_key not in ffmpeg_launched:
@@ -199,7 +213,11 @@ class HailoPipelineWorker:
                         ffmpeg_launched[input_key] = internal_rtsp
                     
                     internal_rtsp = ffmpeg_launched[input_key]
-                    source_bin = f"rtspsrc location={internal_rtsp} protocols=tcp latency=100 ! rtph264depay ! h264parse ! avdec_h264"
+                    source_bin = (
+                        f"rtspsrc location={internal_rtsp} protocols=tcp latency=100 buffer-mode=slave ! "
+                        f"rtph264depay ! h264parse ! avdec_h264 ! "
+                        f"queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream"
+                    )
                 else:
                     speed_filter = ""
                     if speed != 1.0:
@@ -259,24 +277,24 @@ class HailoPipelineWorker:
                         f"hailofilter name=filter_{i} so-path={so} {config_path_arg} qos=false ! "
                         f"{overlay_str}"
                         f"tee name=ai_tee_{i} "
-                        f"ai_tee_{i}. ! queue max-size-buffers=3 leaky=downstream ! "
+                        f"ai_tee_{i}. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
                         f"videocrop top=140 bottom=140 ! "
                         f"videoconvert ! videoscale ! video/x-raw,width={stream_W},height={stream_H} ! "
                         f"{fps_throttle_str}"
-                        f"x264enc tune=zerolatency speed-preset=ultrafast bitrate={stream_kbps} key-int-max=30 ! "
+                        f"x264enc tune=zerolatency speed-preset=ultrafast threads=1 bitrate={stream_kbps} key-int-max=15 ! "
                         f"video/x-h264,pixel-aspect-ratio=1/1 ! "
                         f"h264parse config-interval=1 ! "
-                        f"rtspclientsink location=rtsp://127.0.0.1:8554/{self.project_id}_{stream_id} protocols=tcp "
-                        f"ai_tee_{i}. ! queue max-size-buffers=3 leaky=downstream ! fakesink name=sink_{i} sync=false"
+                        f"rtspclientsink location=rtsp://127.0.0.1:8554/{self.project_id}_{stream_id} protocols=tcp latency=0 "
+                        f"ai_tee_{i}. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! fakesink name=sink_{i} sync=false"
                     )
                 else:
                     sub_str = (
                         f"{source_bin} ! "
                         f"videoconvert ! videoscale ! video/x-raw,width={W},height={H} ! "
-                        f"x264enc tune=zerolatency speed-preset=ultrafast bitrate={kbps} key-int-max=30 ! "
+                        f"x264enc tune=zerolatency speed-preset=ultrafast threads=1 bitrate={kbps} key-int-max=15 ! "
                         f"video/x-h264,pixel-aspect-ratio=1/1 ! "
                         f"h264parse config-interval=1 ! "
-                        f"rtspclientsink location=rtsp://127.0.0.1:8554/{self.project_id}_{stream_id} protocols=tcp"
+                        f"rtspclientsink location=rtsp://127.0.0.1:8554/{self.project_id}_{stream_id} protocols=tcp latency=0"
                     )
                 pipeline_substrings.append(sub_str)
             else:
@@ -318,29 +336,29 @@ class HailoPipelineWorker:
                                     fps_throttle_str = "videorate drop-only=true max-rate=15 ! "
 
                         branches.append(
-                            f"{tee_name}. ! queue max-size-buffers=3 leaky=downstream ! videoconvert ! videoscale ! "
+                            f"{tee_name}. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! videoconvert ! videoscale ! "
                             f"video/x-raw,format=RGB,width=640,height=640,pixel-aspect-ratio=1/1 ! "
                             f"hailonet hef-path={hef} force-writable=true vdevice-group-id=1 ! "
                             f"hailofilter name=filter_{i} so-path={so} {config_path_arg} qos=false ! "
                             f"{overlay_str}"
                             f"tee name=ai_tee_{i} "
-                            f"ai_tee_{i}. ! queue max-size-buffers=3 leaky=downstream ! "
+                            f"ai_tee_{i}. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
                             f"videocrop top=140 bottom=140 ! "
                             f"videoconvert ! videoscale ! video/x-raw,width={stream_W},height={stream_H} ! "
                             f"{fps_throttle_str}"
-                            f"x264enc tune=zerolatency speed-preset=ultrafast bitrate={stream_kbps} key-int-max=30 ! "
+                            f"x264enc tune=zerolatency speed-preset=ultrafast threads=1 bitrate={stream_kbps} key-int-max=15 ! "
                             f"video/x-h264,pixel-aspect-ratio=1/1 ! "
                             f"h264parse config-interval=1 ! "
-                            f"rtspclientsink location=rtsp://127.0.0.1:8554/{self.project_id}_{stream_id} protocols=tcp "
-                            f"ai_tee_{i}. ! queue max-size-buffers=3 leaky=downstream ! fakesink name=sink_{i} sync=false"
+                            f"rtspclientsink location=rtsp://127.0.0.1:8554/{self.project_id}_{stream_id} protocols=tcp latency=0 "
+                            f"ai_tee_{i}. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! fakesink name=sink_{i} sync=false"
                         )
                     else:
                         branches.append(
-                            f"{tee_name}. ! queue max-size-buffers=3 leaky=downstream ! videoconvert ! videoscale ! video/x-raw,width={W},height={H} ! "
-                            f"x264enc tune=zerolatency speed-preset=ultrafast bitrate={kbps} key-int-max=30 ! "
+                            f"{tee_name}. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! videoconvert ! videoscale ! video/x-raw,width={W},height={H} ! "
+                            f"x264enc tune=zerolatency speed-preset=ultrafast threads=1 bitrate={kbps} key-int-max=15 ! "
                             f"video/x-h264,pixel-aspect-ratio=1/1 ! "
                             f"h264parse config-interval=1 ! "
-                            f"rtspclientsink location=rtsp://127.0.0.1:8554/{self.project_id}_{stream_id} protocols=tcp"
+                            f"rtspclientsink location=rtsp://127.0.0.1:8554/{self.project_id}_{stream_id} protocols=tcp latency=0"
                         )
                 
                 pipeline_substrings.append(source_str + " " + " ".join(branches))
@@ -357,7 +375,8 @@ class HailoPipelineWorker:
                         sink = pipeline.get_by_name(f"sink_{i}")
                         if sink:
                             pad = sink.get_static_pad("sink")
-                            pad.add_probe(Gst.PadProbeType.BUFFER, functools.partial(self.on_buffer_probe, camera_id=cam_stream.stream_id))
+                            probe_id = pad.add_probe(Gst.PadProbeType.BUFFER, functools.partial(self.on_buffer_probe, camera_id=cam_stream.stream_id))
+                            self._probes.append((pad, probe_id))
                         else:
                             logger.warning(f"Could not find sink_{i} to attach metadata probe.")
 
@@ -385,6 +404,9 @@ class HailoPipelineWorker:
         """
         Extracts Hailo ROI metadata, applies logic filters, and triggers actions.
         """
+        if not self.is_running or getattr(self, '_restarting', False):
+            return Gst.PadProbeReturn.DROP
+
         buffer = info.get_buffer()
         if not buffer:
             return Gst.PadProbeReturn.OK
@@ -457,15 +479,20 @@ class HailoPipelineWorker:
             if ai_task == "detection":
                 detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
                 for det in detections:
-                    label = det.get_label()
-                    confidence = det.get_confidence()
+                    try:
+                        label = det.get_label()
+                        confidence = det.get_confidence()
+                    except Exception:
+                        continue
+                    if not label:
+                        continue
                     req_conf = class_confidences.get(label, confidence_threshold)
                     if confidence >= req_conf:
                         if is_class_allowed(label):
                             bbox = det.get_bbox()
                             if is_in_roi(bbox):
                                 parsed_results.append({
-                                    "label": det.get_label(),
+                                    "label": label,
                                     "confidence": round(confidence, 2),
                                     # Apply letterbox correction to y-coordinates
                                     "bbox": [
@@ -479,8 +506,13 @@ class HailoPipelineWorker:
             elif ai_task == "classification":
                 classifications = roi.get_objects_typed(hailo.HAILO_CLASSIFICATION)
                 for cls in classifications:
-                    label = cls.get_label()
-                    confidence = cls.get_confidence()
+                    try:
+                        label = cls.get_label()
+                        confidence = cls.get_confidence()
+                    except Exception:
+                        continue
+                    if not label:
+                        continue
                     req_conf = class_confidences.get(label, confidence_threshold)
                     if confidence >= req_conf:
                         if is_class_allowed(label):
@@ -635,6 +667,9 @@ class HailoPipelineWorker:
         if hasattr(self, 'config') and self.config and hasattr(self.config, 'router'):
             self.config.router.stop()
 
+        self.is_running = False
+        self._remove_probes()
+
         # Stop adaptive quality monitor before tearing down the pipeline
         self.quality_mgr.stop_monitor()
 
@@ -647,13 +682,17 @@ class HailoPipelineWorker:
 
         if hasattr(self, 'pipelines') and self.pipelines:
             for pipeline in self.pipelines:
-                pipeline.set_state(Gst.State.NULL)
+                try:
+                    pipeline.set_state(Gst.State.NULL)
+                except Exception as e:
+                    logger.warning(f"Error stopping pipeline: {e}")
             self.pipelines = []
         if self.loop:
             self.loop.quit()
         if self.thread:
             self.thread.join(timeout=2)
         self.thread = None
+        self.loop = None
 
         # Clean up ffmpeg loop processes
         for p in self.ffmpeg_procs:
@@ -727,9 +766,14 @@ class HailoPipelineWorker:
         logger.info("Pipeline-only restart (quality change, ffmpeg preserved)...")
 
         self.is_running = False
+        self._remove_probes()
+
         if hasattr(self, 'pipelines') and self.pipelines:
             for pipeline in self.pipelines:
-                pipeline.set_state(Gst.State.NULL)
+                try:
+                    pipeline.set_state(Gst.State.NULL)
+                except Exception as e:
+                    logger.warning(f"Error stopping pipeline: {e}")
             self.pipelines = []
         if self.loop:
             self.loop.quit()
@@ -738,12 +782,16 @@ class HailoPipelineWorker:
         self.thread = None
         self.loop = None
 
+        # Allow hardware VDMA and RTSP sockets to settle before recreating pipeline
+        time.sleep(0.3)
+
         # Rebuild with the new quality tier (quality_mgr.current_tier already updated)
         self._build_pipeline_string(measure_quality=False)
 
         if self.pipelines:
             for pipeline in self.pipelines:
                 pipeline.set_state(Gst.State.PLAYING)
+            self.loop = GLib.MainLoop()
             self.thread = threading.Thread(target=self._run_loop, daemon=True)
             self.thread.start()
             self.is_running = True

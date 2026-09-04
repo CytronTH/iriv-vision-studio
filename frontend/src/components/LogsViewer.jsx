@@ -278,75 +278,75 @@ export default function LogsViewer() {
   }, [selectedLogIndex, filteredLogs.length]);
 
   return (
-    <div className="h-full flex flex-col p-6 space-y-5 overflow-y-auto bg-slate-950 text-slate-100 font-sans">
+    <div className="h-full flex flex-col p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-5 overflow-y-auto bg-slate-950 text-slate-100 font-sans">
       
       {/* ── Top Header & Stats Cards ─────────────────────────────────────── */}
       <div className="flex flex-col gap-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-blue-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-lg shadow-indigo-500/10">
-              <Database size={26} />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-gradient-to-br from-indigo-500/20 to-blue-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shadow-lg shadow-indigo-500/10 shrink-0">
+              <Database size={22} className="sm:w-6 sm:h-6" />
             </div>
             <div>
-              <div className="flex items-center gap-2.5">
-                <h1 className="text-2xl font-bold tracking-tight text-white">Database & Event Logs</h1>
+              <div className="flex items-center gap-2 sm:gap-2.5">
+                <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">Database & Event Logs</h1>
                 {autoRefresh && (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+                  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
                     LIVE
                   </span>
                 )}
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
                 Search, filter, and inspect AI inference events, OK/NG snapshots, and edge storage.
               </p>
             </div>
           </div>
 
           {/* Quick Global Actions */}
-          <div className="flex items-center gap-2.5 flex-wrap">
+          <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
             <button 
               onClick={() => setShowCleanupModal(true)}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium bg-slate-900 hover:bg-slate-800 text-rose-400 border border-rose-500/20 hover:border-rose-500/40 transition-all shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-medium bg-slate-900 hover:bg-slate-800 text-rose-400 border border-rose-500/20 hover:border-rose-500/40 transition-all shadow-sm active:scale-95"
               title="Manage Storage and Prune Old Snapshots"
             >
-              <Trash2 size={15} />
-              <span>Storage Cleanup</span>
+              <Trash2 size={14} />
+              <span>Cleanup</span>
             </button>
 
             <button 
               onClick={exportCSV}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 transition-all shadow-sm"
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 transition-all shadow-sm active:scale-95"
             >
-              <Download size={15} />
-              <span>Export CSV</span>
+              <Download size={14} />
+              <span>Export</span>
             </button>
             
             <button 
               onClick={() => setAutoRefresh(!autoRefresh)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-medium transition-all border ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-medium transition-all border active:scale-95 ${
                 autoRefresh 
                   ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 shadow-md shadow-emerald-500/10' 
                   : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border-slate-800 hover:border-slate-700'
               }`}
             >
-              {autoRefresh ? <Pause size={15} className="text-emerald-400" /> : <Play size={15} />}
-              <span>{autoRefresh ? 'Live Auto-Refresh: ON' : 'Auto-Refresh: OFF'}</span>
+              {autoRefresh ? <Pause size={14} className="text-emerald-400" /> : <Play size={14} />}
+              <span>{autoRefresh ? 'Live' : 'Auto'}</span>
             </button>
 
             <button 
               onClick={() => { fetchLogs(page, filters); fetchDbStats(); }}
               disabled={loading}
-              className="flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-semibold transition-all shadow-lg shadow-blue-500/20 active:scale-95 disabled:opacity-50"
+              className="flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-semibold transition-all shadow-lg shadow-blue-500/20 active:scale-95 disabled:opacity-50"
             >
-              <RefreshCw size={15} className={loading && !autoRefresh ? "animate-spin" : ""} />
+              <RefreshCw size={14} className={loading && !autoRefresh ? "animate-spin" : ""} />
               <span>Refresh</span>
             </button>
           </div>
         </div>
 
         {/* Metric Cards Banner */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
           {/* Total Events */}
           <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800/80 rounded-2xl p-4 flex items-center justify-between shadow-sm">
             <div>
@@ -429,10 +429,10 @@ export default function LogsViewer() {
       </div>
 
       {/* ── Filter Toolbar & Quick Filter Pills ─────────────────────────── */}
-      <div className="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-4 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-3 sm:p-4 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         {/* Quick Filter Pills */}
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <span className="text-xs font-medium text-slate-400 mr-1 flex items-center gap-1">
+        <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-1 max-w-full scrollbar-none">
+          <span className="text-xs font-medium text-slate-400 mr-1 flex items-center gap-1 shrink-0">
             <Filter size={14} /> Filter:
           </span>
           {[
@@ -444,7 +444,7 @@ export default function LogsViewer() {
             <button
               key={pill.key}
               onClick={() => handleQuickFilter(pill.key)}
-              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all shrink-0 active:scale-95 ${
                 filters.quick === pill.key
                   ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-sm'
                   : 'bg-slate-950/60 hover:bg-slate-800 text-slate-400 border border-slate-800/80'
@@ -456,16 +456,16 @@ export default function LogsViewer() {
         </div>
 
         {/* Dropdowns & Search */}
-        <div className="flex items-center gap-2.5 flex-wrap flex-1 md:justify-end">
+        <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap flex-1 md:justify-end">
           {/* Camera Selector Dropdown */}
-          <div className="relative">
+          <div className="relative flex-1 sm:flex-initial">
             <select
               value={filters.camera_id}
               onChange={(e) => {
                 setFilters(prev => ({ ...prev, camera_id: e.target.value }));
                 setPage(1);
               }}
-              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 appearance-none pr-8 cursor-pointer max-w-[180px] truncate"
+              className="w-full sm:w-auto bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 appearance-none pr-8 cursor-pointer sm:max-w-[180px] truncate"
             >
               <option value="">All Cameras</option>
               {cameras.map(c => (
@@ -478,7 +478,7 @@ export default function LogsViewer() {
           </div>
 
           {/* Keyword Search Input */}
-          <div className="relative flex-1 max-w-[240px]">
+          <div className="relative flex-1 sm:max-w-[240px]">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
             <input
               type="text"
@@ -496,7 +496,7 @@ export default function LogsViewer() {
                 setFilters({ event_type: '', camera_id: '', node_id: '', quick: 'all', search: '' });
                 setPage(1);
               }}
-              className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 px-2 py-1.5 bg-slate-800/80 hover:bg-slate-800 rounded-xl border border-slate-700/60 transition-colors"
+              className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 px-2.5 py-1.5 bg-slate-800/80 hover:bg-slate-800 rounded-xl border border-slate-700/60 transition-colors active:scale-95"
             >
               <X size={13} /> Reset
             </button>

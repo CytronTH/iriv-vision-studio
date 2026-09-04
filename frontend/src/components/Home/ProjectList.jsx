@@ -129,39 +129,39 @@ export default function ProjectList({ onOpenProject }) {
   };
 
   return (
-    <div className="max-w-7xl mx-auto p-6 animate-in fade-in duration-500">
+    <div className="max-w-7xl mx-auto p-3 sm:p-6 animate-in fade-in duration-500">
       
       {/* Hero Section */}
-      <div className="bg-gradient-to-r from-blue-900/40 to-indigo-900/40 border border-blue-800/50 rounded-2xl p-8 mb-10 flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl">
+      <div className="bg-gradient-to-r from-blue-900/40 to-indigo-900/40 border border-blue-800/50 rounded-2xl p-4 sm:p-6 md:p-8 mb-6 md:mb-10 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4 sm:gap-6 shadow-2xl">
         <div>
-          <h2 className="text-3xl font-bold mb-2 flex items-center gap-3 text-white">
-            <Video className="text-blue-400" size={32} />
+          <h2 className="text-2xl sm:text-3xl font-bold mb-2 flex items-center gap-2 sm:gap-3 text-white">
+            <Video className="text-blue-400 shrink-0" size={28} />
             My Projects
           </h2>
-          <p className="text-blue-200/70 max-w-xl">
+          <p className="text-blue-200/70 text-xs sm:text-sm max-w-xl">
             Create and manage multiple AI vision pipelines. Each project runs isolated on its own GStreamer thread and RTSP output, allowing you to run multiple cameras simultaneously.
           </p>
         </div>
         <button 
           onClick={createProject}
-          className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-3 rounded-xl font-semibold flex items-center gap-2 transition-all shadow-lg shadow-blue-900/50 hover:scale-105 active:scale-95 whitespace-nowrap"
+          className="bg-blue-600 hover:bg-blue-500 text-white px-5 sm:px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-900/50 hover:scale-105 active:scale-95 whitespace-nowrap text-sm sm:text-base w-full sm:w-auto"
         >
           <Plus size={20} />
           Create New Project
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
         {projects.map(project => (
-          <div key={project.id} className="bg-gray-900/80 border border-gray-800 hover:border-blue-900/50 rounded-2xl p-6 transition-all group flex flex-col shadow-lg relative overflow-hidden backdrop-blur-sm">
+          <div key={project.id} className="bg-gray-900/80 border border-gray-800 hover:border-blue-900/50 rounded-2xl p-4 sm:p-6 transition-all group flex flex-col shadow-lg relative overflow-hidden backdrop-blur-sm">
             
             {/* Background Glow */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none group-hover:bg-blue-600/10 transition-colors"></div>
 
             <div className="flex items-start justify-between mb-4 relative z-10">
               <div className="flex items-center gap-3">
-                <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-3 rounded-xl text-white shadow-lg shadow-blue-900/20">
-                  <Folder size={24} />
+                <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-2.5 sm:p-3 rounded-xl text-white shadow-lg shadow-blue-900/20 shrink-0">
+                  <Folder size={22} className="sm:w-6 sm:h-6" />
                 </div>
                 
                 {/* Status Badge */}
@@ -182,11 +182,13 @@ export default function ProjectList({ onOpenProject }) {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              
+              {/* Touch-visible actions on mobile, hover-only on desktop */}
+              <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                 {editingId !== project.id && (
                   <button 
                     onClick={() => startEditing(project)}
-                    className="text-gray-400 hover:text-blue-400 transition-colors p-2 bg-gray-800 rounded-lg"
+                    className="text-gray-400 hover:text-blue-400 transition-colors p-2 bg-gray-800 rounded-lg active:scale-95"
                     title="Edit Details"
                   >
                     <Edit2 size={16} />
@@ -194,7 +196,7 @@ export default function ProjectList({ onOpenProject }) {
                 )}
                 <button 
                   onClick={() => deleteProject(project.id)}
-                  className="text-gray-400 hover:text-red-500 transition-colors p-2 bg-gray-800 rounded-lg"
+                  className="text-gray-400 hover:text-red-500 transition-colors p-2 bg-gray-800 rounded-lg active:scale-95"
                   title="Delete Project"
                 >
                   <Trash2 size={16} />
@@ -222,7 +224,7 @@ export default function ProjectList({ onOpenProject }) {
                   <div className="flex justify-end">
                     <button 
                       onClick={() => saveEditing(project.id)}
-                      className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2"
+                      className="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium flex items-center gap-2 active:scale-95"
                     >
                       <Check size={16} /> Save
                     </button>
@@ -230,20 +232,20 @@ export default function ProjectList({ onOpenProject }) {
                 </div>
               ) : (
                 <>
-                  <h3 className="text-xl font-bold mb-2 text-white group-hover:text-blue-400 transition-colors cursor-pointer" onClick={() => onOpenProject(project)}>
+                  <h3 className="text-lg sm:text-xl font-bold mb-1.5 sm:mb-2 text-white group-hover:text-blue-400 transition-colors cursor-pointer" onClick={() => onOpenProject(project)}>
                     {project.name}
                   </h3>
-                  <p className="text-gray-400 text-sm mb-6 line-clamp-2">{project.description}</p>
+                  <p className="text-gray-400 text-xs sm:text-sm mb-4 sm:mb-6 line-clamp-2">{project.description}</p>
                 </>
               )}
             </div>
             
-            <div className="flex items-center justify-between pt-5 border-t border-gray-800/50 mt-auto relative z-10">
+            <div className="flex items-center justify-between pt-4 sm:pt-5 border-t border-gray-800/50 mt-auto relative z-10 gap-2">
               <div className="flex items-center gap-2">
                 {projectStatuses[project.id]?.status === 'running' ? (
                   <button 
                     onClick={() => toggleProject(project.id, true)}
-                    className="p-2 rounded-lg bg-red-900/40 text-red-400 hover:bg-red-600 hover:text-white transition-colors border border-red-800/50"
+                    className="p-2 sm:p-2.5 rounded-lg bg-red-900/40 text-red-400 hover:bg-red-600 hover:text-white transition-colors border border-red-800/50 active:scale-95"
                     title="Stop Project"
                   >
                     <Square size={16} fill="currentColor" />
@@ -251,22 +253,22 @@ export default function ProjectList({ onOpenProject }) {
                 ) : (
                   <button 
                     onClick={() => toggleProject(project.id, false)}
-                    className="p-2 rounded-lg bg-green-900/40 text-green-400 hover:bg-green-600 hover:text-white transition-colors border border-green-800/50"
+                    className="p-2 sm:p-2.5 rounded-lg bg-green-900/40 text-green-400 hover:bg-green-600 hover:text-white transition-colors border border-green-800/50 active:scale-95"
                     title="Start Project"
                   >
                     <Play size={16} fill="currentColor" />
                   </button>
                 )}
                 
-                <span className="text-xs text-gray-500 font-medium ml-2">
-                  {project.pipeline?.nodes?.length || 0} Nodes Configured
+                <span className="text-[11px] sm:text-xs text-gray-500 font-medium">
+                  {project.pipeline?.nodes?.length || 0} Nodes
                 </span>
               </div>
               <button 
                 onClick={() => onOpenProject(project)}
-                className="bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white px-4 py-2 rounded-lg text-sm font-semibold flex items-center gap-2 transition-all group/btn"
+                className="bg-blue-600/10 text-blue-400 hover:bg-blue-600 hover:text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-semibold flex items-center gap-1.5 sm:gap-2 transition-all group/btn active:scale-95"
               >
-                Open Studio <ArrowRight size={16} className="group-hover/btn:translate-x-1 transition-transform" />
+                <span>Studio</span> <ArrowRight size={14} className="group-hover/btn:translate-x-1 transition-transform" />
               </button>
             </div>
           </div>

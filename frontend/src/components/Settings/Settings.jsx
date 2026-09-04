@@ -182,13 +182,13 @@ export default function Settings() {
   if (loading) return <div className="text-gray-400 p-8">Loading Settings...</div>;
 
   return (
-    <div className="bg-gray-900 rounded-xl border border-gray-800 p-6 flex flex-col h-full">
-      <div className="flex items-center justify-between mb-6">
+    <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 sm:p-6 flex flex-col h-full">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h2 className="text-xl font-bold">Entity Management</h2>
         <button 
           onClick={handleSaveAll}
           disabled={saving}
-          className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors"
+          className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors active:scale-95 w-full sm:w-auto"
         >
           <Save size={16} />
           {saving ? 'Saving...' : 'Save All Changes'}
@@ -196,10 +196,10 @@ export default function Settings() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2 border-b border-gray-800 mb-6">
+      <div className="flex gap-2 border-b border-gray-800 mb-6 overflow-x-auto whitespace-nowrap pb-2 scrollbar-none">
         <button 
           onClick={() => setActiveTab('cameras')}
-          className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
+          className={`flex items-center gap-2 px-3 sm:px-4 py-2 border-b-2 font-medium text-xs sm:text-sm transition-colors shrink-0 ${
             activeTab === 'cameras' ? 'border-blue-500 text-blue-400' : 'border-transparent text-gray-400 hover:text-white'
           }`}
         >
@@ -208,7 +208,7 @@ export default function Settings() {
         </button>
         <button 
           onClick={() => setActiveTab('models')}
-          className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
+          className={`flex items-center gap-2 px-3 sm:px-4 py-2 border-b-2 font-medium text-xs sm:text-sm transition-colors shrink-0 ${
             activeTab === 'models' ? 'border-purple-500 text-purple-400' : 'border-transparent text-gray-400 hover:text-white'
           }`}
         >
@@ -217,7 +217,7 @@ export default function Settings() {
         </button>
         <button 
           onClick={() => setActiveTab('integrations')}
-          className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
+          className={`flex items-center gap-2 px-3 sm:px-4 py-2 border-b-2 font-medium text-xs sm:text-sm transition-colors shrink-0 ${
             activeTab === 'integrations' ? 'border-green-500 text-green-400' : 'border-transparent text-gray-400 hover:text-white'
           }`}
         >
@@ -226,7 +226,7 @@ export default function Settings() {
         </button>
         <button 
           onClick={() => setActiveTab('videos')}
-          className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
+          className={`flex items-center gap-2 px-3 sm:px-4 py-2 border-b-2 font-medium text-xs sm:text-sm transition-colors shrink-0 ${
             activeTab === 'videos' ? 'border-cyan-500 text-cyan-400' : 'border-transparent text-gray-400 hover:text-white'
           }`}
         >
@@ -242,8 +242,8 @@ export default function Settings() {
         {activeTab === 'cameras' && (
           <div className="flex flex-col gap-4">
             {entities.cameras.map(cam => (
-              <div key={cam.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 flex gap-4 items-start">
-                <div className="flex-1 grid grid-cols-2 gap-4">
+              <div key={cam.id} className="bg-gray-800/50 p-3 sm:p-4 rounded-lg border border-gray-700 flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-start">
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <label className="flex flex-col gap-1 text-sm text-gray-400">
                     Name
                     <input type="text" value={cam.name} onChange={e => handleUpdate('cameras', cam.id, 'name', e.target.value)} className="bg-gray-900 border border-gray-700 rounded p-2 text-white" />
@@ -256,7 +256,7 @@ export default function Settings() {
                       <option value="file">Video File</option>
                     </select>
                   </label>
-                  <label className="flex flex-col gap-1 text-sm text-gray-400 col-span-2">
+                  <label className="flex flex-col gap-1 text-sm text-gray-400 sm:col-span-2">
                     Source Path / URL
                     <div className="flex gap-2">
                       <input 
@@ -276,9 +276,11 @@ export default function Settings() {
                     </div>
                   </label>
                 </div>
-                <button onClick={() => handleDelete('cameras', cam.id)} className="p-2 text-red-500 hover:bg-red-500/20 rounded mt-6">
-                  <Trash2 size={20} />
-                </button>
+                <div className="flex justify-end sm:mt-6">
+                  <button onClick={() => handleDelete('cameras', cam.id)} className="p-2 text-red-500 hover:bg-red-500/20 rounded active:scale-95 transition-colors" title="Delete Camera">
+                    <Trash2 size={20} />
+                  </button>
+                </div>
               </div>
             ))}
             <button 
@@ -293,11 +295,10 @@ export default function Settings() {
         {/* MODELS */}
         {activeTab === 'models' && (
           <div className="flex flex-col gap-4">
-            
-            {/* Upload Form */}
-            <div className="bg-gray-800 p-4 rounded-lg border border-purple-500/50 mb-2 shadow-lg shadow-purple-900/10">
-              <h3 className="text-lg font-bold text-purple-400 mb-3">Upload Custom Model</h3>
-              <form onSubmit={handleUploadModel} className="grid grid-cols-2 gap-4">
+                       {/* Upload Form */}
+            <div className="bg-gray-800 p-3 sm:p-4 rounded-lg border border-purple-500/50 mb-2 shadow-lg shadow-purple-900/10">
+              <h3 className="text-base sm:text-lg font-bold text-purple-400 mb-3">Upload Custom Model</h3>
+              <form onSubmit={handleUploadModel} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <label className="flex flex-col gap-1 text-sm text-gray-400">
                   Model Name
                   <input type="text" name="name" required placeholder="e.g. Expiry Date Detector" className="bg-gray-900 border border-gray-700 rounded p-2 text-white" />
@@ -314,10 +315,10 @@ export default function Settings() {
                   <input type="file" name="hef_file" accept=".hef" required className="text-white mt-1 text-xs file:mr-4 file:py-1 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-500" />
                 </label>
                 <label className="flex flex-col gap-1 text-sm text-gray-400">
-                  metadata.yaml <span className="text-gray-600 text-xs">(optional — auto-fills class names)</span>
+                  metadata.yaml <span className="text-gray-600 text-xs">(optional)</span>
                   <input type="file" name="metadata_file" accept=".yaml,.yml" className="text-white mt-1 text-xs file:mr-4 file:py-1 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-700 file:text-white hover:file:bg-gray-600" />
                 </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-400">
+                <label className="flex flex-col gap-1 text-sm text-gray-400 sm:col-span-2">
                   Post-Process Library (.so)
                   <select name="so_name" required className="bg-gray-900 border border-gray-700 rounded p-2 text-white">
                     {soFiles.length === 0 ? (
@@ -330,17 +331,17 @@ export default function Settings() {
                   </select>
                   <span className="text-xs text-gray-500 mt-1">Select from TAPPAS libs installed on this device</span>
                 </label>
-                <button type="submit" disabled={uploading} className="col-span-2 bg-purple-600 hover:bg-purple-500 text-white rounded p-2 font-bold mt-2 transition-colors">
+                <button type="submit" disabled={uploading} className="sm:col-span-2 bg-purple-600 hover:bg-purple-500 text-white rounded p-2.5 font-bold mt-2 transition-colors active:scale-95">
                   {uploading ? 'Uploading...' : 'Upload Model'}
                 </button>
               </form>
             </div>
 
-            <h3 className="text-lg font-bold text-gray-300 mt-2 pb-2 border-b border-gray-800">Available Models</h3>
+            <h3 className="text-base sm:text-lg font-bold text-gray-300 mt-2 pb-2 border-b border-gray-800">Available Models</h3>
 
             {entities.models.map(model => (
-              <div key={model.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 flex gap-4 items-start">
-                <div className="flex-1 grid grid-cols-2 gap-4">
+              <div key={model.id} className="bg-gray-800/50 p-3 sm:p-4 rounded-lg border border-gray-700 flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-start">
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <label className="flex flex-col gap-1 text-sm text-gray-400">
                     Name
                     <input type="text" value={model.name} onChange={e => handleUpdate('models', model.id, 'name', e.target.value)} className="bg-gray-900 border border-gray-700 rounded p-2 text-white" />
@@ -369,9 +370,9 @@ export default function Settings() {
                       )}
                     </select>
                   </label>
-                  <label className="flex flex-col gap-1 text-sm text-gray-400 col-span-2">
+                  <label className="flex flex-col gap-1 text-sm text-gray-400 sm:col-span-2">
                     <div className="flex items-center justify-between">
-                      <span>Class Names <span className="text-gray-600 text-xs">(comma-separated, e.g. cup, expire_date)</span></span>
+                      <span>Class Names <span className="text-gray-600 text-xs">(comma-separated)</span></span>
                       <label className="cursor-pointer text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 transition-colors">
                         <Upload size={12} />
                         Upload metadata.yaml
@@ -393,10 +394,9 @@ export default function Settings() {
                               } else {
                                 alert('Error: ' + data.message);
                               }
-                            } catch (err) {
+                            } catch(err) {
                               alert('Upload failed: ' + err.message);
                             }
-                            e.target.value = '';
                           }}
                         />
                       </label>
@@ -404,12 +404,9 @@ export default function Settings() {
                     <input
                       type="text"
                       value={(model.classes || []).join(', ')}
-                      onChange={e => {
-                        const classes = e.target.value.split(',').map(s => s.trim()).filter(Boolean);
-                        handleUpdate('models', model.id, 'classes', classes);
-                      }}
-                      placeholder="e.g. cup, expire_date"
-                      className="bg-gray-900 border border-gray-700 rounded p-2 text-white text-sm"
+                      onChange={e => handleUpdate('models', model.id, 'classes', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                      placeholder="cup, person, car"
+                      className="bg-gray-900 border border-gray-700 rounded p-2 text-white"
                     />
                     {(model.classes || []).length > 0 && (
                       <div className="flex flex-wrap gap-1 mt-1">
@@ -420,14 +417,16 @@ export default function Settings() {
                     )}
                   </label>
                 </div>
-                <button onClick={() => handleDelete('models', model.id)} className="p-2 text-red-500 hover:bg-red-500/20 rounded mt-6">
-                  <Trash2 size={20} />
-                </button>
+                <div className="flex justify-end sm:mt-6">
+                  <button onClick={() => handleDelete('models', model.id)} className="p-2 text-red-500 hover:bg-red-500/20 rounded active:scale-95 transition-colors" title="Delete Model">
+                    <Trash2 size={20} />
+                  </button>
+                </div>
               </div>
             ))}
             <button 
               onClick={() => handleAdd('models', { name: 'New Model', task: 'detection', hef_path: 'model.hef', so_path: 'lib.so' })}
-              className="border-2 border-dashed border-gray-700 hover:border-gray-500 text-gray-400 p-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+              className="border-2 border-dashed border-gray-700 hover:border-gray-500 text-gray-400 p-4 rounded-lg flex items-center justify-center gap-2 transition-colors active:scale-95"
             >
               <Plus size={18} /> Add New Model Entity
             </button>
@@ -438,8 +437,8 @@ export default function Settings() {
         {activeTab === 'integrations' && (
           <div className="flex flex-col gap-4">
             {entities.integrations.map(int => (
-              <div key={int.id} className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 flex gap-4 items-start">
-                <div className="flex-1 grid grid-cols-2 gap-4">
+              <div key={int.id} className="bg-gray-800/50 p-3 sm:p-4 rounded-lg border border-gray-700 flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-start">
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <label className="flex flex-col gap-1 text-sm text-gray-400">
                     Name
                     <input type="text" value={int.name} onChange={e => handleUpdate('integrations', int.id, 'name', e.target.value)} className="bg-gray-900 border border-gray-700 rounded p-2 text-white" />
@@ -452,19 +451,21 @@ export default function Settings() {
                       <option value="gpio">Trigger GPIO Pin</option>
                     </select>
                   </label>
-                  <label className="flex flex-col gap-1 text-sm text-gray-400 col-span-2">
+                  <label className="flex flex-col gap-1 text-sm text-gray-400 sm:col-span-2">
                     Target URL / Endpoint
                     <input type="text" value={int.target} onChange={e => handleUpdate('integrations', int.id, 'target', e.target.value)} className="bg-gray-900 border border-gray-700 rounded p-2 text-white" />
                   </label>
                 </div>
-                <button onClick={() => handleDelete('integrations', int.id)} className="p-2 text-red-500 hover:bg-red-500/20 rounded mt-6">
-                  <Trash2 size={20} />
-                </button>
+                <div className="flex justify-end sm:mt-6">
+                  <button onClick={() => handleDelete('integrations', int.id)} className="p-2 text-red-500 hover:bg-red-500/20 rounded active:scale-95 transition-colors" title="Delete Integration">
+                    <Trash2 size={20} />
+                  </button>
+                </div>
               </div>
             ))}
             <button 
               onClick={() => handleAdd('integrations', { name: 'New Integration', type: 'webhook', target: 'https://...' })}
-              className="border-2 border-dashed border-gray-700 hover:border-gray-500 text-gray-400 p-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+              className="border-2 border-dashed border-gray-700 hover:border-gray-500 text-gray-400 p-4 rounded-lg flex items-center justify-center gap-2 transition-colors active:scale-95"
             >
               <Plus size={18} /> Add New Integration Entity
             </button>

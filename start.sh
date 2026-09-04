@@ -20,6 +20,8 @@ echo ""
 # We use npx concurrently to run both processes in parallel.
 # It automatically prefixes logs, color-codes them, and kills both when you press Ctrl+C.
 npx concurrently \
+  -k \
+  --kill-others-on-fail \
   -n "BACKEND,FRONTEND,MEDIAMTX" \
   -c "cyan.bold,green.bold,yellow.bold" \
   "cd backend && . venv/bin/activate && uvicorn web_server.main:app --host 0.0.0.0 --port 8000" \

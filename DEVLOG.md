@@ -25,6 +25,34 @@
 - 
 -->
 
+## [2026-09-04] - เพิ่ม Mobile Navigation, ปรับปรุง UI Responsive และเสถียรภาพ Pipeline/Hardware
+
+### 🎯 เป้าหมาย (Goals)
+- [x] ปรับแต่ง Frontend ให้รองรับการแสดงผลบนอุปกรณ์พกพา (Mobile & Tablet)
+- [x] เพิ่ม Mobile Bottom Navigation Bar ให้สลับเมนู (Projects, Dashboard, Pipeline, Logs, Wiki, Settings) ได้อย่างสะดวกรวดเร็ว
+- [x] ปรับปรุงเสถียรภาพของ Hailo GStreamer Worker ในช่วงการ Restart และ Teardown
+- [x] ปรับปรุง Hardware Output Node ไม่ให้ส่งสัญญาณซ้ำๆ และป้องกัน Snapshot Process ทับซ้อน
+
+### 🛠️ สิ่งที่ทำเสร็จแล้ว (Accomplished)
+- **Frontend & Mobile UI (`frontend/src/`)**:
+  - เพิ่ม **Mobile Bottom Navigation Bar** ใน `App.jsx` สำหรับหน้าจอขนาดเล็ก (< md)
+  - ปรับปรุง Header, Breadcrumb, และ Resource Monitor ให้มีความกะทัดรัด (Compact) และ Responsive
+  - เพิ่ม Drawer / ปุ่มเปิด Sidebar "All Nodes" ใน `NodeWiki.jsx` สำหรับดูข้อมูลบนมือถือ
+  - เพิ่ม Assets โลโก้แบรนด์ (`logo.png`, `logo.svg`) และอัปเดต `favicon.svg`
+  - ปรับแต่ง Layout ของ `Sidebar.jsx`, `ProjectList.jsx`, และ `Settings.jsx` ให้แสดงผลได้สมบูรณ์บนทุกขนาดหน้าจอ
+- **Backend AI Engine & Router (`backend/ai_engine/`)**:
+  - `hailo_worker.py`: เพิ่มการถอด Probe (`_remove_probes`), ดักจับ Exception ตอนเปลี่ยนสถานะ Pipeline เป็น NULL, เพิ่มเวลารอ 0.3s ให้ฮาร์ดแวร์ VDMA และ RTSP Sockets เซ็ตตัว, และ Re-initialize `GLib.MainLoop()` เพื่อป้องกันการค้างตอนสลับ Tier คุณภาพสตรีม
+  - `message_router.py`: เพิ่ม State Caching ใน `HardwareOutputNode` เพื่อสั่งงาน GPIO / PWM / Buzzer เฉพาะเมื่อค่าสถานะเปลี่ยนแปลงจริง ลดภาระ CPU และตัด Log สแปม
+  - `SnapshotNode`: เพิ่มการตรวจสอบ `poll()` ของโปรเซส FFmpeg ก่อนหน้า เพื่อป้องกันการสแปมโปรเซสจับภาพซ้ำซ้อน
+- **Process Management (`start.sh`)**:
+  - เพิ่ม Flag `-k` และ `--kill-others-on-fail` ใน `npx concurrently` เพื่อให้ปิดทุกโปรเซสอย่างสมบูรณ์หากมีเซอร์วิสใดล้มเหลว
+
+### 🧠 การตัดสินใจทางเทคนิค (Decisions & Context)
+- **เรื่องที่ตัดสินใจ:** เพิ่ม State Change Filter ใน `HardwareOutputNode`
+- **เหตุผล:** เดิมทีโหนดส่งคำสั่ง GPIO/PWM ทุกครั้งที่ได้รับเมสเสจจาก AI Pipeline แม้ว่าสถานะจะไม่เปลี่ยน ซึ่งสร้าง I/O Overhead บนบอร์ด Raspberry Pi โดยไม่จำเป็น การทำ State Cache ช่วยลดโหลดและทำให้ Log อ่านง่ายขึ้น
+
+---
+
 ## [2026-09-03] - ระบบ Storage Maintenance & Auto-Pruning ป้องกันดิสก์เต็ม
 
 ### 🎯 เป้าหมาย (Goals)

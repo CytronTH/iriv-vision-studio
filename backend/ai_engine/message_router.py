@@ -237,8 +237,9 @@ class DashboardOutputNode(PipelineNode):
             if val == self.last_val and (current_time - self.last_sent_time < 0.1):
                 return msg
 
-            import logging
-            logging.getLogger("ai_engine").info(f"DashboardOutputNode {self.node_id}: value changed from {self.last_val} to {val}")
+            if val != self.last_val:
+                import logging
+                logging.getLogger("ai_engine").info(f"DashboardOutputNode {self.node_id}: value changed from {self.last_val} to {val}")
 
             self.last_sent_time = current_time
             self.last_val = val
@@ -257,26 +258,30 @@ class HardwareOutputNode(PipelineNode):
         super().__init__(node_id, data, router)
         self.hw_type = hw_type
         self.pin = data.get("pin")
+        self._last_is_active = None
         
     def process(self, msg: dict):
         val = bool(msg.get("payload"))
         trigger_on = str(self.data.get("triggerOn", "true")).lower() == "true"
         is_active = (val == trigger_on)
         
-        logger.info(f"HardwareOutputNode {self.node_id} (type: {self.hw_type}) received val: {val}, active: {is_active}")
-        try:
-            from hardware.gpio_manager import gpio_mgr
-            if self.hw_type == "led":
-                brightness = float(self.data.get("brightness", 100)) / 100.0 if is_active else 0.0
-                gpio_mgr.set_pwm(self.pin, brightness)
-            elif self.hw_type == "buzzer":
-                gpio_mgr.set_output("BUZZER", is_active)
-            elif self.hw_type == "digital_output":
-                action = self.data.get("action", "on")
-                final_out = is_active if action == "on" else not is_active
-                gpio_mgr.set_output(self.pin, final_out)
-        except Exception as e:
-            logger.error(f"Hardware output error: {e}")
+        # Only log and set hardware if state changed
+        if self._last_is_active != is_active:
+            self._last_is_active = is_active
+            logger.info(f"HardwareOutputNode {self.node_id} (type: {self.hw_type}) state changed: active={is_active}")
+            try:
+                from hardware.gpio_manager import gpio_mgr
+                if self.hw_type == "led":
+                    brightness = float(self.data.get("brightness", 100)) / 100.0 if is_active else 0.0
+                    gpio_mgr.set_pwm(self.pin, brightness)
+                elif self.hw_type == "buzzer":
+                    gpio_mgr.set_output("BUZZER", is_active)
+                elif self.hw_type == "digital_output":
+                    action = self.data.get("action", "on")
+                    final_out = is_active if action == "on" else not is_active
+                    gpio_mgr.set_output(self.pin, final_out)
+            except Exception as e:
+                logger.error(f"Hardware output error: {e}")
             
         return msg
 
@@ -285,6 +290,7 @@ class SnapshotNode(PipelineNode):
         super().__init__(node_id, data, router)
         self.label = data.get("label", "Snapshot")
         self.last_payload = False
+        self._proc = None
 
     def process(self, msg: dict):
         current_payload = bool(msg.get("payload"))
@@ -305,11 +311,14 @@ class SnapshotNode(PipelineNode):
                 rtsp_url = f"rtsp://127.0.0.1:8554/{self.router.project_id}_{camera_id}"
                 
                 try:
-                    # Run ffmpeg to grab a frame in background
-                    subprocess.Popen([
-                        "ffmpeg", "-y", "-rtsp_transport", "tcp", "-i", rtsp_url, 
-                        "-vframes", "1", "-q:v", "2", str(filepath)
-                    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    # Reap any finished snapshot process
+                    if self._proc and self._proc.poll() is None:
+                        pass # Previous snapshot still grabbing frame, don't spam
+                    else:
+                        self._proc = subprocess.Popen([
+                            "ffmpeg", "-y", "-rtsp_transport", "tcp", "-i", rtsp_url, 
+                            "-vframes", "1", "-q:v", "2", str(filepath)
+                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     
                     # Log to DB
                     import sys

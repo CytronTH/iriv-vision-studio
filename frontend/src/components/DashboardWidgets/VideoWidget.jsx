@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
-import { Camera, Grid, RefreshCw } from 'lucide-react';
+import { Camera, Grid, RefreshCw, Maximize2, Minimize2 } from 'lucide-react';
 
 /**
  * WHEP (WebRTC-HTTP Egress Protocol) hook.
@@ -325,45 +325,51 @@ export default function VideoWidget({ metadata, projectId, config }) {
     return () => cancelAnimationFrame(animationFrameId);
   }, [debugMode, showSource, config]);
 
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
   const statusColor = {
     connected: '#22c55e', connecting: '#f59e0b',
     error: '#ef4444',     idle:       '#6b7280',
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-xl">
+    <div className={
+      isFullscreen
+        ? "fixed inset-0 z-50 bg-gray-950 flex flex-col p-2 sm:p-4 animate-in fade-in duration-200"
+        : "flex flex-col h-full bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-xl"
+    }>
       {/* Header */}
       <div className="bg-gray-800/80 px-3 py-2 flex items-center justify-between border-b border-gray-700 shrink-0">
-        <div className="flex items-center gap-2">
-          <Camera size={16} className="text-blue-400" />
-          <span className="text-sm font-semibold text-gray-200">
+        <div className="flex items-center gap-2 min-w-0">
+          <Camera size={16} className="text-blue-400 shrink-0" />
+          <span className="text-xs sm:text-sm font-semibold text-gray-200 truncate">
             {config?.title || 'Live Video Stream'}
           </span>
           <span
-            className="inline-block w-2 h-2 rounded-full"
+            className="inline-block w-2 h-2 rounded-full shrink-0"
             style={{ background: statusColor[status] ?? '#6b7280' }}
             title={`WebRTC: ${status}`}
           />
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           {status === 'error' && (
             <button
               onClick={reconnect}
-              className="flex items-center gap-1 px-2 py-0.5 rounded text-xs bg-red-900/60 text-red-300 hover:bg-red-800 border border-red-700"
+              className="flex items-center gap-1 px-2 py-1 rounded text-xs bg-red-900/60 text-red-300 hover:bg-red-800 border border-red-700 active:scale-95"
             >
-              <RefreshCw size={10} /> Retry
+              <RefreshCw size={11} /> Retry
             </button>
           )}
           {/* Quality tier badge */}
           {qualityLabel && !showSource && (
-            <span className="px-2 py-0.5 rounded text-xs font-mono bg-indigo-900/60 text-indigo-300 border border-indigo-700">
+            <span className="px-1.5 sm:px-2 py-0.5 rounded text-[10px] sm:text-xs font-mono bg-indigo-900/60 text-indigo-300 border border-indigo-700">
               {qualityLabel}
             </span>
           )}
           <button
             onClick={() => setShowSource(s => !s)}
             title={showSource ? 'Showing raw source — click to switch to processed' : 'Show raw source stream'}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono border transition-colors ${
+            className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-mono border transition-colors active:scale-95 ${
               showSource
                 ? 'bg-blue-500 text-white border-blue-400 font-bold'
                 : 'bg-gray-700 text-gray-400 border-gray-600 hover:bg-gray-600'
@@ -374,14 +380,21 @@ export default function VideoWidget({ metadata, projectId, config }) {
           <button
             onClick={() => setDebugMode(d => !d)}
             title="Toggle debug grid"
-            className={`flex items-center gap-1 px-2 py-0.5 rounded text-xs font-mono border transition-colors ${
+            className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-mono border transition-colors active:scale-95 ${
               debugMode
                 ? 'bg-yellow-400 text-black border-yellow-300 font-bold'
                 : 'bg-gray-700 text-gray-400 border-gray-600 hover:bg-gray-600'
             }`}
           >
             <Grid size={11} />
-            {debugMode ? 'DEBUG ON' : 'DEBUG'}
+            <span className="hidden sm:inline">{debugMode ? 'DEBUG ON' : 'DEBUG'}</span>
+          </button>
+          <button
+            onClick={() => setIsFullscreen(f => !f)}
+            title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+            className="flex items-center justify-center p-1.5 rounded text-xs font-mono border border-gray-600 bg-gray-700 text-gray-300 hover:text-white hover:bg-gray-600 transition-colors active:scale-95"
+          >
+            {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
           </button>
         </div>
       </div>

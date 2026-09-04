@@ -22,27 +22,27 @@ import { Lock, Unlock, Save, Plus } from 'lucide-react';
 const ResponsiveGridLayout = WidthProvider(Responsive);
 
 const WIDGET_TYPES = [
-  { type: 'video', label: '📺 Video Stream', minW: 4, minH: 3 },
+  { type: 'video', label: '📺 Video Stream', minW: 2, minH: 2 },
   { type: 'metric', label: '🔢 Metric (Number)', minW: 2, minH: 2 },
   { type: 'text', label: '📝 Text Value', minW: 2, minH: 2 },
-  { type: 'textFeed', label: '📋 Log Feed', minW: 3, minH: 2 },
-  { type: 'chart', label: '📈 Line Chart', minW: 4, minH: 2 },
+  { type: 'textFeed', label: '📋 Log Feed', minW: 2, minH: 2 },
+  { type: 'chart', label: '📈 Line Chart', minW: 2, minH: 2 },
   { type: 'actionButtons', label: '🎮 Action Buttons', minW: 2, minH: 2 },
-  { type: 'imageGallery', label: '🖼️ Snapshots', minW: 4, minH: 2 },
-  { type: 'heatmap', label: '🔥 Heatmap', minW: 4, minH: 2 },
+  { type: 'imageGallery', label: '🖼️ Snapshots', minW: 2, minH: 2 },
+  { type: 'heatmap', label: '🔥 Heatmap', minW: 2, minH: 2 },
   { type: 'pipelineStatus', label: '⚡ Pipeline Status', minW: 2, minH: 2 }
 ];
 
 const defaultLayout = [
-  { i: 'video', x: 0, y: 0, w: 6, h: 5, minW: 4, minH: 3, type: 'video' },
+  { i: 'video', x: 0, y: 0, w: 6, h: 5, minW: 2, minH: 2, type: 'video' },
   { i: 'status', x: 10, y: 0, w: 2, h: 2, minW: 2, minH: 2, type: 'pipelineStatus' },
   { i: 'metric_count', x: 6, y: 0, w: 2, h: 2, minW: 2, minH: 2, type: 'metric', config: { title: 'Detections', dataPath: 'data.length', unit: 'objects' } },
   { i: 'metric_cpu', x: 8, y: 0, w: 2, h: 2, minW: 2, minH: 2, type: 'metric', config: { title: 'CPU Usage', dataPath: 'system.cpu_percent', unit: '%' } },
-  { i: 'feed_alerts', x: 8, y: 2, w: 4, h: 3, minW: 3, minH: 2, type: 'textFeed', config: { title: 'Live Alerts', dataPath: 'alerts' } },
-  { i: 'chart_history', x: 0, y: 5, w: 6, h: 3, minW: 4, minH: 2, type: 'chart', config: { title: 'Detections Trend', dataPath: 'history.data' } },
+  { i: 'feed_alerts', x: 8, y: 2, w: 4, h: 3, minW: 2, minH: 2, type: 'textFeed', config: { title: 'Live Alerts', dataPath: 'alerts' } },
+  { i: 'chart_history', x: 0, y: 5, w: 6, h: 3, minW: 2, minH: 2, type: 'chart', config: { title: 'Detections Trend', dataPath: 'history.data' } },
   { i: 'actions', x: 6, y: 2, w: 2, h: 3, minW: 2, minH: 2, type: 'actionButtons' },
-  { i: 'snapshots', x: 0, y: 8, w: 6, h: 2, minW: 4, minH: 2, type: 'imageGallery' },
-  { i: 'heatmap', x: 6, y: 8, w: 6, h: 2, minW: 4, minH: 2, type: 'heatmap' }
+  { i: 'snapshots', x: 0, y: 8, w: 6, h: 2, minW: 2, minH: 2, type: 'imageGallery' },
+  { i: 'heatmap', x: 6, y: 8, w: 6, h: 2, minW: 2, minH: 2, type: 'heatmap' }
 ];
 
 const getNestedValue = (obj, path) => {
@@ -197,20 +197,20 @@ export default function LiveDashboard({ metadata, connected, projectId }) {
     <div className="animate-in fade-in duration-500 flex flex-col h-full relative">
       
       {/* Floating Toolbar */}
-      <div className="absolute top-4 right-4 z-40 flex gap-2">
+      <div className="absolute top-2 right-2 sm:top-4 sm:right-4 z-40 flex gap-2">
         {isEditMode ? (
           <button 
             onClick={saveLayout}
-            className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors shadow-lg"
+            className="bg-green-600 hover:bg-green-500 text-white px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2 transition-colors shadow-lg active:scale-95"
           >
-            <Save size={16} /> Save Layout
+            <Save size={15} /> <span>Save Layout</span>
           </button>
         ) : (
           <button 
             onClick={() => setIsEditMode(true)}
-            className="bg-gray-800/90 hover:bg-gray-700 backdrop-blur-sm text-gray-300 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 transition-colors border border-gray-700 shadow-lg"
+            className="bg-gray-800/90 hover:bg-gray-700 backdrop-blur-sm text-gray-300 px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium flex items-center gap-1.5 sm:gap-2 transition-colors border border-gray-700 shadow-lg active:scale-95"
           >
-            <Unlock size={16} /> Edit Layout
+            <Unlock size={15} /> <span>Edit Layout</span>
           </button>
         )}
       </div>
@@ -223,18 +223,18 @@ export default function LiveDashboard({ metadata, connected, projectId }) {
         )}
         
         {/* Grid Layout Canvas */}
-        <div className={`flex-1 overflow-y-auto overflow-x-hidden p-2 bg-gray-950 rounded-xl border ${isEditMode ? 'border-blue-500/50 border-dashed' : 'border-transparent'}`}>
+        <div className={`flex-1 overflow-y-auto overflow-x-hidden p-1 sm:p-2 bg-gray-950 rounded-xl border ${isEditMode ? 'border-blue-500/50 border-dashed' : 'border-transparent'}`}>
           <ResponsiveGridLayout
             className="layout"
             style={{ minHeight: '100%' }}
             layouts={layouts}
             breakpoints={{ lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 }}
             cols={{ lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 }}
-            rowHeight={80}
+            rowHeight={75}
             onLayoutChange={onLayoutChange}
             isDraggable={isEditMode}
             isResizable={isEditMode}
-            margin={[16, 16]}
+            margin={[12, 12]}
           >
           {layouts.lg.map(item => {
             const config = item.config || {};
