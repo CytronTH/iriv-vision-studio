@@ -25,6 +25,45 @@
 - 
 -->
 
+## [2026-09-04] - เพิ่มฟีเจอร์ Platform Updates (ระบบอัปเดตแพลตฟอร์ม One-Click OTA และ Offline Air-Gapped)
+
+### 🎯 เป้าหมาย (Goals)
+- [x] เพิ่มระบบอัปเดตซอฟต์แวร์ IRIV Vision Studio บนอุปกรณ์ Edge (Raspberry Pi 5) ให้ผู้ใช้งานสามารถอัปเดตเป็นเวอร์ชันล่าสุดได้ง่ายที่สุดผ่าน Web UI โดยไม่ต้องใช้คำสั่ง Terminal/SSH
+- [x] รองรับทั้งการอัปเดตแบบ Online One-Click (ผ่าน GitHub) และ Offline Air-Gapped (อัปโหลดไฟล์ `.tar.gz`)
+- [x] สร้างระบบความปลอดภัย ป้องกันข้อมูล Database SQLite, โมเดล AI และคอนฟิกสูญหาย พร้อมระบบ Auto-Backup และ Rollback
+
+### 🛠️ สิ่งที่ทำเสร็จแล้ว (Accomplished)
+- **Backend & Updater Scripts (`backend/`)**:
+  - `backend/scripts/updater.sh`: สคริปต์ตัวจัดการอัปเดตแบบ Detached Process แยกส่วนเพื่อความปลอดภัย ไม่ขาดตอนขณะรีสตาร์ต Service
+    - จัดการ Auto-Backup โฟลเดอร์ `db/` และ `.env` ไปยัง `/home/pi/iriv-backups/` อัตโนมัติ (เก็บย้อนหลัง 5 ชุด)
+    - ป้องกัน Git Merge Conflict ด้วยการตั้ง `assume-unchanged` ให้กับไฟล์ SQLite
+    - ซิงค์ Dependencies (`requirements.txt`, `npm install`) และรัน Database Migration
+    - รองรับการแตกไฟล์ออฟไลน์แบบ Selective Sync (ไม่ทับฐานข้อมูลและโมเดลของผู้ใช้)
+    - บันทึกความคืบหน้าแบบ Real-time ลง `/tmp/iriv_update_status.json` และสั่งรีสตาร์ต `iriv-vision.service`
+  - `backend/web_server/main.py`: เพิ่ม API Endpoints สำหรับตรวจสอบและสั่งการอัปเดต
+    - `GET /api/system/version`: อ่านเวอร์ชัน Git Tag, Commit, Branch และสเปกเครื่อง
+    - `GET /api/system/update/check`: ดึงข้อมูลเปรียบเทียบกับ Remote Repository, ตรวจสอบจำนวน Commits Ahead/Behind, และดึง Changelog
+    - `POST /api/system/update/apply`: สั่งรันการอัปเดตผ่าน Background Runner แบบ Non-blocking
+    - `POST /api/system/update/upload`: รองรับการอัปโหลดไฟล์แพ็กเกจออฟไลน์ `.tar.gz`
+    - `GET /api/system/update/status`: เช็ค Progress %, สถานะขั้นตอน และ Log ล่าสุด
+    - `GET /api/system/ping`: Healthcheck สำหรับตรวจจับตอนที่เซอร์วิสรีบูตกลับมาพร้อมใช้งาน
+- **Frontend UI (`frontend/src/`)**:
+  - `frontend/src/components/Settings/UpdateManager.jsx`: หน้าต่างบริหารจัดการการอัปเดตที่สวยงามและใช้งานง่าย
+    - **System Information Cards**: แสดงเวอร์ชันปัจจุบัน, Commit, วันที่, สเปกฮาร์ดแวร์ Raspberry Pi 5 และสถานะความปลอดภัย
+    - **One-Click Update Action**: ปุ่ม "Check for Updates" และการ์ด "New Update Available" พร้อมแสดงรายการ Changelog
+    - **Interactive Progress Modal & Logs**: Progress Bar แสดงเปอร์เซ็นต์ พร้อม Terminal Console ดู Log การทำงานสด
+    - **Reconnecting Countdown Overlay**: หน้าจอนับถอยหลังพร้อม Ping เช็คเซอร์วิสอัตโนมัติ และรีเฟรชหน้าเว็บเมื่อระบบใหม่พร้อมใช้งาน
+    - **Air-Gapped Package Dropzone**: พื้นที่ Drag & Drop อัปโหลดไฟล์ `.tar.gz` สำหรับโรงงานที่ไม่มีอินเทอร์เน็ต
+  - `frontend/src/components/Settings/Settings.jsx`: เพิ่มแท็บ **"Platform Updates"** พร้อมไอคอน `ArrowUpCircle`
+
+### 🧠 การตัดสินใจทางเทคนิค (Decisions & Context)
+- **เรื่องที่ตัดสินใจ:** ใช้ Detached Background Process (`updater.sh`) แทนการรันคำสั่งโดยตรงใน Thread ของ FastAPI
+- **เหตุผล:** หากคำสั่งถูกรันภายใน Web Request ของ Uvicorn เมื่อเซอร์วิสสั่ง `sudo systemctl restart iriv-vision.service` หรือโปรเซสถูกปิด ตัวสคริปต์อัปเดตจะถูกฆ่าทิ้งกลางคัน ทำให้การอัปเดตล้มเหลวหรือระบบเสียหาย การแยกโปรเซสด้วย `start_new_session=True` ช่วยให้สคริปต์ทำงานจนเสร็จสมบูรณ์และรีสตาร์ตได้อย่างราบรื่น
+- **เรื่องที่ตัดสินใจ:** ตั้ง `assume-unchanged` และแบ็กอัป `vision_studio.sqlite*` ก่อน `git pull`
+- **เหตุผล:** SQLite บนอุปกรณ์ Edge มีการเขียน log และ WAL file อยู่ตลอดเวลา ซึ่งทำให้ Git มองว่าไฟล์ถูกแก้ไขในเครื่อง (Dirty working tree) การไม่กันไว้ล่วงหน้าจะทำให้ `git pull` เกิด Conflict และหยุดทำงานทันที
+
+---
+
 ## [2026-09-04] - เพิ่ม Mobile Navigation, ปรับปรุง UI Responsive และเสถียรภาพ Pipeline/Hardware
 
 ### 🎯 เป้าหมาย (Goals)

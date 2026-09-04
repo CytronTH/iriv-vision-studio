@@ -992,3 +992,281 @@ async def shutdown_system():
     import os
     os.system("sudo shutdown now")
     return {"status": "success", "message": "Shutting down..."}
+
+# ── Platform Update & Version APIs ──────────────────────────────────────────
+import subprocess
+import platform
+
+@app.get("/api/system/ping")
+def system_ping():
+    """Lightweight healthcheck endpoint to verify server availability"""
+    return {
+        "status": "ok",
+        "timestamp": int(time.time()),
+        "service": "iriv-vision-studio"
+    }
+
+@app.get("/api/system/version")
+def get_system_version():
+    """Return current platform version, git commit, branch and system info"""
+    try:
+        project_root = Path(__file__).resolve().parent.parent.parent
+        try:
+            tag = subprocess.check_output(
+                ["git", "describe", "--tags", "--always"],
+                cwd=str(project_root),
+                timeout=3
+            ).decode().strip()
+        except:
+            tag = "v1.0.0"
+
+        try:
+            commit = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=str(project_root),
+                timeout=3
+            ).decode().strip()
+        except:
+            commit = "unknown"
+
+        try:
+            branch = subprocess.check_output(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=str(project_root),
+                timeout=3
+            ).decode().strip()
+        except:
+            branch = "main"
+
+        try:
+            commit_date = subprocess.check_output(
+                ["git", "log", "-1", "--format=%cd", "--date=short"],
+                cwd=str(project_root),
+                timeout=3
+            ).decode().strip()
+        except:
+            commit_date = ""
+
+        return {
+            "status": "success",
+            "version": tag,
+            "commit": commit,
+            "branch": branch,
+            "commit_date": commit_date,
+            "platform": platform.platform(),
+            "python_version": platform.python_version()
+        }
+    except Exception as e:
+        logger.error(f"Error fetching system version: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/system/update/check")
+async def check_for_updates():
+    """Check remote repository for updates, release tags, and changelog"""
+    try:
+        project_root = Path(__file__).resolve().parent.parent.parent
+        
+        try:
+            current_tag = subprocess.check_output(
+                ["git", "describe", "--tags", "--always"],
+                cwd=str(project_root),
+                timeout=3
+            ).decode().strip()
+            current_commit = subprocess.check_output(
+                ["git", "rev-parse", "--short", "HEAD"],
+                cwd=str(project_root),
+                timeout=3
+            ).decode().strip()
+            current_branch = subprocess.check_output(
+                ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                cwd=str(project_root),
+                timeout=3
+            ).decode().strip()
+        except Exception as e:
+            return {"status": "error", "message": f"Failed to get git status: {e}"}
+
+        # Fetch remote updates with 8s timeout for air-gapped / slow connections
+        git_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
+        try:
+            subprocess.run(
+                ["git", "fetch", "origin", current_branch, "--tags"],
+                cwd=str(project_root),
+                timeout=8,
+                capture_output=True,
+                check=False,
+                env=git_env
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "status": "offline",
+                "message": "Connection timed out. System might be offline or cannot reach remote repository.",
+                "current_version": current_tag,
+                "current_commit": current_commit,
+                "has_update": False
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "message": f"Fetch failed: {e}",
+                "current_version": current_tag,
+                "current_commit": current_commit,
+                "has_update": False
+            }
+
+        # Check how many commits behind origin/<current_branch>
+        behind_output = subprocess.check_output(
+            ["git", "rev-list", "--count", f"HEAD..origin/{current_branch}"],
+            cwd=str(project_root),
+            timeout=5
+        ).decode().strip()
+        behind_count = int(behind_output) if behind_output.isdigit() else 0
+
+        # Latest tag on repository
+        try:
+            tags_raw = subprocess.check_output(
+                ["git", "tag", "-l", "--sort=-version:refname"],
+                cwd=str(project_root),
+                timeout=5
+            ).decode().split()
+            latest_tag = tags_raw[0] if tags_raw else current_tag
+        except:
+            latest_tag = current_tag
+
+        changelog = []
+        if behind_count > 0:
+            lines = subprocess.check_output(
+                ["git", "log", f"HEAD..origin/{current_branch}", "--oneline", "-n", "15"],
+                cwd=str(project_root),
+                timeout=5
+            ).decode().strip().split("\n")
+            for line in lines:
+                parts = line.split(" ", 1)
+                if len(parts) == 2:
+                    changelog.append({"hash": parts[0], "message": parts[1]})
+
+        has_update = behind_count > 0
+
+        return {
+            "status": "success",
+            "has_update": has_update,
+            "current_version": current_tag,
+            "current_commit": current_commit,
+            "latest_version": latest_tag if has_update else current_tag,
+            "commits_behind": behind_count,
+            "changelog": changelog,
+            "branch": current_branch
+        }
+    except Exception as e:
+        logger.error(f"Error checking update: {e}")
+        return {"status": "error", "message": str(e)}
+
+class UpdateApplyPayload(BaseModel):
+    target_version: Optional[str] = "main"
+
+@app.post("/api/system/update/apply")
+async def apply_update(payload: UpdateApplyPayload = UpdateApplyPayload()):
+    """Trigger background detached update runner"""
+    try:
+        lock_file = Path("/tmp/iriv_update.lock")
+        if lock_file.exists():
+            try:
+                pid = int(lock_file.read_text().strip())
+                if psutil.pid_exists(pid):
+                    return {"status": "error", "message": "Another update is already in progress"}
+            except:
+                pass
+
+        updater_script = Path(__file__).resolve().parent.parent / "scripts" / "updater.sh"
+        if not updater_script.exists():
+            return {"status": "error", "message": f"Updater script not found at {updater_script}"}
+
+        # Initialize status file
+        status_file = Path("/tmp/iriv_update_status.json")
+        init_status = {
+            "status": "running",
+            "step": "init",
+            "progress": 5,
+            "message": "Initializing update process...",
+            "timestamp": int(time.time()),
+            "logs": ["Update triggered by user via API"]
+        }
+        status_file.write_text(json.dumps(init_status))
+
+        target_ver = payload.target_version or "main"
+        subprocess.Popen(
+            ["/bin/bash", str(updater_script), "--mode=online", f"--target-version={target_ver}"],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+        return {
+            "status": "success",
+            "message": "Update process started successfully in background"
+        }
+    except Exception as e:
+        logger.error(f"Error starting update: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/system/update/upload")
+async def upload_offline_update(package: UploadFile = File(...)):
+    """Accept offline update tarball (.tar.gz) and trigger offline updater"""
+    try:
+        if not package.filename.endswith((".tar.gz", ".tgz")):
+            return {"status": "error", "message": "Invalid file type. Please upload a .tar.gz archive."}
+
+        upload_path = Path("/tmp/iriv_offline_update.tar.gz")
+        with open(upload_path, "wb") as f:
+            while chunk := await package.read(1024 * 1024):  # 1MB chunks
+                f.write(chunk)
+
+        updater_script = Path(__file__).resolve().parent.parent / "scripts" / "updater.sh"
+        if not updater_script.exists():
+            return {"status": "error", "message": "Updater script not found"}
+
+        status_file = Path("/tmp/iriv_update_status.json")
+        init_status = {
+            "status": "running",
+            "step": "init",
+            "progress": 5,
+            "message": "Initializing offline update package...",
+            "timestamp": int(time.time()),
+            "logs": [f"Package uploaded: {package.filename}"]
+        }
+        status_file.write_text(json.dumps(init_status))
+
+        subprocess.Popen(
+            ["/bin/bash", str(updater_script), "--mode=offline", f"--package-path={str(upload_path)}"],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+        return {
+            "status": "success",
+            "message": f"Offline package {package.filename} uploaded. Applying update..."
+        }
+    except Exception as e:
+        logger.error(f"Error uploading update package: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/system/update/status")
+async def get_update_status():
+    """Poll update progress, current step, and recent logs"""
+    try:
+        status_file = Path("/tmp/iriv_update_status.json")
+        if status_file.exists():
+            data = json.loads(status_file.read_text())
+            return {"status": "success", "data": data}
+        return {
+            "status": "success",
+            "data": {
+                "status": "idle",
+                "step": "none",
+                "progress": 0,
+                "message": "No update currently in progress",
+                "logs": []
+            }
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}

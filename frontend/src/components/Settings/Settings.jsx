@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, BrainCircuit, Bell, Save, Trash2, Plus, Film, Upload } from 'lucide-react';
+import { Camera, BrainCircuit, Bell, Save, Trash2, Plus, Film, Upload, ArrowUpCircle } from 'lucide-react';
+import UpdateManager from './UpdateManager';
 
 export default function Settings() {
   const [entities, setEntities] = useState({ cameras: [], models: [], integrations: [] });
@@ -184,15 +185,19 @@ export default function Settings() {
   return (
     <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 sm:p-6 flex flex-col h-full">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
-        <h2 className="text-xl font-bold">Entity Management</h2>
-        <button 
-          onClick={handleSaveAll}
-          disabled={saving}
-          className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors active:scale-95 w-full sm:w-auto"
-        >
-          <Save size={16} />
-          {saving ? 'Saving...' : 'Save All Changes'}
-        </button>
+        <h2 className="text-xl font-bold">
+          {activeTab === 'updates' ? 'System & Platform Updates' : 'Entity Management'}
+        </h2>
+        {activeTab !== 'updates' && (
+          <button 
+            onClick={handleSaveAll}
+            disabled={saving}
+            className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2.5 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-colors active:scale-95 w-full sm:w-auto"
+          >
+            <Save size={16} />
+            {saving ? 'Saving...' : 'Save All Changes'}
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
@@ -232,6 +237,15 @@ export default function Settings() {
         >
           <Film size={18} />
           Video Files
+        </button>
+        <button 
+          onClick={() => setActiveTab('updates')}
+          className={`flex items-center gap-2 px-3 sm:px-4 py-2 border-b-2 font-medium text-xs sm:text-sm transition-colors shrink-0 ${
+            activeTab === 'updates' ? 'border-amber-500 text-amber-400' : 'border-transparent text-gray-400 hover:text-white'
+          }`}
+        >
+          <ArrowUpCircle size={18} />
+          Platform Updates
         </button>
       </div>
 
@@ -525,6 +539,11 @@ export default function Settings() {
               ))
             )}
           </div>
+        )}
+
+        {/* PLATFORM UPDATES */}
+        {activeTab === 'updates' && (
+          <UpdateManager />
         )}
 
       </div>
