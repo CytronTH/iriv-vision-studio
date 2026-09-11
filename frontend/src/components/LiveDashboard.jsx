@@ -15,6 +15,7 @@ import MetricWidget from './DashboardWidgets/MetricWidget';
 import TextWidget from './DashboardWidgets/TextWidget';
 import TextFeedWidget from './DashboardWidgets/TextFeedWidget';
 import ChartWidget from './DashboardWidgets/ChartWidget';
+import HistoricalChartWidget from './DashboardWidgets/HistoricalChartWidget';
 import WidgetSettingsModal from './DashboardWidgets/WidgetSettingsModal';
 
 import { Lock, Unlock, Save, Plus } from 'lucide-react';
@@ -27,6 +28,7 @@ const WIDGET_TYPES = [
   { type: 'text', label: '📝 Text Value', minW: 2, minH: 2 },
   { type: 'textFeed', label: '📋 Log Feed', minW: 2, minH: 2 },
   { type: 'chart', label: '📈 Line Chart', minW: 2, minH: 2 },
+  { type: 'historicalChart', label: '📊 Historical Activity', minW: 3, minH: 3 },
   { type: 'actionButtons', label: '🎮 Action Buttons', minW: 2, minH: 2 },
   { type: 'imageGallery', label: '🖼️ Snapshots', minW: 2, minH: 2 },
   { type: 'heatmap', label: '🔥 Heatmap', minW: 2, minH: 2 },
@@ -305,6 +307,12 @@ export default function LiveDashboard({ metadata, connected, projectId }) {
                   <ChartWidget 
                     title={config.title} 
                     data={getNestedValue(metadata, config.dataPath) || []} 
+                  />
+                )}
+                {type === 'historicalChart' && (
+                  <HistoricalChartWidget 
+                    projectId={projectId} 
+                    config={config} 
                   />
                 )}
               </div>

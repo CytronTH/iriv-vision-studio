@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
-from ai_engine.message_router import MessageRouter, LogicNode, RateLimitNode, FunctionNode, ActionNode, HardwareOutputNode, DashboardOutputNode, CounterNode, SnapshotNode
+from ai_engine.message_router import MessageRouter, LogicNode, RateLimitNode, FunctionNode, ActionNode, HardwareOutputNode, DashboardOutputNode, CounterNode, FlowCounterNode, SnapshotNode
 
 class CameraStreamConfig:
     def __init__(self, stream_id: str):
@@ -32,6 +32,8 @@ class CameraStreamConfig:
         self.class_filter = None
         self.confidence_threshold = 0.5
         self.class_confidences = {}
+        self.camera_id = None
+        self.camera_entity = None
 
 class ParsedPipelineConfig:
     def __init__(self):
@@ -90,6 +92,19 @@ class PipelineParser:
         # Build MessageRouter graph
         router = MessageRouter(project_id=project_id)
         config.router = router
+
+        # Register pipeline and all active nodes with TelemetryManager
+        try:
+            from ai_engine.telemetry_manager import telemetry_mgr
+            telemetry_mgr.register_pipeline(project_id, name=f"Project {project_id}")
+            for n in nodes:
+                nid = n["id"]
+                ntype = n.get("type", "customNode")
+                ndata = n.get("data", {})
+                label = ndata.get("label", ndata.get("name", nid))
+                telemetry_mgr._get_node(project_id, nid, ntype, label)
+        except Exception as ex:
+            logger.debug(f"Telemetry pre-registration error: {ex}")
         
         # 1. Create Router Nodes for Data Flow
         for n in nodes:
@@ -101,6 +116,8 @@ class PipelineParser:
                 router.add_node(nid, LogicNode(nid, ndata, router))
             elif ntype == "counterNode":
                 router.add_node(nid, CounterNode(nid, ndata, router))
+            elif ntype == "flowCounterNode":
+                router.add_node(nid, FlowCounterNode(nid, ndata, router))
             elif ntype == "rateLimitNode":
                 router.add_node(nid, RateLimitNode(nid, ndata, router))
             elif ntype == "functionNode":
@@ -134,6 +151,12 @@ class PipelineParser:
                 config.dashboard_nodes.append({
                     "id": f"dashboard.{nid}.value", "name": ndata.get("label", "Text"), "dataType": "text"
                 })
+            elif ntype == "shelfSlotMonitorNode":
+                from ai_engine.shelf_slot_monitor import ShelfSlotMonitorNode
+                router.add_node(nid, ShelfSlotMonitorNode(nid, ndata, router))
+            elif ntype == "forkliftZoneNode":
+                from ai_engine.forklift_zone_monitor import ForkliftZoneNode
+                router.add_node(nid, ForkliftZoneNode(nid, ndata, router))
             elif ntype == "dashboardLogNode":
                 router.add_node(nid, DashboardOutputNode(nid, ndata, router))
                 config.dashboard_nodes.append({
@@ -142,7 +165,8 @@ class PipelineParser:
         for edge in edges:
             src = edge.get("source")
             tgt = edge.get("target")
-            router.add_edge(src, tgt)
+            src_handle = edge.get("sourceHandle")
+            router.add_edge(src, tgt, source_handle=src_handle)
 
         hailo_post_process_dir = "/usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes"
         models_dir = self.base_dir / "models"
@@ -162,6 +186,10 @@ class PipelineParser:
             entity_id = node_data.get("entityId")
             camera = next((c for c in entities.get("cameras", []) if c.get("id") == entity_id), None)
             
+            if camera and not camera.get("is_enabled", True):
+                cam_label = camera.get("name", entity_id)
+                raise ValueError(f"Cannot start pipeline: Camera '{cam_label}' is disabled. Please enable it in Settings.")
+
             src_type = camera.get("type", "local") if camera else "local"
             src_path = camera.get("path", "/dev/video0") if camera else "/dev/video0"
             src_loop = node_data.get("loop", True)
@@ -175,6 +203,8 @@ class PipelineParser:
             
             if not ai_node_ids:
                 stream_config = CameraStreamConfig(stream_id=f"cam_{input_node['id']}")
+                stream_config.camera_id = entity_id
+                stream_config.camera_entity = camera
                 stream_config.video_source_type = src_type
                 stream_config.video_source = src_path
                 stream_config.loop = src_loop
@@ -193,7 +223,8 @@ class PipelineParser:
                         stream_config.dashboard_video_nodes.append(vid_id)
                         config.dashboard_nodes.append({
                             "id": vid_id, "name": curr_node.get("data", {}).get("label", "Video"), 
-                            "dataType": "video", "stream_id": stream_config.stream_id, "has_ai": False
+                            "dataType": "video", "stream_id": stream_config.stream_id, "has_ai": False,
+                            "camera_id": stream_config.camera_id
                         })
                     queue_bfs.extend(adj.get(curr_id, []))
                 
@@ -205,6 +236,8 @@ class PipelineParser:
                     
                     sid = f"cam_{input_node['id']}" if len(ai_node_ids) == 1 else f"cam_{input_node['id']}_{ai_idx}"
                     stream_config = CameraStreamConfig(stream_id=sid)
+                    stream_config.camera_id = entity_id
+                    stream_config.camera_entity = camera
                     stream_config.video_source_type = src_type
                     stream_config.video_source = src_path
                     stream_config.loop = src_loop
@@ -256,7 +289,8 @@ class PipelineParser:
                             stream_config.dashboard_video_nodes.append(vid_id)
                             config.dashboard_nodes.append({
                                 "id": vid_id, "name": curr_node.get("data", {}).get("label", "Video"), 
-                                "dataType": "video", "stream_id": stream_config.stream_id, "has_ai": True
+                                "dataType": "video", "stream_id": stream_config.stream_id, "has_ai": True,
+                                "camera_id": stream_config.camera_id
                             })
                         queue_bfs.extend(adj.get(curr_id, []))
                     

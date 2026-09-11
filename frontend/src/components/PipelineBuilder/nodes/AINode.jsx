@@ -5,6 +5,7 @@ import NodeMenu from './NodeMenu';
 import usePipelineStore from '../../../store/usePipelineStore';
 import ROIEditorModal from './ROIEditorModal';
 import AINodeSettingsModal from './AINodeSettingsModal';
+import NodeTelemetryBadge from './NodeTelemetryBadge';
 
 export default function AINode({ id, data }) {
   const updateNodeData = usePipelineStore((state) => state.updateNodeData);
@@ -117,6 +118,9 @@ export default function AINode({ id, data }) {
             <div className="mt-1 opacity-70 truncate" title={selectedModel.hef_path}>HEF: {selectedModel.hef_path.split('/').pop()}</div>
           </div>
         )}
+
+        {/* Live Telemetry (CPU / NPU) */}
+        <NodeTelemetryBadge nodeId={id} />
       </div>
 
       <Handle 

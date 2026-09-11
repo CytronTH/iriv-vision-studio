@@ -25,6 +25,96 @@
 - 
 -->
 
+## [2026-09-10] - เพิ่มโหนด Forklift Safety Monitor และ Polygon Danger Zone Editor สำหรับทางแยกคลังสินค้า (Warehouse Safety)
+
+### 🎯 เป้าหมาย (Goals)
+- [x] พัฒนาโหนดเครื่องมือใหม่ `ForkliftZoneNode` สำหรับตรวจสอบรถโฟล์กลิฟต์ในทางแยกคลังสินค้า (Warehouse Intersection) และพื้นที่เสี่ยง
+- [x] พัฒนาระบบ Polygon Danger Zone Visual Editor (`PolygonZoneEditorModal.jsx`) ให้ผู้ใช้สามารถคลิกวาดพื้นที่อันตรายเป็นรูปหลายเหลี่ยม (Polygon) ปรับจุด Vertices ตามมุมมองกล้องติดผนังเฉียง 45 องศาได้อิสระ
+- [x] ออกแบบระบบคำนวณ Ground-Contact Footprint Anchor (จุดสัมผัสพื้นล้อ `cx, ymax`) แก้ปัญหาเสายกสูง (Mast) ของรถโฟล์กลิฟต์ทำ False Alarm
+- [x] พัฒนาระบบ Co-Presence & Critical Collision Detection ตรวจจับความเสี่ยงวิกฤตเมื่อมี Forklift + คนเดินเท้า (`person`) หรือ Forklift 2 คันในจุดตัดพร้อมกัน
+- [x] สร้าง Multi-Handle Output: ขั้วต่อ `is_critical` (ไซเรนฉุกเฉิน), `is_danger` (ไฟเตือนระวังสีเหลือง), ขั้วแยกรายโซนสำหรับควบคุม Relay / Digital Output แต่ละดวง และขั้ว `debug` สำหรับต่อเข้า `DebugNode`
+- [x] พัฒนาระบบรองรับ `DebugNode` และ `DebugOutputNode` (Terminal Window) ให้แสดงผลสถานะความปลอดภัย, จำนวน Forklift/คน, Near-Miss และตารางสถานะของแต่ละโซนได้แบบเรียลไทม์
+
+### 🛠️ สิ่งที่ทำเสร็จแล้ว (Accomplished)
+- **Backend AI Engine & Tests (`backend/ai_engine/`)**:
+  - `forklift_zone_monitor.py`: สร้างคลาส `ForkliftZoneNode` รองรับ Ray-Casting Point-in-Polygon (PIP), คำนวณพิกัดสัมผัสพื้นดิน (Ground Anchor) สำหรับมุมเฉียง 45°, ตรวจสอบ Co-Presence, Near-Miss และส่ง Telemetry แบบ Real-time ผ่าน WebSocket
+  - `test_forklift_zone_monitor.py`: เขียน Automated Unit Tests ครอบคลุม 5 กรณี (Point-in-Polygon, Ground Anchor 45°, Forklift+Person Critical Alarm, Multi-Forklift Conflict, และ Normal Safe) ผ่าน 100%
+  - `pipeline_parser.py`: เพิ่มการ Register `forkliftZoneNode` เข้าในระบบ Pipeline Execution
+  - `pipeline_differ.py`: เพิ่ม `forkliftZoneNode` เข้าใน `ROUTER_ONLY_NODE_TYPES` รองรับการปรับแก้โซนหรือค่าคอนฟิกแบบ Hot-Reload โดยไม่ต้องรีสตาร์ต GStreamer / Hailo Pipeline
+  - `message_router.py`: เพิ่มการรักษาสถานะ `zone_states`, `zone_counts`, `near_miss_count` ข้ามการอัปเดต Pipeline
+- **Frontend React Flow & Visual Editor (`frontend/src/`)**:
+  - `ForkliftZoneNode.jsx`: โหนด React Flow ธีมสีแดง/ชมพู/เหลือง พร้อม Live Status Banner (SAFE / CAUTION / CRITICAL SIREN), ตัวนับจำนวน Forklift/Person/Near-Miss, ขั้ว Handle สัญญาณเตือนวิกฤตและแยกรายโซน
+  - `PolygonZoneEditorModal.jsx`: เครื่องมือวาดพื้นที่หลายเหลี่ยมบนภาพ Snapshot จากกล้อง ปรับจุด Vertices ได้อิสระ พร้อมพรีเซ็ตทรงเรขาคณิต (45° Perspective Trapezoid, T-Junction, Crossroad) และตัวเลือก Anchor Mode
+  - `nodeTypes.js` & `Sidebar.jsx`: ลงทะเบียนโหนดใหม่และเพิ่มไอคอน `ShieldAlert` ในหมวด Nodes
+  - `DebugWebSocket.jsx`: รองรับ Event `forklift_zone_update` แสดงผลข้อมูลสดบนโหนดแบบ Real-time
+
+### 🧠 การตัดสินใจทางเทคนิค (Decisions & Context)
+- **เรื่องที่ตัดสินใจ:** ใช้พิกัด Bottom-Center `(cx, ymax)` เป็น Ground-Contact Anchor โดยตั้งเป็นค่าเริ่มต้น
+- **เหตุผล:** สำหรับกล้องที่ติดตั้งบนกำแพงทำมุมเฉียง 45 องศา โครงหลังคาและเสายก (Mast) ของรถโฟล์กลิฟต์จะทอดยาวขึ้นไปบนระนาบภาพ หากใช้จุดกึ่งกลาง BBox (Centroid) จะทำให้เกิด False Alarm จากเสารถที่ยื่นเข้าไปในโซน ทั้งที่ล้อรถยังอยู่นอกพื้นที่ การใช้จุดสัมผัสพื้นดินจึงให้ความแม่นยำสูงสุด
+- **เรื่องที่ตัดสินใจ:** แยกขั้ว Output เป็น `is_critical` (เตือนภัยร้ายแรง: รถ+คน) และ `is_danger` (เตือนทั่วไป: มีรถเข้าใกล้)
+- **เหตุผล:** ในคลังสินค้าจริง การเปิดไซเรนเสียงดังทุกครั้งที่รถวิ่งผ่านจะสร้าง Noise Fatigue แก่พนักงาน การแยกให้มีทั้งสัญญาณไฟเหลืองเตือนเบาๆ (Caution) และไฟไซเรนแดงพร้อมเสียงเฉพาะตอนที่มีคนเดินเท้าหรือรถชนกัน (Critical) จึงเป็นมาตรฐานความปลอดภัยสากล
+
+---
+
+## [2026-09-10] - เพิ่มระบบ Project Backup & Migration (Export / Import / Deploy สำหรับสำรองข้อมูลและย้ายบอร์ด)
+
+### 🎯 เป้าหมาย (Goals)
+- [x] พัฒนาระบบ Export / Download โปรเจ็กต์ออกเป็นไฟล์แพ็กเกจ `.irivproj` (ZIP) หรือ `.json` เพื่อนำไปสำรองข้อมูล หรือนำไป Deploy บนบอร์ดเครื่องอื่นได้แบบ Out-of-the-Box
+- [x] บรรจุทั้งโครงสร้าง Pipeline, เลย์เอาต์ Dashboard, เอนทิตีที่เกี่ยวข้อง, ไฟล์โมเดล AI (`.hef`), และไฟล์วิดีโอตัวอย่างไปพร้อมกัน
+- [x] พัฒนาระบบ Import & Deploy Modal พร้อมระบบตรวจเช็คความพร้อม (Pre-Inspection / Dry-Run) แสดงรายการโมเดล ขนาดไฟล์ และตรวจจับ Conflict ของชื่อหรือ ID บนบอร์ด
+- [x] เพิ่มปุ่ม Export / Import ในหน้า My Projects (`ProjectList.jsx`), ปุ่ม Export บน Floating Dock ของ `PipelineBuilder.jsx` และแท็บ Backups & Migration ใน `Settings.jsx`
+- [x] สร้างระบบป้องกันความปลอดภัย Zip Slip Path Traversal และระบบ Atomic File Extraction
+
+### 🛠️ สิ่งที่ทำเสร็จแล้ว (Accomplished)
+- **Backend Architecture & APIs (`backend/`)**:
+  - `backend/web_server/project_backup.py`: สร้างโมดูลจัดการ Backup & Migration สมบูรณ์
+    - `GET /api/projects/backup/export/{project_id}`: รองรับ `bundle_type="full"|"config_only"` และ `include_videos=true|false`
+    - `POST /api/projects/backup/inspect`: ตรวจสอบไฟล์อัปโหลด `.irivproj`/`.json` ล่วงหน้าโดยไม่ต้องบันทึก เพื่อส่ง Preview ข้อมูลให้หน้าต่าง UI
+    - `POST /api/projects/backup/import`: ทำการคลี่ไฟล์แพ็กเกจอย่างปลอดภัย คัดลอกโมเดล `.hef` บันทึกลงฐานข้อมูล SQLite และเลือกว่าจะเริ่มรัน Pipeline ทันทีหรือไม่
+    - `GET /api/projects/backup/export-all`: ส่งออกทุกโปรเจ็กต์รวมเป็น Master Archive ชุดเดียว
+    - `POST /api/projects/backup/snapshots/create` & `GET /api/projects/backup/snapshots`: จัดการ Local Snapshots บนบอร์ดที่ `/home/pi/iriv-backups/projects/` พร้อมระบบ One-Click Restore
+  - `backend/web_server/main.py`: รวม `project_backup.py` router เข้ากับ FastAPI อย่างไร้รอยต่อ
+- **Frontend UI (`frontend/src/`)**:
+  - `frontend/src/components/Home/ExportProjectModal.jsx`: หน้าต่างโมดอลเลือกโหมดการส่งออก (Full Deployment Package แนะนำ หรือ Config Only)
+  - `frontend/src/components/Home/ImportProjectModal.jsx`: หน้าต่าง Drag & Drop อัปโหลดไฟล์แพ็กเกจ แสดงผลการตรวจสอบความพร้อม Badge โหนด ชนิดโมเดล และจัดการความขัดแย้งของโปรเจ็กต์
+  - `frontend/src/components/Home/ProjectList.jsx`: เพิ่มปุ่ม "Import Project" ที่แถบด้านบน และปุ่ม "Export" บนการ์ดของแต่ละโปรเจ็กต์
+  - `frontend/src/components/PipelineBuilder/PipelineBuilder.jsx`: เพิ่มปุ่มลัด "Export" บน Floating Dock
+  - `frontend/src/components/Settings/BackupManager.jsx`: สร้างหน้าสำหรับจัดการ Master Export All, Local Snapshots, และ Restore Points
+  - `frontend/src/components/Settings/Settings.jsx`: เพิ่มแท็บ **"Backups & Migration"**
+
+### 🧠 การตัดสินใจทางเทคนิค (Decisions & Context)
+- **เรื่องที่ตัดสินใจ:** รวมไฟล์ไบนารี `.hef` ของโมเดล AI ลงในแพ็กเกจ `.irivproj` โดยอัตโนมัติ (Full Package)
+- **เหตุผล:** หากผู้ใช้นำไฟล์โปรเจ็กต์ไปเปิดบนบอร์ดใหม่ที่ยังไม่มีโมเดลติดตั้งไว้ ระบบจะสามารถรัน Pipeline ได้ทันทีโดยไม่เกิดข้อผิดพลาด Missing Model และมีตัวเลือก Config Only สำหรับกรณีที่ต้องการไฟล์ขนาดเล็ก
+- **เรื่องที่ตัดสินใจ:** เพิ่มการตรวจสอบขนาดไฟล์ก่อนคลี่ไฟล์ทับ และใช้ Atomic File Replace
+- **เหตุผล:** ป้องกันปัญหาไฟล์ `.hef` ถูกเขียนทับขณะที่ HailoRT กำลังโหลดใช้งานอยู่
+
+---
+
+## [2026-09-09] - เพิ่มโหนด ShelfSlotMonitorNode สำหรับตรวจเช็คชั้นวางสินค้าแยกรายช่องและจัดการการบดบัง (Occlusion)
+
+### 🎯 เป้าหมาย (Goals)
+- [x] พัฒนาโหนดเครื่องมือใหม่ `ShelfSlotMonitorNode` สำหรับตรวจเช็คสินค้าบน Shelf ว่าง (Empty Shelf / Out-of-Stock) แยกตรวจสอบรายช่อง (Slot-by-Slot)
+- [x] พัฒนาระบบ Person Occlusion Suppression ตรวจจับคน (`person`) ในภาพเพื่อระงับ (Freeze/Hold) การตรวจเช็คชั่วคราว ป้องกัน False Alarm ตอนลูกค้าหรือพนักงานเดินผ่านหรือหยิบสินค้า
+- [x] พัฒนาระบบ Multi-Handle Output ส่งออกค่าสัญญาณ Boolean แยกตามแต่ละช่อง และขั้วรวม `Any Slot Empty` เพื่อให้ผู้ใช้ลากเส้นไปต่อเข้า `LEDNode`, `DigitalOutputNode`, หรือโหนดอื่นๆ ได้อย่างยืดหยุ่น
+- [x] พัฒนาหน้าจอ Visual Editor `ShelfSlotEditorModal.jsx` สำหรับตีกรอบแบ่งช่อง (Grid/Slots) บนหน้าจอภาพจากกล้องจริง พร้อมแสดงสถานะ Live Telemetry บนตัวโหนด
+
+### 🛠️ สิ่งที่ทำเสร็จแล้ว (Accomplished)
+- **Backend AI Engine & Router (`backend/ai_engine/`)**:
+  - `shelf_slot_monitor.py`: สร้างคลาส `ShelfSlotMonitorNode` ตรวจนับสินค้าในกรอบแต่ละช่อง, กรองคลาสตามกำหนด, เช็คพิกัด Point-in-ROI และ Bounding Box Overlap, ดักจับคลาส `person` พร้อมระบบ Debounce และ Cooldown Timer
+  - `message_router.py`: เพิ่มการส่งข้อความแบบ Handle-Specific Routing (`(target_id, source_handle)`) เพื่อให้โหนดที่มีหลายขั้ว Output ส่งค่า Boolean เฉพาะช่องไปยังโหนดปลายทางที่ถูกต้อง และรักษาสถานะช่องวางตอน Hot Reload
+  - `pipeline_parser.py`: เพิ่มการ Register `shelfSlotMonitorNode` และดึง `sourceHandle` จาก Edge React Flow
+  - `pipeline_differ.py`: เพิ่ม `shelfSlotMonitorNode` ใน `ROUTER_NODE_TYPES` รองรับการปรับเปลี่ยนตั้งค่าโดยไม่ต้องรีสตาร์ต GStreamer Pipeline
+- **Frontend UI (`frontend/src/`)**:
+  - `ShelfSlotMonitorNode.jsx`: ตัวโหนด React Flow สี Amber สวยงาม แสดงสถานะคนบัง (🟡 Paused), สถานะช่องว่าง (🔴 Empty), และมีขั้ว Handle แยกตามแต่ละช่องตรงกับแถวข้อมูล
+  - `ShelfSlotEditorModal.jsx`: ป๊อปอัปแบบ Portal ดึงภาพ Snapshot จากกล้อง พร้อม Canvas สำหรับลากตีกรอบสี่เหลี่ยมแบ่งช่อง (รองรับหลายช่องพร้อมจานสีแยกแยะชัดเจน) และปรับค่า Debounce / Person Suppression
+  - `nodeTypes.js`, `Sidebar.jsx`, `DebugWebSocket.jsx`: ลงทะเบียนโหนดเข้าสู่ระบบลากวางและรับส่ง WebSocket แบบเรียลไทม์
+
+### 🧠 การตัดสินใจทางเทคนิค (Decisions & Context)
+- **เรื่องที่ตัดสินใจ:** เพิ่มระบบ Handle-Specific Routing ใน `MessageRouter`
+- **เหตุผล:** ทำให้โหนดที่มีหลายช่อง (Multi-Slot) สามารถส่งค่า Boolean แยกตามแต่ละ Handle ไปยังโหนดปลายทาง (เช่น LED แยกแต่ละหลอด) ได้โดยตรง โดยคงความเข้ากันได้กับระบบเดิมแบบ 100%
+
+---
+
 ## [2026-09-04] - เพิ่มฟีเจอร์ Platform Updates (ระบบอัปเดตแพลตฟอร์ม One-Click OTA และ Offline Air-Gapped)
 
 ### 🎯 เป้าหมาย (Goals)

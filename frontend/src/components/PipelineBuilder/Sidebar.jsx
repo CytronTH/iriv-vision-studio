@@ -1,5 +1,5 @@
 import React from 'react';
-import { Camera, BrainCircuit, Filter, Bell, ToggleLeft, ToggleRight, Lightbulb, BellRing, Settings2, Info, Camera as CameraIcon, BookOpen, X, Plus } from 'lucide-react';
+import { Camera, BrainCircuit, Filter, Bell, ToggleLeft, ToggleRight, Lightbulb, BellRing, Settings2, Info, Camera as CameraIcon, BookOpen, X, Plus, Layers, ShieldAlert } from 'lucide-react';
 
 const NODE_CATEGORIES = [
   {
@@ -9,6 +9,9 @@ const NODE_CATEGORIES = [
       { type: 'aiNode', label: 'AI Model', icon: BrainCircuit, bg: 'bg-purple-900/30 border-purple-700/50 text-purple-400' },
       { type: 'logicNode', label: 'Logic / Filter', icon: Filter, bg: 'bg-orange-900/30 border-orange-700/50 text-orange-400' },
       { type: 'counterNode', label: 'Counter', textIcon: '∑', bg: 'bg-emerald-900/30 border-emerald-700/50 text-emerald-400' },
+      { type: 'flowCounterNode', label: 'Flow Counter', textIcon: '⇄', bg: 'bg-teal-900/30 border-teal-700/50 text-teal-400' },
+      { type: 'shelfSlotMonitorNode', label: 'Shelf Monitor', icon: Layers, bg: 'bg-amber-900/30 border-amber-700/50 text-amber-400' },
+      { type: 'forkliftZoneNode', label: 'Forklift Safety', icon: ShieldAlert, bg: 'bg-rose-900/30 border-rose-700/50 text-rose-400' },
       { type: 'actionNode', label: 'Action / Alert', icon: Bell, bg: 'bg-green-900/30 border-green-700/50 text-green-400' },
       { type: 'snapshotNode', label: 'Snapshot', icon: CameraIcon, bg: 'bg-pink-900/30 border-pink-700/50 text-pink-400' },
     ]

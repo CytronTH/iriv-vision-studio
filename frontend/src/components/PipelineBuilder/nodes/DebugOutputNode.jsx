@@ -108,6 +108,89 @@ export default memo(({ data, selected, isConnectable, id }) => {
       );
     }
 
+    // Flow Counter Node output
+    if (meta.type === 'flow_counter_update') {
+      const counts = meta.counts || {};
+      const total = meta.total || 0;
+      const entries = Object.entries(counts);
+
+      return (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2 text-teal-400 font-semibold">
+            <span>⇄ Flow Counter:</span>
+            <span className="text-white font-bold bg-teal-950 px-2 py-0.5 rounded border border-teal-800 text-xs">
+              Total: {total}
+            </span>
+          </div>
+          {entries.length > 0 ? (
+            <div className="flex flex-wrap gap-2 ml-2">
+              {entries.map(([cls, cnt]) => (
+                <div key={cls} className="flex items-center gap-1.5 bg-gray-950 px-2 py-0.5 rounded border border-gray-800 text-xs">
+                  <span className="text-teal-300 font-medium">{cls}:</span>
+                  <span className="text-white font-bold font-mono">{cnt}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-gray-500 italic text-xs ml-2">Waiting for objects... (Total: 0)</div>
+          )}
+        </div>
+      );
+    }
+
+    // Forklift Safety Monitor output
+    if (meta.type === 'forklift_zone_update') {
+      const hazardLevel = meta.hazard_level ?? 0;
+      const isCritical = hazardLevel === 2;
+      const isCaution = hazardLevel === 1;
+      const zones = Object.values(meta.zones || {});
+
+      return (
+        <div className="flex flex-col gap-1.5">
+          <div className="flex items-center gap-2">
+            <span className="text-rose-400 font-semibold flex items-center gap-1">
+              🛡️ Forklift Safety:
+            </span>
+            <span
+              className={`px-1.5 py-0.5 rounded text-[10px] font-bold font-mono ${
+                isCritical
+                  ? 'bg-red-950 text-red-200 border border-red-700 animate-pulse'
+                  : isCaution
+                  ? 'bg-amber-950 text-amber-300 border border-amber-700'
+                  : 'bg-emerald-950 text-emerald-300 border border-emerald-700'
+              }`}
+            >
+              {isCritical ? '🚨 CRITICAL' : isCaution ? '⚠️ CAUTION' : '✓ SAFE'}
+            </span>
+            <span className="text-gray-400 text-[11px]">
+              (Forklifts: {meta.forklift_count || 0}, Persons: {meta.person_count || 0}, Near-Miss: {meta.near_miss_count || 0})
+            </span>
+          </div>
+          {zones.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 ml-2">
+              {zones.map((z) => (
+                <div
+                  key={z.id}
+                  className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] ${
+                    z.occupied
+                      ? 'bg-rose-950/70 border-rose-800 text-rose-200 font-bold'
+                      : 'bg-gray-950 border-gray-800 text-gray-400'
+                  }`}
+                >
+                  <span
+                    className="w-1.5 h-1.5 rounded-full shrink-0"
+                    style={{ backgroundColor: z.color || '#f43f5e' }}
+                  />
+                  <span>{z.name}:</span>
+                  <span className="font-mono">{z.occupied ? 'ALERT' : 'CLEAR'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
     // Default pretty JSON (fallback)
     return (
       <pre className="text-gray-300 whitespace-pre-wrap font-mono m-0" style={{ fontSize: `${fontSize}px` }}>

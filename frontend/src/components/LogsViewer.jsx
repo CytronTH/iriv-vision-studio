@@ -6,7 +6,7 @@ import {
   ChevronRight, Copy, Check, Sparkles, Maximize2, ShieldAlert
 } from 'lucide-react';
 
-export default function LogsViewer() {
+export default function LogsViewer({ projectId }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [dbStats, setDbStats] = useState(null);
@@ -17,14 +17,6 @@ export default function LogsViewer() {
   
   // Modals
   const [selectedLogIndex, setSelectedLogIndex] = useState(null);
-  const [showCleanupModal, setShowCleanupModal] = useState(false);
-  const [cleanupLoading, setCleanupLoading] = useState(false);
-  const [cleanupResult, setCleanupResult] = useState(null);
-  const [cleanupOptions, setCleanupOptions] = useState({
-    days: 30,
-    max_records: 50000,
-    delete_files: true
-  });
 
   // Copied payload state
   const [copied, setCopied] = useState(false);
@@ -52,7 +44,8 @@ export default function LogsViewer() {
   // Fetch Database & Storage Stats
   const fetchDbStats = async () => {
     try {
-      const res = await fetch('/api/database/stats');
+      const url = projectId ? `/api/database/stats?project_id=${projectId}` : '/api/database/stats';
+      const res = await fetch(url);
       const data = await res.json();
       if (data.status === 'success') {
         setDbStats(data.data);
@@ -65,7 +58,8 @@ export default function LogsViewer() {
   // Fetch Cameras for Human-readable labels
   const fetchCameras = async () => {
     try {
-      const res = await fetch('/api/entities');
+      const url = projectId ? `/api/entities?project_id=${projectId}` : '/api/entities';
+      const res = await fetch(url);
       const data = await res.json();
       if (data && data.cameras) {
         setCameras(data.cameras);
@@ -102,6 +96,7 @@ export default function LogsViewer() {
       if (eventType) params.append('event_type', eventType);
       if (currentFilters.camera_id) params.append('camera_id', currentFilters.camera_id);
       if (currentFilters.node_id) params.append('node_id', currentFilters.node_id);
+      if (projectId) params.append('project_id', projectId);
       
       const res = await fetch(`/api/logs?${params.toString()}`);
       const data = await res.json();
@@ -119,11 +114,11 @@ export default function LogsViewer() {
   useEffect(() => {
     fetchDbStats();
     fetchCameras();
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     fetchLogs(page, filters);
-  }, [page, perPage, filters.event_type, filters.camera_id, filters.node_id, filters.quick]);
+  }, [page, perPage, filters.event_type, filters.camera_id, filters.node_id, filters.quick, projectId]);
 
   // Auto-refresh interval
   useEffect(() => {
@@ -136,7 +131,7 @@ export default function LogsViewer() {
       }, 3000);
     }
     return () => clearInterval(interval);
-  }, [autoRefresh, filters, page, perPage]);
+  }, [autoRefresh, filters, page, perPage, projectId]);
 
   // Filter logs by client-side search (search in payload, camera, node)
   const filteredLogs = useMemo(() => {
@@ -225,31 +220,6 @@ export default function LogsViewer() {
     document.body.removeChild(link);
   };
 
-  // Run Database Cleanup
-  const handleExecuteCleanup = async () => {
-    setCleanupLoading(true);
-    setCleanupResult(null);
-    try {
-      const res = await fetch('/api/database/maintenance/cleanup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cleanupOptions)
-      });
-      const data = await res.json();
-      if (data.status === 'success') {
-        setCleanupResult(data.result);
-        fetchDbStats();
-        fetchLogs(1, filters);
-      } else {
-        setCleanupResult({ error: data.message || 'Cleanup failed' });
-      }
-    } catch (err) {
-      setCleanupResult({ error: err.message });
-    } finally {
-      setCleanupLoading(false);
-    }
-  };
-
   // Lightbox Navigation
   const selectedLog = selectedLogIndex !== null ? filteredLogs[selectedLogIndex] : null;
 
@@ -304,17 +274,7 @@ export default function LogsViewer() {
           </div>
 
           {/* Quick Global Actions */}
-          <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">
-            <button 
-              onClick={() => setShowCleanupModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-medium bg-slate-900 hover:bg-slate-800 text-rose-400 border border-rose-500/20 hover:border-rose-500/40 transition-all shadow-sm active:scale-95"
-              title="Manage Storage and Prune Old Snapshots"
-            >
-              <Trash2 size={14} />
-              <span>Cleanup</span>
-            </button>
-
-            <button 
+          <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">            <button 
               onClick={exportCSV}
               className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 transition-all shadow-sm active:scale-95"
             >
@@ -374,23 +334,6 @@ export default function LogsViewer() {
             </div>
             <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
               <ImageIcon size={20} />
-            </div>
-          </div>
-
-          {/* Database Health & WAL */}
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800/80 rounded-2xl p-4 flex items-center justify-between shadow-sm">
-            <div>
-              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">SQLite DB File</p>
-              <h3 className="text-2xl font-extrabold text-white mt-1 font-mono tracking-tight">
-                {dbStats?.db_file_size_mb ? `${dbStats.db_file_size_mb} MB` : '-'}
-              </h3>
-              <p className="text-[11px] text-emerald-400/90 mt-0.5 flex items-center gap-1 font-medium">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-                WAL Mode Enabled (WAL: {dbStats?.wal_file_size_mb || 0} MB)
-              </p>
-            </div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-              <HardDrive size={20} />
             </div>
           </div>
 
@@ -933,139 +876,6 @@ export default function LogsViewer() {
                   </span>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── Storage Cleanup & Maintenance Modal ─────────────────────────── */}
-      {showCleanupModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in">
-          <div className="relative max-w-lg w-full bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden flex flex-col p-6">
-            
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400">
-                  <Trash2 size={20} />
-                </div>
-                <div>
-                  <h3 className="text-lg font-bold text-white">Storage Maintenance</h3>
-                  <p className="text-xs text-slate-400">Purge historical logs & free up SD/Flash storage</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => { setShowCleanupModal(false); setCleanupResult(null); }}
-                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Current Storage Summary */}
-            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/80 mb-5 space-y-2 text-xs">
-              <div className="flex justify-between text-slate-300">
-                <span>Database File Size:</span>
-                <span className="font-mono font-bold text-white">{dbStats?.db_file_size_mb || 0} MB</span>
-              </div>
-              <div className="flex justify-between text-slate-300">
-                <span>Snapshots on Disk:</span>
-                <span className="font-mono font-bold text-indigo-400">{dbStats?.snapshot_count?.toLocaleString() || 0} files</span>
-              </div>
-              <div className="flex justify-between text-slate-300">
-                <span>Snapshots Disk Usage:</span>
-                <span className="font-mono font-bold text-rose-400">
-                  {dbStats?.snapshot_size_mb ? `${(dbStats.snapshot_size_mb / 1024).toFixed(2)} GB` : '0 GB'}
-                </span>
-              </div>
-            </div>
-
-            {/* Cleanup Options Form */}
-            <div className="space-y-4 text-xs">
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1.5">
-                  Retention Policy (Purge logs older than):
-                </label>
-                <div className="grid grid-cols-4 gap-2">
-                  {[7, 14, 30, 60].map(d => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => setCleanupOptions(prev => ({ ...prev, days: d }))}
-                      className={`py-2 rounded-xl font-semibold border transition-all ${
-                        cleanupOptions.days === d
-                          ? 'bg-blue-600 text-white border-blue-500 shadow-md shadow-blue-500/20'
-                          : 'bg-slate-950 text-slate-400 border-slate-800 hover:bg-slate-800'
-                      }`}
-                    >
-                      {d} Days
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1.5">
-                  Maximum Records to Retain in SQLite:
-                </label>
-                <select
-                  value={cleanupOptions.max_records}
-                  onChange={(e) => setCleanupOptions(prev => ({ ...prev, max_records: Number(e.target.value) }))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-blue-500"
-                >
-                  <option value="25000">25,000 records</option>
-                  <option value="50000">50,000 records (Recommended)</option>
-                  <option value="100000">100,000 records</option>
-                </select>
-              </div>
-
-              <div className="flex items-center gap-3 p-3 bg-slate-950 rounded-xl border border-slate-800/80">
-                <input
-                  type="checkbox"
-                  id="delete_files"
-                  checked={cleanupOptions.delete_files}
-                  onChange={(e) => setCleanupOptions(prev => ({ ...prev, delete_files: e.target.checked }))}
-                  className="w-4 h-4 rounded text-blue-600 bg-slate-900 border-slate-700 focus:ring-blue-500"
-                />
-                <label htmlFor="delete_files" className="text-slate-300 cursor-pointer select-none">
-                  <span className="font-semibold block">Delete associated snapshot images from disk</span>
-                  <span className="text-[11px] text-slate-500">Safely reclaims SD card/NVMe disk space</span>
-                </label>
-              </div>
-            </div>
-
-            {/* Results or Error Message */}
-            {cleanupResult && (
-              <div className={`mt-4 p-3 rounded-xl border text-xs ${
-                cleanupResult.error 
-                  ? 'bg-rose-500/10 border-rose-500/30 text-rose-300' 
-                  : 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-              }`}>
-                {cleanupResult.error ? (
-                  <p>Error: {cleanupResult.error}</p>
-                ) : (
-                  <p>
-                    ✓ Successfully pruned <strong>{cleanupResult.deleted_rows?.toLocaleString()}</strong> logs and deleted <strong>{cleanupResult.deleted_files?.toLocaleString()}</strong> image files!
-                  </p>
-                )}
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex items-center justify-end gap-3 mt-6">
-              <button
-                onClick={() => { setShowCleanupModal(false); setCleanupResult(null); }}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 transition-colors"
-              >
-                Close
-              </button>
-              <button
-                onClick={handleExecuteCleanup}
-                disabled={cleanupLoading}
-                className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white transition-all shadow-lg shadow-rose-600/20 active:scale-95 disabled:opacity-50"
-              >
-                {cleanupLoading && <RefreshCw size={14} className="animate-spin" />}
-                <span>{cleanupLoading ? 'Pruning...' : 'Run Cleanup Now'}</span>
-              </button>
             </div>
           </div>
         </div>

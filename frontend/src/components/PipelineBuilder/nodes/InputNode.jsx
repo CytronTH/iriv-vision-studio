@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { Camera, Film } from 'lucide-react';
+import { Camera, Film, AlertTriangle } from 'lucide-react';
 import NodeMenu from './NodeMenu';
 import usePipelineStore from '../../../store/usePipelineStore';
+import NodeTelemetryBadge from './NodeTelemetryBadge';
 
 export default function InputNode({ id, data }) {
   const updateNodeData = usePipelineStore((state) => state.updateNodeData);
@@ -59,14 +60,18 @@ export default function InputNode({ id, data }) {
               {cameras.filter(c => c.type !== 'file').length > 0 && (
                 <optgroup label="── Cameras ──">
                   {cameras.filter(c => c.type !== 'file').map(cam => (
-                    <option key={cam.id} value={cam.id}>{cam.name}</option>
+                    <option key={cam.id} value={cam.id}>
+                      {cam.name}{cam.is_enabled === false ? ' (Disabled)' : ''}
+                    </option>
                   ))}
                 </optgroup>
               )}
               {cameras.filter(c => c.type === 'file').length > 0 && (
                 <optgroup label="── Video Files ──">
                   {cameras.filter(c => c.type === 'file').map(cam => (
-                    <option key={cam.id} value={cam.id}>📁 {cam.name}</option>
+                    <option key={cam.id} value={cam.id}>
+                      📁 {cam.name}{cam.is_enabled === false ? ' (Disabled)' : ''}
+                    </option>
                   ))}
                 </optgroup>
               )}
@@ -79,6 +84,14 @@ export default function InputNode({ id, data }) {
           <div className="text-[10px] text-gray-500 bg-gray-800 p-2 rounded-md break-all">
             <span className="text-blue-400 uppercase font-semibold mr-1">{selectedCam.type}:</span>
             <span className="truncate">{selectedCam.path?.split('/').pop() || selectedCam.path}</span>
+          </div>
+        )}
+
+        {/* Disabled Warning */}
+        {selectedCam && selectedCam.is_enabled === false && (
+          <div className="flex items-center gap-1.5 text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 p-2 rounded-md">
+            <AlertTriangle size={14} className="shrink-0 text-amber-400" />
+            <span>Camera is <strong>disabled</strong> in Settings.</span>
           </div>
         )}
 
@@ -112,6 +125,9 @@ export default function InputNode({ id, data }) {
             </label>
           </div>
         )}
+
+        {/* Live Telemetry (CPU & FPS) */}
+        <NodeTelemetryBadge nodeId={id} />
       </div>
 
       <Handle 

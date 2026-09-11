@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, BrainCircuit, Bell, Save, Trash2, Plus, Film, Upload, ArrowUpCircle } from 'lucide-react';
+import { Camera, BrainCircuit, Bell, Save, Trash2, Plus, Film, Upload, ArrowUpCircle, Archive } from 'lucide-react';
 import UpdateManager from './UpdateManager';
+import BackupManager from './BackupManager';
 
 export default function Settings() {
   const [entities, setEntities] = useState({ cameras: [], models: [], integrations: [] });
@@ -167,6 +168,15 @@ export default function Settings() {
     saveEntities(updated);
   };
 
+  const handleToggleCamera = (id, currentVal) => {
+    const newVal = !currentVal;
+    const updated = { ...entities };
+    const updatedCams = updated.cameras.map(c => c.id === id ? { ...c, is_enabled: newVal } : c);
+    updated.cameras = updatedCams;
+    setEntities(updated);
+    saveEntities(updated);
+  };
+
   const handleAdd = (category, defaultItem) => {
     const updated = { ...entities };
     updated[category].push({
@@ -186,9 +196,9 @@ export default function Settings() {
     <div className="bg-gray-900 rounded-xl border border-gray-800 p-3 sm:p-6 flex flex-col h-full">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <h2 className="text-xl font-bold">
-          {activeTab === 'updates' ? 'System & Platform Updates' : 'Entity Management'}
+          {activeTab === 'updates' ? 'System & Platform Updates' : activeTab === 'backups' ? 'Project Backups & Migration' : 'Entity Management'}
         </h2>
-        {activeTab !== 'updates' && (
+        {activeTab !== 'updates' && activeTab !== 'backups' && (
           <button 
             onClick={handleSaveAll}
             disabled={saving}
@@ -239,6 +249,15 @@ export default function Settings() {
           Video Files
         </button>
         <button 
+          onClick={() => setActiveTab('backups')}
+          className={`flex items-center gap-2 px-3 sm:px-4 py-2 border-b-2 font-medium text-xs sm:text-sm transition-colors shrink-0 ${
+            activeTab === 'backups' ? 'border-indigo-500 text-indigo-400' : 'border-transparent text-gray-400 hover:text-white'
+          }`}
+        >
+          <Archive size={18} />
+          Backups & Migration
+        </button>
+        <button 
           onClick={() => setActiveTab('updates')}
           className={`flex items-center gap-2 px-3 sm:px-4 py-2 border-b-2 font-medium text-xs sm:text-sm transition-colors shrink-0 ${
             activeTab === 'updates' ? 'border-amber-500 text-amber-400' : 'border-transparent text-gray-400 hover:text-white'
@@ -255,50 +274,70 @@ export default function Settings() {
         {/* CAMERAS */}
         {activeTab === 'cameras' && (
           <div className="flex flex-col gap-4">
-            {entities.cameras.map(cam => (
-              <div key={cam.id} className="bg-gray-800/50 p-3 sm:p-4 rounded-lg border border-gray-700 flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-start">
-                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  <label className="flex flex-col gap-1 text-sm text-gray-400">
-                    Name
-                    <input type="text" value={cam.name} onChange={e => handleUpdate('cameras', cam.id, 'name', e.target.value)} className="bg-gray-900 border border-gray-700 rounded p-2 text-white" />
-                  </label>
-                  <label className="flex flex-col gap-1 text-sm text-gray-400">
-                    Type
-                    <select value={cam.type} onChange={e => handleUpdate('cameras', cam.id, 'type', e.target.value)} className="bg-gray-900 border border-gray-700 rounded p-2 text-white">
-                      <option value="local">Local Camera (V4L2)</option>
-                      <option value="rtsp">RTSP Stream</option>
-                      <option value="file">Video File</option>
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1 text-sm text-gray-400 sm:col-span-2">
-                    Source Path / URL
-                    <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        value={cam.path} 
-                        onChange={e => handleUpdate('cameras', cam.id, 'path', e.target.value)} 
-                        list={cam.type === 'local' ? "video-devices" : undefined}
-                        className="bg-gray-900 border border-gray-700 rounded p-2 text-white flex-1" 
-                      />
-                      {cam.type === 'local' && (
-                        <datalist id="video-devices">
-                          {videoDevices.map(dev => (
-                            <option key={dev} value={dev}>{dev}</option>
-                          ))}
-                        </datalist>
-                      )}
-                    </div>
-                  </label>
+            {entities.cameras.map(cam => {
+              const isEnabled = cam.is_enabled !== false;
+              return (
+                <div key={cam.id} className={`p-3 sm:p-4 rounded-lg border transition-all flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-start ${
+                  isEnabled 
+                    ? 'bg-gray-800/50 border-gray-700' 
+                    : 'bg-gray-900/40 border-gray-800 opacity-70'
+                }`}>
+                  <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                    <label className="flex flex-col gap-1 text-sm text-gray-400">
+                      Name
+                      <input type="text" value={cam.name} onChange={e => handleUpdate('cameras', cam.id, 'name', e.target.value)} className="bg-gray-900 border border-gray-700 rounded p-2 text-white" />
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm text-gray-400">
+                      Type
+                      <select value={cam.type} onChange={e => handleUpdate('cameras', cam.id, 'type', e.target.value)} className="bg-gray-900 border border-gray-700 rounded p-2 text-white">
+                        <option value="local">Local Camera (V4L2)</option>
+                        <option value="rtsp">RTSP Stream</option>
+                        <option value="file">Video File</option>
+                      </select>
+                    </label>
+                    <label className="flex flex-col gap-1 text-sm text-gray-400 sm:col-span-2">
+                      Source Path / URL
+                      <div className="flex gap-2">
+                        <input 
+                          type="text" 
+                          value={cam.path} 
+                          onChange={e => handleUpdate('cameras', cam.id, 'path', e.target.value)} 
+                          list={cam.type === 'local' ? "video-devices" : undefined}
+                          className="bg-gray-900 border border-gray-700 rounded p-2 text-white flex-1" 
+                        />
+                        {cam.type === 'local' && (
+                          <datalist id="video-devices">
+                            {videoDevices.map(dev => (
+                              <option key={dev} value={dev}>{dev}</option>
+                            ))}
+                          </datalist>
+                        )}
+                      </div>
+                    </label>
+                  </div>
+                  <div className="flex sm:flex-col justify-between sm:justify-center items-end gap-3 sm:mt-6">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleCamera(cam.id, isEnabled)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm ${
+                        isEnabled
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
+                          : 'bg-gray-800 text-gray-400 border border-gray-700 hover:bg-gray-700 hover:text-white'
+                      }`}
+                      title={isEnabled ? "Click to Disable Camera" : "Click to Enable Camera"}
+                    >
+                      <span className={`w-2 h-2 rounded-full ${isEnabled ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`} />
+                      {isEnabled ? 'Active' : 'Disabled'}
+                    </button>
+                    <button onClick={() => handleDelete('cameras', cam.id)} className="p-2 text-red-500 hover:bg-red-500/20 rounded active:scale-95 transition-colors" title="Delete Camera">
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex justify-end sm:mt-6">
-                  <button onClick={() => handleDelete('cameras', cam.id)} className="p-2 text-red-500 hover:bg-red-500/20 rounded active:scale-95 transition-colors" title="Delete Camera">
-                    <Trash2 size={20} />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
             <button 
-              onClick={() => handleAdd('cameras', { name: 'New Camera', type: 'local', path: '/dev/video0' })}
+              onClick={() => handleAdd('cameras', { name: 'New Camera', type: 'local', path: '/dev/video0', is_enabled: true })}
               className="border-2 border-dashed border-gray-700 hover:border-gray-500 text-gray-400 p-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
             >
               <Plus size={18} /> Add New Source Entity
@@ -544,6 +583,11 @@ export default function Settings() {
         {/* PLATFORM UPDATES */}
         {activeTab === 'updates' && (
           <UpdateManager />
+        )}
+
+        {/* BACKUPS & MIGRATION */}
+        {activeTab === 'backups' && (
+          <BackupManager />
         )}
 
       </div>

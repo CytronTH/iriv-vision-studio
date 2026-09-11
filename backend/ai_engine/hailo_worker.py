@@ -9,7 +9,9 @@ import functools
 import subprocess
 import time
 from typing import Callable
+from collections import deque
 from ai_engine.stream_quality import StreamQualityManager
+from ai_engine.telemetry_manager import telemetry_mgr
 
 try:
     import hailo
@@ -17,6 +19,7 @@ except ImportError:
     logging.warning("Hailo module not found. AI metadata extraction will fail if run outside the Hailo environment.")
 from hardware.gpio_manager import gpio_mgr
 from hardware.rs485_manager import rs485_mgr
+from media_server.camera_manager import camera_mgr
 logger = logging.getLogger(__name__)
 
 class HailoPipelineWorker:
@@ -54,6 +57,7 @@ class HailoPipelineWorker:
 
         # We start with the config provided, or build a fallback pipeline later
         self.is_running = False
+        self.acquired_cameras = set()
 
     def _remove_probes(self):
         """Remove all attached pad probes to prevent buffers firing during teardown."""
@@ -181,53 +185,33 @@ class HailoPipelineWorker:
             speed = getattr(first_stream, 'speed', 1.0)
             
             # Build source_bin (shared across all streams in this group)
+            cam_id = getattr(first_stream, 'camera_id', None) or input_key
+            cam_entity = getattr(first_stream, 'camera_entity', None) or {
+                "id": cam_id, "type": video_src_type, "path": video_src, "is_enabled": True
+            }
+
             if video_src_type == "rtsp":
                 source_bin = (
                     f"rtspsrc location={video_src} protocols=tcp latency=100 buffer-mode=slave ! "
                     f"rtph264depay ! h264parse ! avdec_h264 ! "
                     f"queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream"
                 )
-            elif video_src_type == "file":
-                if loop:
-                    if input_key not in ffmpeg_launched:
-                        # Start ONE ffmpeg process per unique input source
-                        internal_path = f"loop_{self.project_id}_{input_key}"
-                        internal_rtsp = f"rtsp://127.0.0.1:8554/{internal_path}"
-                        logger.info(f"Starting ffmpeg loop for {video_src} at {internal_rtsp}")
-                        cmd = [
-                            "ffmpeg", "-nostdin", "-re", 
-                            "-f", "lavfi",
-                            "-i", f"movie={video_src}:loop=0, setpts=N/FRAME_RATE/TB",
-                            "-c:v", "libx264", "-profile:v", "baseline",
-                            "-tune", "zerolatency", "-preset", "ultrafast",
-                            "-b:v", "2M", "-g", "30",
-                            "-an", "-f", "rtsp", "-rtsp_transport", "tcp",
-                            internal_rtsp
-                        ]
-                        proc = subprocess.Popen(
-                            cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                            start_new_session=True
-                        )
-                        self.ffmpeg_procs.append(proc)
-                        time.sleep(2.0)
-                        ffmpeg_launched[input_key] = internal_rtsp
-                    
-                    internal_rtsp = ffmpeg_launched[input_key]
+            elif video_src_type == "file" and not loop:
+                speed_filter = f"! videorate rate={speed} " if speed != 1.0 else ""
+                source_bin = f"filesrc location={video_src} ! decodebin {speed_filter}"
+            else:
+                # Central Shared Ingestion via CameraManager (local USB/CSI or looping video files)
+                try:
+                    shared_rtsp = camera_mgr.acquire(cam_id, cam_entity)
+                    self.acquired_cameras.add(cam_id)
                     source_bin = (
-                        f"rtspsrc location={internal_rtsp} protocols=tcp latency=100 buffer-mode=slave ! "
+                        f"rtspsrc location={shared_rtsp} protocols=tcp latency=100 buffer-mode=slave ! "
                         f"rtph264depay ! h264parse ! avdec_h264 ! "
                         f"queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream"
                     )
-                else:
-                    speed_filter = ""
-                    if speed != 1.0:
-                        speed_filter = f"! videorate rate={speed} "
-                    source_bin = f"filesrc location={video_src} ! decodebin {speed_filter}"
-            else:
-                if video_src.startswith("/dev/video"):
-                    source_bin = f"v4l2src device={video_src}"
-                else:
-                    source_bin = "libcamerasrc"
+                except Exception as e:
+                    logger.error(f"Failed to acquire camera {cam_id}: {e}")
+                    raise
             
             if len(group) == 1:
                 # Single stream from this source — use original simple pipeline
@@ -273,7 +257,7 @@ class HailoPipelineWorker:
                         f"{source_bin} ! "
                         f"videoconvert ! videoscale ! "
                         f"video/x-raw,format=RGB,width=640,height=640,pixel-aspect-ratio=1/1 ! "
-                        f"hailonet hef-path={hef} force-writable=true vdevice-group-id=1 ! "
+                        f"hailonet name=hailonet_{i} hef-path={hef} force-writable=true vdevice-group-id=1 ! "
                         f"hailofilter name=filter_{i} so-path={so} {config_path_arg} qos=false ! "
                         f"{overlay_str}"
                         f"tee name=ai_tee_{i} "
@@ -338,7 +322,7 @@ class HailoPipelineWorker:
                         branches.append(
                             f"{tee_name}. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! videoconvert ! videoscale ! "
                             f"video/x-raw,format=RGB,width=640,height=640,pixel-aspect-ratio=1/1 ! "
-                            f"hailonet hef-path={hef} force-writable=true vdevice-group-id=1 ! "
+                            f"hailonet name=hailonet_{i} hef-path={hef} force-writable=true vdevice-group-id=1 ! "
                             f"hailofilter name=filter_{i} so-path={so} {config_path_arg} qos=false ! "
                             f"{overlay_str}"
                             f"tee name=ai_tee_{i} "
@@ -380,6 +364,39 @@ class HailoPipelineWorker:
                         else:
                             logger.warning(f"Could not find sink_{i} to attach metadata probe.")
 
+                        # Attach NPU timing probes around hailonet_{i}
+                        hailonet_elem = pipeline.get_by_name(f"hailonet_{i}")
+                        if hailonet_elem:
+                            h_sink = hailonet_elem.get_static_pad("sink")
+                            h_src = hailonet_elem.get_static_pad("src")
+                            if h_sink and h_src:
+                                entry_q = deque(maxlen=30)
+                                ai_nid = getattr(cam_stream, 'ai_node_id', f"ai_{i}")
+                                hef_fname = os.path.basename(getattr(cam_stream, 'hef_path', 'model.hef'))
+                                
+                                def _make_hailo_in(q):
+                                    def _cb(pad, info):
+                                        q.append(time.perf_counter())
+                                        return Gst.PadProbeReturn.OK
+                                    return _cb
+
+                                def _make_hailo_out(q, nid, mname):
+                                    def _cb(pad, info):
+                                        if q:
+                                            t_in = q.popleft()
+                                            dur_ms = (time.perf_counter() - t_in) * 1000.0
+                                            try:
+                                                telemetry_mgr.record_npu_inference(self.project_id, nid, dur_ms, model=mname)
+                                            except Exception:
+                                                pass
+                                        return Gst.PadProbeReturn.OK
+                                    return _cb
+
+                                p1 = h_sink.add_probe(Gst.PadProbeType.BUFFER, _make_hailo_in(entry_q))
+                                p2 = h_src.add_probe(Gst.PadProbeType.BUFFER, _make_hailo_out(entry_q, ai_nid, hef_fname))
+                                self._probes.append((h_sink, p1))
+                                self._probes.append((h_src, p2))
+
                 # Attach bus watch for EOS and errors
                 bus = pipeline.get_bus()
                 bus.add_signal_watch()
@@ -411,6 +428,7 @@ class HailoPipelineWorker:
         if not buffer:
             return Gst.PadProbeReturn.OK
 
+        t_probe_start = time.perf_counter()
         try:
             import hailo
             roi = hailo.get_roi_from_buffer(buffer)
@@ -608,6 +626,40 @@ class HailoPipelineWorker:
                 
         except Exception as e:
             logger.error(f"Error extracting metadata: {e}")
+        finally:
+            probe_dur_ms = (time.perf_counter() - t_probe_start) * 1000.0
+            try:
+                ai_nid = getattr(stream_cfg, 'ai_node_id', None) if 'stream_cfg' in locals() and stream_cfg else None
+                c_fps = locals().get('current_fps', 0.0)
+                if ai_nid:
+                    telemetry_mgr.record_gstreamer_node_metric(
+                        self.project_id,
+                        ai_nid,
+                        "aiNode",
+                        fps=c_fps,
+                        extra={"python_probe_ms": round(probe_dur_ms, 2)}
+                    )
+                in_nid = getattr(stream_cfg, 'input_node_id', None) if 'stream_cfg' in locals() and stream_cfg else None
+                if in_nid:
+                    telemetry_mgr.record_gstreamer_node_metric(
+                        self.project_id,
+                        in_nid,
+                        "inputNode",
+                        fps=c_fps,
+                        latency_ms=1.5
+                    )
+                if 'stream_cfg' in locals() and stream_cfg:
+                    for v_id in getattr(stream_cfg, 'dashboard_video_nodes', []):
+                        raw_id = v_id.replace("stream.rtsp.", "")
+                        telemetry_mgr.record_gstreamer_node_metric(
+                            self.project_id,
+                            raw_id,
+                            "dashboardVideoNode",
+                            fps=c_fps,
+                            latency_ms=2.5
+                        )
+            except Exception as ex:
+                logger.debug(f"Telemetry node metric error: {ex}")
             
         return Gst.PadProbeReturn.OK
 
@@ -651,6 +703,11 @@ class HailoPipelineWorker:
             self.is_running = True
             self.start_time = time.time()
             
+            try:
+                telemetry_mgr.register_pipeline(self.project_id, name=f"Project {self.project_id}")
+            except Exception as e:
+                logger.debug(f"Telemetry register pipeline error: {e}")
+
             if hasattr(self.config, 'router'):
                 self.config.router.metadata_callback = self.metadata_callback
                 self.config.router.start()
@@ -663,6 +720,13 @@ class HailoPipelineWorker:
 
     def stop(self):
         self.is_running = False
+
+        try:
+            telemetry_mgr.unregister_pipeline(self.project_id)
+            for p in self.ffmpeg_procs:
+                telemetry_mgr.unregister_process(p.pid)
+        except Exception:
+            pass
 
         if hasattr(self, 'config') and self.config and hasattr(self.config, 'router'):
             self.config.router.stop()
@@ -706,6 +770,15 @@ class HailoPipelineWorker:
                     pass
         self.ffmpeg_procs = []
         self._ffmpeg_launched = {}   # Reset so next start() can launch fresh ffmpeg procs
+
+        # Release all acquired central camera streams (with grace period)
+        if hasattr(self, 'acquired_cameras'):
+            for cam_id in list(self.acquired_cameras):
+                try:
+                    camera_mgr.release(cam_id)
+                except Exception as e:
+                    logger.warning(f"Error releasing camera {cam_id}: {e}")
+            self.acquired_cameras.clear()
             
     def restart(self, config):
         """
@@ -718,6 +791,54 @@ class HailoPipelineWorker:
         self.config = config
         self.build_pipeline()
         self.start()
+
+    def hot_update_ai_params(self, ai_node_id: str, updates: dict) -> bool:
+        """
+        Hot-updates AI parameters (confidence, ROI, class filter, etc.) in memory.
+        The pad probe will immediately pick up the new settings on the next video frame.
+        Zero downtime, zero GStreamer restarts.
+        """
+        if not hasattr(self, 'config') or not self.config:
+            return False
+
+        updated = False
+        for stream_cfg in getattr(self.config, 'camera_streams', []):
+            if getattr(stream_cfg, 'ai_node_id', None) == ai_node_id or getattr(stream_cfg, 'input_node_id', None) == ai_node_id:
+                for k, v in updates.items():
+                    if k == "confidenceThreshold":
+                        stream_cfg.confidence_threshold = float(v)
+                    elif k == "classConfidences":
+                        stream_cfg.class_confidences = dict(v)
+                    elif k == "roi":
+                        stream_cfg.roi = dict(v)
+                    elif k == "roiEnabled":
+                        stream_cfg.roi_enabled = bool(v)
+                    elif k == "showRoi":
+                        stream_cfg.show_roi = bool(v)
+                    elif k == "classFilter":
+                        stream_cfg.class_filter = list(v) if v else None
+                    elif k == "bboxDrawMode":
+                        stream_cfg.bbox_draw_mode = str(v)
+                    elif k == "bboxLineThickness":
+                        stream_cfg.bbox_line_thickness = int(v)
+                    elif k == "bboxFontThickness":
+                        stream_cfg.bbox_font_thickness = int(v)
+                logger.info(f"HailoPipelineWorker [{self.project_id}] hot-updated AI params for stream {stream_cfg.stream_id} (node {ai_node_id}): {updates}")
+                updated = True
+        return updated
+
+    def hot_reload_router(self, new_router) -> None:
+        """
+        Hot-reloads the message router with new logic nodes and connections.
+        Preserves state from old nodes (counters, etc.) and keeps video pipeline running 100% uninterrupted.
+        """
+        if hasattr(self.config, 'router') and self.config.router:
+            self.config.router.hot_reload(new_router.nodes, new_router.edges)
+        else:
+            new_router.metadata_callback = self.metadata_callback
+            new_router.start()
+            self.config.router = new_router
+        logger.info(f"HailoPipelineWorker [{self.project_id}] router hot-reloaded successfully.")
 
     # ── Adaptive quality helpers ──────────────────────────────────────────────
 

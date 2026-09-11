@@ -16,6 +16,9 @@ import DebugNode from './nodes/DebugNode';
 import DebugOutputNode from './nodes/DebugOutputNode';
 import FunctionNode from './nodes/FunctionNode';
 import CounterNode from './nodes/CounterNode';
+import FlowCounterNode from './nodes/FlowCounterNode';
+import ShelfSlotMonitorNode from './nodes/ShelfSlotMonitorNode';
+import ForkliftZoneNode from './nodes/ForkliftZoneNode';
 import SnapshotNode from './nodes/SnapshotNode';
 import ButtonEdge from './edges/ButtonEdge';
 
@@ -42,5 +45,8 @@ export const nodeTypes = {
   functionNode: FunctionNode,
   rateLimitNode: RateLimitNode,
   counterNode: CounterNode,
+  flowCounterNode: FlowCounterNode,
+  shelfSlotMonitorNode: ShelfSlotMonitorNode,
+  forkliftZoneNode: ForkliftZoneNode,
   snapshotNode: SnapshotNode,
 };

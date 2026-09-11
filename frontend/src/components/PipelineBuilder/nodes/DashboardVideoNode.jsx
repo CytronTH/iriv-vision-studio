@@ -3,6 +3,7 @@ import { Handle, Position } from '@xyflow/react';
 import { Tv } from 'lucide-react';
 import NodeMenu from './NodeMenu';
 import usePipelineStore from '../../../store/usePipelineStore';
+import NodeTelemetryBadge from './NodeTelemetryBadge';
 
 export default function DashboardVideoNode({ id, data }) {
   const updateNodeData = usePipelineStore((state) => state.updateNodeData);
@@ -39,6 +40,9 @@ export default function DashboardVideoNode({ id, data }) {
         <div className="text-[10px] text-gray-500 mt-1">
           Provides video stream to Dashboard Video widgets.
         </div>
+
+        {/* Live Telemetry (CPU & FPS) */}
+        <NodeTelemetryBadge nodeId={id} />
       </div>
 
       <Handle 

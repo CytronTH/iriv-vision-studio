@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Activity, Server, LayoutDashboard, GitMerge, Settings as SettingsIcon, ChevronLeft, Home, Sun, Moon, Power, RefreshCw, BookOpen, Menu, X } from 'lucide-react';
+import { Activity, Server, LayoutDashboard, GitMerge, Settings as SettingsIcon, ChevronLeft, Home, Sun, Moon, Power, RefreshCw, BookOpen, Menu, X, Database } from 'lucide-react';
 import LiveDashboard from './components/LiveDashboard';
 import PipelineBuilder from './components/PipelineBuilder/PipelineBuilder';
 import Settings from './components/Settings/Settings';
@@ -8,6 +8,7 @@ import ResourceMonitor from './components/ResourceMonitor';
 import ErrorBoundary from './components/ErrorBoundary';
 import LogsViewer from './components/LogsViewer';
 import NodeWiki from './components/Wiki/NodeWiki';
+import DatabaseMonitoring from './components/DatabaseMonitoring';
 import logoImg from './assets/logo.svg';
 
 function App() {
@@ -228,6 +229,23 @@ function App() {
             <SettingsIcon size={18} className="shrink-0" />
             {(isSidebarOpen || isMobileDrawerOpen) && <span>Global Settings</span>}
           </button>
+          
+          <button
+            onClick={() => {
+              setActiveProject(null);
+              setActiveTab('database');
+              setIsMobileDrawerOpen(false);
+            }}
+            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${!isSidebarOpen && 'md:justify-center md:w-12 md:h-12'} ${
+              activeTab === 'database' && !activeProject
+                ? 'bg-blue-600/10 text-blue-400' 
+                : 'text-gray-400 hover:text-white hover:bg-gray-800'
+            }`}
+            title={!isSidebarOpen ? "Database" : ""}
+          >
+            <Database size={18} className="shrink-0" />
+            {(isSidebarOpen || isMobileDrawerOpen) && <span>Database</span>}
+          </button>
 
           {activeProject && (
             <>
@@ -412,6 +430,12 @@ function App() {
              </div>
           )}
           
+          {!activeProject && activeTab === 'database' && (
+             <div className="flex-1 overflow-y-auto">
+               <DatabaseMonitoring />
+             </div>
+          )}
+          
           {activeProject && activeTab === 'dashboard' && (
             <ErrorBoundary>
               <div className="h-full flex flex-col p-2 sm:p-4 md:p-6">
@@ -442,7 +466,7 @@ function App() {
           
           {activeProject && activeTab === 'logs' && (
              <div className="h-full bg-gray-950">
-               <LogsViewer />
+               <LogsViewer projectId={activeProject.id} />
              </div>
           )}
         </main>

@@ -135,13 +135,10 @@ export default function VideoWidget({ metadata, projectId, config }) {
     ? `http://${window.location.hostname}:8889/${projectId}_${config.stream_id || config.dataPath}/whep`
     : null;
 
-  // Source stream: raw loop (native res, no AI, no bbox)
-  // Loop naming: loop_{projectId}_{inputKey}  where inputKey = stream_id sans 'cam_' and stream index
-  const rawStreamId = config?.stream_id || config?.dataPath || '';
-  const inputKey    = rawStreamId.replace(/^cam_/, '').replace(/_\d+$/, '');
-  const sourceWhepUrl = projectId && inputKey
-    ? `http://${window.location.hostname}:8889/loop_${projectId}_${inputKey}/whep`
-    : null;
+  // Source stream: raw camera ingestion stream (native res, no AI, no bbox)
+  const sourceWhepUrl = config?.camera_id
+    ? `http://${window.location.hostname}:8889/shared_${config.camera_id}/whep`
+    : processedWhepUrl;
 
   const whepUrl = showSource ? sourceWhepUrl : processedWhepUrl;
   const { status, reconnect } = useWhepStream(whepUrl, videoRef);

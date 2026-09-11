@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Folder, Plus, Play, Square, Trash2, ArrowRight, Edit2, Check, Video, Activity } from 'lucide-react';
+import { Folder, Plus, Play, Square, Trash2, ArrowRight, Edit2, Check, Video, Activity, Download, Upload } from 'lucide-react';
+import ExportProjectModal from './ExportProjectModal';
+import ImportProjectModal from './ImportProjectModal';
 
 export default function ProjectList({ onOpenProject }) {
   const [projects, setProjects] = useState([]);
@@ -7,6 +9,8 @@ export default function ProjectList({ onOpenProject }) {
   const [editingId, setEditingId] = useState(null);
   const [editForm, setEditForm] = useState({ name: '', description: '' });
   const [projectStatuses, setProjectStatuses] = useState({});
+  const [exportTargetProject, setExportTargetProject] = useState(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   useEffect(() => {
     fetchProjects();
@@ -142,13 +146,22 @@ export default function ProjectList({ onOpenProject }) {
             Create and manage multiple AI vision pipelines. Each project runs isolated on its own GStreamer thread and RTSP output, allowing you to run multiple cameras simultaneously.
           </p>
         </div>
-        <button 
-          onClick={createProject}
-          className="bg-blue-600 hover:bg-blue-500 text-white px-5 sm:px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-900/50 hover:scale-105 active:scale-95 whitespace-nowrap text-sm sm:text-base w-full sm:w-auto"
-        >
-          <Plus size={20} />
-          Create New Project
-        </button>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
+          <button 
+            onClick={() => setIsImportModalOpen(true)}
+            className="bg-gray-800 hover:bg-gray-700 text-gray-200 hover:text-white border border-gray-700 hover:border-gray-600 px-4 sm:px-5 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 whitespace-nowrap text-sm sm:text-base"
+          >
+            <Upload size={18} className="text-blue-400" />
+            Import Project
+          </button>
+          <button 
+            onClick={createProject}
+            className="bg-blue-600 hover:bg-blue-500 text-white px-5 sm:px-6 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all shadow-lg shadow-blue-900/50 hover:scale-105 active:scale-95 whitespace-nowrap text-sm sm:text-base"
+          >
+            <Plus size={20} />
+            Create New Project
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
@@ -185,6 +198,13 @@ export default function ProjectList({ onOpenProject }) {
               
               {/* Touch-visible actions on mobile, hover-only on desktop */}
               <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+                <button 
+                  onClick={() => setExportTargetProject(project)}
+                  className="text-gray-400 hover:text-blue-400 transition-colors p-2 bg-gray-800 hover:bg-gray-750 rounded-lg active:scale-95"
+                  title="Export / Backup Project"
+                >
+                  <Download size={16} />
+                </button>
                 {editingId !== project.id && (
                   <button 
                     onClick={() => startEditing(project)}
@@ -293,6 +313,21 @@ export default function ProjectList({ onOpenProject }) {
           </div>
         )}
       </div>
+
+      {/* Export Project Modal */}
+      <ExportProjectModal 
+        project={exportTargetProject}
+        isOpen={!!exportTargetProject}
+        onClose={() => setExportTargetProject(null)}
+      />
+
+      {/* Import Project Modal */}
+      <ImportProjectModal 
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onImportSuccess={() => fetchProjects()}
+        onOpenProject={onOpenProject}
+      />
     </div>
   );
 }

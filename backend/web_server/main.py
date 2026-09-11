@@ -15,6 +15,8 @@ from pathlib import Path
 # Add backend root to sys.path to easily import ai_engine
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 from ai_engine.hailo_worker import HailoPipelineWorker
+from ai_engine.telemetry_manager import telemetry_mgr
+from ai_engine.pipeline_differ import diff_pipelines
 
 # Configure structured logging
 logging.basicConfig(
@@ -45,33 +47,26 @@ def on_metadata_received(project_id, metadata):
 
 
 async def system_monitor_task():
-    """Background task to broadcast and periodically log system metrics"""
-    logger.info("System monitor task started!")
+    """Background task to broadcast and periodically log fine-grained system & NPU metrics"""
+    logger.info("System monitor task started with fine-grained CPU/NPU telemetry!")
     log_counter = 0
     while True:
         try:
-            metrics = {
-                "cpu_percent": psutil.cpu_percent(interval=None),
-                "ram_percent": psutil.virtual_memory().percent,
-                "temp_c": 0.0
-            }
-            # Try to read temp on Raspberry Pi
-            try:
-                with open("/sys/class/thermal/thermal_zone0/temp", "r") as f:
-                    metrics["temp_c"] = float(f.read()) / 1000.0
-            except:
-                pass
+            telemetry = telemetry_mgr.get_full_telemetry()
+            await manager.broadcast_json(telemetry, room_id="system")
             
-            await manager.broadcast_json(metrics, room_id="system")
-            
-            # Periodically log system metrics to DB (every 10s = 5 cycles of 2s)
+            # Periodically log system metrics to DB (every 10s = 10 cycles of 1s)
             log_counter += 1
-            if log_counter >= 5:
+            if log_counter >= 10:
                 log_counter = 0
-                db.log_metric(metrics["cpu_percent"], metrics["ram_percent"], metrics["temp_c"])
+                db.log_metric(
+                    telemetry["system"]["cpu_percent"],
+                    telemetry["system"]["ram_percent"],
+                    telemetry["system"]["temp_c"]
+                )
         except Exception as e:
             logger.error(f"System monitor error: {e}")
-        await asyncio.sleep(2)
+        await asyncio.sleep(1)
 
 async def database_maintenance_task():
     """Background task to periodically prune old logs and snapshots (every 24 hours)."""
@@ -127,6 +122,8 @@ async def lifespan(app: FastAPI):
     logger.info("Shutting down AI Pipeline Workers...")
     for worker in active_workers.values():
         worker.stop()
+    from media_server.camera_manager import camera_mgr
+    camera_mgr.stop_all()
     logger.info("Stopping DatabaseManager...")
     db.stop()
 
@@ -151,6 +148,10 @@ import os
 snapshots_dir = "/home/pi/iriv-vision-studio/snapshots"
 os.makedirs(snapshots_dir, exist_ok=True)
 app.mount("/api/snapshots", StaticFiles(directory=snapshots_dir), name="snapshots")
+
+from .project_backup import router as project_backup_router
+app.include_router(project_backup_router)
+
 
 @app.get("/")
 async def root():
@@ -214,18 +215,31 @@ def write_entities(data):
         # 1. Cameras: Upsert & delete removed
         incoming_cams = {c["id"]: c for c in data.get("cameras", []) if "id" in c}
         existing_cams = {c.id: c for c in session.exec(select(Camera)).all()}
+        from media_server.camera_manager import camera_mgr
         for cid, cam_obj in existing_cams.items():
             if cid not in incoming_cams:
+                if camera_mgr.is_active(cid):
+                    camera_mgr.release(cid)
                 session.delete(cam_obj)
         for cid, c in incoming_cams.items():
+            is_enabled_val = c.get("is_enabled", True)
             if cid in existing_cams:
                 cam_obj = existing_cams[cid]
+                if cam_obj.is_enabled and not is_enabled_val and camera_mgr.is_active(cid):
+                    camera_mgr.release(cid)
                 cam_obj.name = c["name"]
                 cam_obj.type = c.get("type", "")
                 cam_obj.path = c.get("path", "")
+                cam_obj.is_enabled = is_enabled_val
                 session.add(cam_obj)
             else:
-                session.add(Camera(id=c["id"], name=c["name"], type=c.get("type", ""), path=c.get("path", "")))
+                session.add(Camera(
+                    id=c["id"],
+                    name=c["name"],
+                    type=c.get("type", ""),
+                    path=c.get("path", ""),
+                    is_enabled=is_enabled_val
+                ))
 
         # 2. Models: Upsert & delete removed
         incoming_models = {m["id"]: m for m in data.get("models", []) if "id" in m}
@@ -304,13 +318,30 @@ async def camera_snapshot(camera_id: str):
     entities = read_entities()
     camera = next((c for c in entities.get("cameras", []) if c.get("id") == camera_id), None)
     if not camera:
-        raise HTTPException(status_code=404, detail="Camera entity not found")
+        # Graceful fallback: if camera_id is missing or invalid (e.g. AI model ID passed), pick first available camera
+        enabled_cams = [c for c in entities.get("cameras", []) if c.get("is_enabled", True)]
+        if enabled_cams:
+            camera = enabled_cams[0]
+            logger.warning(f"Camera '{camera_id}' not found, falling back to '{camera.get('id')}'")
+        elif entities.get("cameras"):
+            camera = entities["cameras"][0]
+            logger.warning(f"Camera '{camera_id}' not found, falling back to '{camera.get('id')}'")
+        else:
+            raise HTTPException(status_code=404, detail="Camera entity not found")
+
+    if not camera.get("is_enabled", True):
+        raise HTTPException(status_code=400, detail=f"Camera '{camera.get('name', camera_id)}' is disabled. Please enable it in Settings.")
 
     src_type = camera.get("type", "local")
     src_path = camera.get("path", "/dev/video0")
 
-    # Build ffmpeg input args based on source type
-    if src_type == "local":
+    # Check if stream is currently active in camera_mgr (Dual-mode snapshot)
+    from media_server.camera_manager import camera_mgr
+    active_rtsp = camera_mgr.get_rtsp_url(camera.get("id", camera_id))
+
+    if active_rtsp:
+        input_args = ["-rtsp_transport", "tcp", "-i", active_rtsp]
+    elif src_type == "local":
         input_args = ["-f", "v4l2", "-i", src_path]
     elif src_type == "rtsp":
         input_args = [
@@ -755,30 +786,82 @@ class PipelinePayload(BaseModel):
     project_id: str
     nodes: List[Dict[str, Any]]
     edges: List[Dict[str, Any]]
+    deploy_mode: Optional[str] = "modified_nodes"  # "modified_nodes" | "modified_flows" | "full"
 
 @app.post("/api/pipeline/deploy")
 async def deploy_pipeline(payload: PipelinePayload):
     project_id = payload.project_id
-    logger.info(f"Received pipeline deployment for {project_id}: {len(payload.nodes)} nodes")
+    deploy_mode = payload.deploy_mode or "modified_nodes"
+    logger.info(f"Received pipeline deployment for {project_id}: {len(payload.nodes)} nodes (mode: {deploy_mode})")
     
     try:
         base_dir = Path(__file__).resolve().parent.parent
         parser = PipelineParser(base_dir)
+
+        # Check if worker is currently active
+        worker = active_workers.get(project_id)
+        is_worker_running = worker is not None and getattr(worker, 'is_running', False)
+
+        projects = read_projects()
+        target_project = next((p for p in projects if p["id"] == project_id), None)
+        old_nodes = target_project.get("pipeline", {}).get("nodes", []) if target_project else []
+        old_edges = target_project.get("pipeline", {}).get("edges", []) if target_project else []
+
+        if is_worker_running:
+            diff = diff_pipelines(old_nodes, old_edges, payload.nodes, payload.edges, requested_mode=deploy_mode)
+            logger.info(f"Pipeline deploy diff for {project_id}: action={diff.action}, summary={diff.summary}")
+
+            if diff.action == "none":
+                return {
+                    "status": "success",
+                    "mode": "none",
+                    "message": "No changes detected. Pipeline is already up to date.",
+                    "details": diff.to_dict()
+                }
+
+            if diff.action in ("ai_params_only", "router_only", "hybrid_hot"):
+                # ZERO DOWNTIME HOT-UPDATE / HOT-RELOAD
+                config = parser.parse({"nodes": payload.nodes, "edges": payload.edges}, project_id=project_id)
+
+                # 1. Update AI dynamic parameters if any
+                if diff.ai_param_updates:
+                    for ai_node_id, updates in diff.ai_param_updates.items():
+                        worker.hot_update_ai_params(ai_node_id, updates)
+
+                # 2. Hot-reload Router if needed
+                if diff.action in ("router_only", "hybrid_hot") and config.router:
+                    worker.hot_reload_router(config.router)
+
+                # Update database project state
+                for p in projects:
+                    if p["id"] == project_id:
+                        p["pipeline"] = {"nodes": payload.nodes, "edges": payload.edges}
+                        p["exposed_data_sources"] = config.dashboard_nodes
+                        p["is_running"] = True
+                        break
+                write_projects(projects)
+
+                return {
+                    "status": "success",
+                    "mode": diff.action,
+                    "message": f"Pipeline deployed via {diff.action} (zero video downtime)!",
+                    "details": diff.to_dict()
+                }
+
+        # Full restart or worker was not currently running
         config = parser.parse({"nodes": payload.nodes, "edges": payload.edges}, project_id=project_id)
-        
+
         # Stop existing worker for this project if any
         if project_id in active_workers:
             active_workers[project_id].stop()
             
         # Create and start a new worker, passing project_id to the callback
         callback = functools.partial(on_metadata_received, project_id)
-        # Assuming hailo_worker accepts project_id (we need to modify it next)
         new_worker = HailoPipelineWorker(config=config, metadata_callback=callback, project_id=project_id)
         new_worker.start()
         active_workers[project_id] = new_worker
         
         # Update projects.json with the new pipeline state
-        projects = read_projects()
         for p in projects:
             if p["id"] == project_id:
                 p["pipeline"] = {"nodes": payload.nodes, "edges": payload.edges}
@@ -787,9 +870,14 @@ async def deploy_pipeline(payload: PipelinePayload):
                 break
         write_projects(projects)
             
-        return {"status": "success", "message": "Pipeline deployed and engine started for project"}
+        return {
+            "status": "success",
+            "mode": "full_restart",
+            "message": "Pipeline deployed and engine started for project",
+            "details": {"action": "full_restart", "summary": "Full engine restart completed."}
+        }
     except Exception as e:
-        logger.error(f"Failed to deploy pipeline for {project_id}: {e}")
+        logger.error(f"Failed to deploy pipeline for {project_id}: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
 @app.post("/api/pipeline/stop/{project_id}")
@@ -827,6 +915,11 @@ async def get_projects_status():
         else:
             status_dict[pid] = {"status": "stopped", "start_time": None, "uptime": 0}
     return status_dict
+
+@app.get("/api/telemetry/live")
+async def get_live_telemetry():
+    """Returns real-time fine-grained CPU/NPU telemetry across Processes, Pipelines, and Nodes."""
+    return telemetry_mgr.get_full_telemetry()
 
 @app.post("/api/projects/{project_id}/start")
 async def start_project(project_id: str):
@@ -950,20 +1043,76 @@ async def restart_system():
     return {"status": "success", "message": "Rebooting..."}
 
 @app.get("/api/logs")
-def get_logs(limit: int = 100, node_id: str = None, event_type: str = None, camera_id: str = None, page: int = 1):
+def get_logs(limit: int = 100, node_id: str = None, event_type: str = None, camera_id: str = None, page: int = 1, project_id: str = None):
     try:
         from db.database import db
-        result = db.get_logs(limit=limit, node_id=node_id, event_type=event_type, camera_id=camera_id, page=page)
+        result = db.get_logs(limit=limit, node_id=node_id, event_type=event_type, camera_id=camera_id, page=page, project_id=project_id)
         return {"status": "success", **result}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# --- Analytics & Historical Reports APIs ---
+from fastapi.responses import Response
+
+@app.get("/api/analytics/counts/history")
+def get_counts_history(project_id: str = "default", camera_id: Optional[str] = None, start_time: Optional[str] = None, end_time: Optional[str] = None, interval: str = "hour"):
+    try:
+        from db.database import db
+        result = db.get_class_count_history(
+            project_id=project_id,
+            camera_id=camera_id,
+            start_time=start_time,
+            end_time=end_time,
+            interval=interval
+        )
+        return {"status": "success", **result}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/analytics/counts/export-csv")
+def export_counts_csv(project_id: str = "default", camera_id: Optional[str] = None, start_time: Optional[str] = None, end_time: Optional[str] = None):
+    try:
+        from db.database import db
+        csv_data = db.export_class_count_csv(
+            project_id=project_id,
+            camera_id=camera_id,
+            start_time=start_time,
+            end_time=end_time
+        )
+        filename = f"class_counts_{project_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        return Response(
+            content=csv_data,
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+class CounterResetPayload(BaseModel):
+    project_id: str = "default"
+    node_id: Optional[str] = None
+
+@app.post("/api/analytics/counts/reset")
+async def reset_counter(payload: CounterResetPayload = CounterResetPayload()):
+    try:
+        global active_workers
+        worker = active_workers.get(payload.project_id)
+        if worker and hasattr(worker, 'config') and getattr(worker.config, 'router', None):
+            router = worker.config.router
+            for nid, node in router.nodes.items():
+                if hasattr(node, 'reset_counts'):
+                    if payload.node_id is None or payload.node_id == nid:
+                        node.reset_counts()
+        return {"status": "success", "message": "Counter reset successfully"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
 # --- Database Maintenance APIs ---
 @app.get("/api/database/stats")
-async def get_database_stats():
+async def get_database_stats(project_id: str = None):
     try:
         from db.database import db
-        stats = db.get_db_stats()
+        stats = db.get_db_stats(project_id=project_id)
         return {"status": "success", "data": stats}
     except Exception as e:
         return {"status": "error", "message": str(e)}

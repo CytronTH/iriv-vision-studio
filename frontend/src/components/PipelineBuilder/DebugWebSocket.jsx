@@ -28,10 +28,37 @@ export default function DebugWebSocket() {
         const sourceNode = nodes.find(n => n.id === edge.source);
         if (!sourceNode) return;
         
-        if (sourceNode.type === 'logicNode' || sourceNode.type === 'rateLimitNode') {
+        if (sourceNode.type === 'logicNode' || sourceNode.type === 'rateLimitNode' || sourceNode.type === 'flowCounterNode' || sourceNode.type === 'counterNode' || sourceNode.type === 'shelfSlotMonitorNode' || sourceNode.type === 'forkliftZoneNode') {
           const list = logics.get(sourceNode.id) || [];
           list.push(debugNode.id);
           logics.set(sourceNode.id, list);
+
+          if (sourceNode.type === 'forkliftZoneNode') {
+            const upstreamEdge = edges.find(e => e.target === sourceNode.id);
+            if (upstreamEdge) {
+              const aiNode = nodes.find(n => n.id === upstreamEdge.source && n.type === 'aiNode');
+              if (aiNode) {
+                const aiIncoming = edges.find(e => e.target === aiNode.id);
+                if (aiIncoming) {
+                  const inputNodeId = aiIncoming.source;
+                  const siblingAiNodeIds = edges
+                    .filter(e => e.source === inputNodeId)
+                    .map(e => e.target)
+                    .filter(tid => nodes.find(n => n.id === tid && n.type === 'aiNode'));
+                  let camId;
+                  if (siblingAiNodeIds.length <= 1) {
+                    camId = `cam_${inputNodeId}`;
+                  } else {
+                    const aiIdx = siblingAiNodeIds.indexOf(aiNode.id);
+                    camId = `cam_${inputNodeId}_${aiIdx >= 0 ? aiIdx : 0}`;
+                  }
+                  const camList = cameras.get(camId) || [];
+                  camList.push(debugNode.id);
+                  cameras.set(camId, camList);
+                }
+              }
+            }
+          }
         } else if (sourceNode.type === 'aiNode') {
           const aiIncoming = edges.find(e => e.target === sourceNode.id);
           if (aiIncoming) {
@@ -54,10 +81,7 @@ export default function DebugWebSocket() {
             cameras.set(camId, list);
           }
         } else if (sourceNode.type === 'inputNode') {
-          const camId = `cam_${sourceNode.id}`;
-          const list = cameras.get(camId) || [];
-          list.push(debugNode.id);
-          cameras.set(camId, list);
+          // Input nodes are raw video sources and do not produce AI detection metadata
         }
       });
     });
@@ -83,7 +107,15 @@ export default function DebugWebSocket() {
           let isMonitored = false;
           let sourceDebugNodeIds = [];
 
-          if (data.type === 'logic_state' || data.type === 'rate_limit_state') {
+          if (data.type === 'shelf_slot_monitor_update' || data.type === 'forklift_zone_update') {
+            if (data.node_id && setDebugData) {
+              setDebugData(data.node_id, data);
+            }
+            if (data.node_id && logics.has(data.node_id)) {
+              isMonitored = true;
+              sourceDebugNodeIds = logics.get(data.node_id);
+            }
+          } else if (data.type === 'logic_state' || data.type === 'rate_limit_state' || data.type === 'flow_counter_update') {
             if (data.node_id && logics.has(data.node_id)) {
               isMonitored = true;
               sourceDebugNodeIds = logics.get(data.node_id);

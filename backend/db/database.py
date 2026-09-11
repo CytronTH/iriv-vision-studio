@@ -58,11 +58,21 @@ class DatabaseManager:
                 "CREATE INDEX IF NOT EXISTS idx_event_logs_cam_time ON event_logs(camera_id, timestamp DESC);",
                 "CREATE INDEX IF NOT EXISTS idx_event_logs_node_time ON event_logs(node_id, timestamp DESC);",
                 "CREATE INDEX IF NOT EXISTS idx_system_metrics_timestamp ON system_metrics(timestamp DESC);",
+                "CREATE INDEX IF NOT EXISTS idx_class_count_time ON class_count_summary(timestamp DESC);",
+                "CREATE INDEX IF NOT EXISTS idx_class_count_proj_time ON class_count_summary(project_id, timestamp DESC);",
+                "CREATE INDEX IF NOT EXISTS idx_class_count_class ON class_count_summary(class_name, timestamp DESC);",
             ]
             with self.engine.connect() as conn:
                 for idx_sql in indexes:
                     conn.execute(text(idx_sql))
                 conn.commit()
+                
+                # Schema migrations for newly added columns
+                try:
+                    conn.execute(text("ALTER TABLE camera ADD COLUMN is_enabled BOOLEAN DEFAULT 1;"))
+                    conn.commit()
+                except Exception:
+                    pass  # Column already exists
                 
             logger.info(f"Database initialized successfully with indexes at {self.db_path}")
         except Exception as e:
@@ -104,6 +114,7 @@ class DatabaseManager:
                         if log_entry['table'] == 'event_logs':
                             event = EventLog(
                                 node_id=log_entry.get('node_id'),
+                                project_id=log_entry.get('project_id'),
                                 event_type=log_entry.get('event_type'),
                                 payload=json.dumps(log_entry.get('payload')) if log_entry.get('payload') else None,
                                 camera_id=log_entry.get('camera_id'),
@@ -117,6 +128,17 @@ class DatabaseManager:
                                 temp_c=log_entry.get('temp_c')
                             )
                             session.add(metric)
+                        elif log_entry['table'] == 'class_count_summary':
+                            summary = ClassCountSummary(
+                                timestamp=log_entry.get('timestamp') or datetime.utcnow(),
+                                project_id=log_entry.get('project_id', 'default'),
+                                camera_id=log_entry.get('camera_id'),
+                                node_id=log_entry.get('node_id'),
+                                class_name=log_entry.get('class_name'),
+                                count=log_entry.get('count', 0),
+                                cumulative_total=log_entry.get('cumulative_total', 0)
+                            )
+                            session.add(summary)
                     session.commit()
                 except Exception as e:
                     session.rollback()
@@ -125,11 +147,12 @@ class DatabaseManager:
                     for _ in entries:
                         self.log_queue.task_done()
 
-    def log_event(self, node_id: str, event_type: str, payload: dict, camera_id: str = None, snapshot_path: str = None):
+    def log_event(self, node_id: str, event_type: str, payload: dict, camera_id: str = None, snapshot_path: str = None, project_id: str = None):
         try:
             self.log_queue.put_nowait({
                 'table': 'event_logs',
                 'node_id': node_id,
+                'project_id': project_id,
                 'event_type': event_type,
                 'payload': payload,
                 'camera_id': camera_id,
@@ -149,12 +172,15 @@ class DatabaseManager:
         except Full:
             logger.warning("Database log_queue is full (max 10000). Dropping metric to prevent memory exhaustion.")
         
-    def get_logs(self, limit: int = 100, node_id: str = None, event_type: str = None, camera_id: str = None, page: int = 1):
+    def get_logs(self, limit: int = 100, node_id: str = None, event_type: str = None, camera_id: str = None, page: int = 1, project_id: str = None):
         """Helper to get raw dict logs for backwards compatibility, with pagination and filters."""
         with Session(self.engine) as session:
             statement = select(EventLog)
             count_statement = select(func.count(EventLog.id))
             
+            if project_id:
+                statement = statement.where(EventLog.project_id == project_id)
+                count_statement = count_statement.where(EventLog.project_id == project_id)
             if node_id:
                 statement = statement.where(EventLog.node_id == node_id)
                 count_statement = count_statement.where(EventLog.node_id == node_id)
@@ -259,7 +285,7 @@ class DatabaseManager:
             "errors": errors
         }
 
-    def get_db_stats(self) -> Dict[str, Any]:
+    def get_db_stats(self, project_id: str = None) -> Dict[str, Any]:
         """Returns database size, record counts, and snapshot disk usage."""
         stats = {}
         try:
@@ -272,20 +298,34 @@ class DatabaseManager:
             stats["wal_file_size_mb"] = round(stats["wal_file_size_bytes"] / (1024 * 1024), 2)
 
             with Session(self.engine) as session:
-                stats["total_event_logs"] = session.exec(select(func.count(EventLog.id))).one()
-                stats["total_projects"] = session.exec(select(func.count(Project.id))).one()
-                stats["total_cameras"] = session.exec(select(func.count(Camera.id))).one()
-                stats["total_models"] = session.exec(select(func.count(AIModel.id))).one()
-                stats["total_metrics"] = session.exec(select(func.count(SystemMetric.id))).one()
+                if project_id:
+                    stats["total_event_logs"] = session.exec(select(func.count(EventLog.id)).where(EventLog.project_id == project_id)).one()
+                else:
+                    stats["total_event_logs"] = session.exec(select(func.count(EventLog.id))).one()
+                    stats["total_projects"] = session.exec(select(func.count(Project.id))).one()
+                    stats["total_cameras"] = session.exec(select(func.count(Camera.id))).one()
+                    stats["total_models"] = session.exec(select(func.count(AIModel.id))).one()
+                    stats["total_metrics"] = session.exec(select(func.count(SystemMetric.id))).one()
+                    stats["total_class_counts"] = session.exec(select(func.count(ClassCountSummary.id))).one()
                 
-            snapshot_dir = Path("/home/pi/iriv-vision-studio/snapshots")
             snap_count = 0
             snap_size = 0
-            if snapshot_dir.exists() and snapshot_dir.is_dir():
-                for f in snapshot_dir.iterdir():
-                    if f.is_file():
-                        snap_count += 1
-                        snap_size += f.stat().st_size
+            
+            if project_id:
+                with Session(self.engine) as session:
+                    snapshot_paths = session.exec(select(EventLog.snapshot_path).where(EventLog.project_id == project_id, EventLog.snapshot_path != None)).all()
+                    for p in snapshot_paths:
+                        f = Path(p)
+                        if f.exists() and f.is_file():
+                            snap_count += 1
+                            snap_size += f.stat().st_size
+            else:
+                snapshot_dir = Path("/home/pi/iriv-vision-studio/snapshots")
+                if snapshot_dir.exists() and snapshot_dir.is_dir():
+                    for f in snapshot_dir.iterdir():
+                        if f.is_file():
+                            snap_count += 1
+                            snap_size += f.stat().st_size
                         
             stats["snapshot_count"] = snap_count
             stats["snapshot_size_bytes"] = snap_size
@@ -296,6 +336,121 @@ class DatabaseManager:
             stats["error"] = str(e)
             
         return stats
+
+    def log_class_count(self, project_id: str, camera_id: str, node_id: str, class_counts: dict, cumulative_totals: dict, timestamp: datetime = None):
+        if timestamp is None:
+            timestamp = datetime.utcnow().replace(second=0, microsecond=0)
+        for cls, count in class_counts.items():
+            if count > 0 or cumulative_totals.get(cls, 0) > 0:
+                try:
+                    self.log_queue.put_nowait({
+                        'table': 'class_count_summary',
+                        'timestamp': timestamp,
+                        'project_id': project_id,
+                        'camera_id': camera_id,
+                        'node_id': node_id,
+                        'class_name': cls,
+                        'count': count,
+                        'cumulative_total': cumulative_totals.get(cls, 0)
+                    })
+                except Full:
+                    logger.warning("Database log_queue full, dropping class count log")
+
+    def get_class_count_history(self, project_id: str = "default", camera_id: str = None, start_time: str = None, end_time: str = None, interval: str = "hour") -> dict:
+        """
+        Query time-aggregated class counts for charts.
+        interval can be: 'minute' (1-min), 'hour' (hourly), 'day' (daily).
+        """
+        fmt = '%Y-%m-%d %H:00:00'
+        if interval == 'minute':
+            fmt = '%Y-%m-%d %H:%M:00'
+        elif interval == 'day':
+            fmt = '%Y-%m-%d'
+
+        with Session(self.engine) as session:
+            filters = ["project_id = :project_id"]
+            params = {"project_id": project_id}
+
+            if camera_id:
+                filters.append("camera_id = :camera_id")
+                params["camera_id"] = camera_id
+
+            if start_time:
+                filters.append("timestamp >= :start_time")
+                params["start_time"] = start_time
+
+            if end_time:
+                filters.append("timestamp <= :end_time")
+                params["end_time"] = end_time
+
+            where_clause = " AND ".join(filters)
+            sql = f"""
+                SELECT 
+                    strftime('{fmt}', timestamp) AS time_bucket,
+                    class_name,
+                    SUM(count) AS count_sum,
+                    MAX(cumulative_total) AS max_total
+                FROM class_count_summary
+                WHERE {where_clause}
+                GROUP BY time_bucket, class_name
+                ORDER BY time_bucket ASC
+            """
+            rows = session.exec(text(sql), params=params).all()
+
+            buckets = {}
+            all_classes = set()
+            for time_bucket, class_name, count_sum, max_total in rows:
+                if time_bucket not in buckets:
+                    buckets[time_bucket] = {"time": time_bucket, "total": 0}
+                buckets[time_bucket][class_name] = count_sum or 0
+                buckets[time_bucket]["total"] += (count_sum or 0)
+                all_classes.add(class_name)
+
+            data = list(buckets.values())
+            for item in data:
+                for cls in all_classes:
+                    if cls not in item:
+                        item[cls] = 0
+
+            return {
+                "classes": sorted(list(all_classes)),
+                "data": data,
+                "interval": interval
+            }
+
+    def export_class_count_csv(self, project_id: str = "default", camera_id: str = None, start_time: str = None, end_time: str = None) -> str:
+        """Generates CSV string of class count logs."""
+        import io
+        import csv
+
+        with Session(self.engine) as session:
+            statement = select(ClassCountSummary).where(ClassCountSummary.project_id == project_id)
+            if camera_id:
+                statement = statement.where(ClassCountSummary.camera_id == camera_id)
+            if start_time:
+                statement = statement.where(ClassCountSummary.timestamp >= start_time)
+            if end_time:
+                statement = statement.where(ClassCountSummary.timestamp <= end_time)
+
+            statement = statement.order_by(ClassCountSummary.timestamp.desc())
+            records = session.exec(statement).all()
+
+            output = io.StringIO()
+            writer = csv.writer(output)
+            writer.writerow(["Timestamp", "Project ID", "Camera ID", "Node ID", "Class Name", "Count in Interval", "Cumulative Total"])
+
+            for r in records:
+                writer.writerow([
+                    r.timestamp.strftime("%Y-%m-%d %H:%M:%S") if r.timestamp else "",
+                    r.project_id or "",
+                    r.camera_id or "",
+                    r.node_id or "",
+                    r.class_name or "",
+                    r.count,
+                    r.cumulative_total
+                ])
+
+            return output.getvalue()
 
     def stop(self):
         self.running = False

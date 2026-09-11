@@ -7,16 +7,17 @@ from typing import Dict, Any, List
 logger = logging.getLogger(__name__)
 
 class PipelineNode:
-    def __init__(self, node_id: str, data: dict, router: 'MessageRouter'):
+    def __init__(self, node_id: str, data: dict, router: 'MessageRouter', node_type: str = "customNode"):
         self.node_id = node_id
         self.data = data
         self.router = router
+        self.node_type = node_type
 
     def process(self, msg: dict):
         return msg
 class RateLimitNode(PipelineNode):
     def __init__(self, node_id, data, router):
-        super().__init__(node_id, data, router)
+        super().__init__(node_id, data, router, node_type="rateLimitNode")
         rate_val = float(data.get("rate", 1))
         period_str = data.get("period", "second")
         
@@ -52,7 +53,7 @@ class RateLimitNode(PipelineNode):
 
 class LogicNode(PipelineNode):
     def __init__(self, node_id, data, router):
-        super().__init__(node_id, data, router)
+        super().__init__(node_id, data, router, node_type="logicNode")
         self.expression = data.get("expression", "count > 0")
         # Handle shorthand logical operators
         self.expression = (self.expression
@@ -141,7 +142,7 @@ class LogicNode(PipelineNode):
 
 class CounterNode(PipelineNode):
     def __init__(self, node_id, data, router):
-        super().__init__(node_id, data, router)
+        super().__init__(node_id, data, router, node_type="counterNode")
         self.count = 0
         self.last_payload = False
         self.edge_type = data.get("edgeType", "rising")
@@ -172,9 +173,131 @@ class CounterNode(PipelineNode):
             
         return msg
 
+class FlowCounterNode(PipelineNode):
+    def __init__(self, node_id, data, router):
+        super().__init__(node_id, data, router, node_type="flowCounterNode")
+        from ai_engine.centroid_tracker import CentroidTracker
+
+        self.label = data.get("label", "Flow Counter")
+        self.mode = data.get("mode", "roi") # "roi" or "line"
+        self.roi = data.get("roi", {"x": 0.2, "y": 0.2, "w": 0.6, "h": 0.6})
+        self.line = data.get("line", [0.1, 0.5, 0.9, 0.5])
+        self.class_filter = data.get("classFilter")
+        
+        self.cumulative_totals = {}
+        self.interval_deltas = {}
+        self.total_count = 0
+        
+        self.tracker = CentroidTracker(
+            max_disappeared=int(data.get("maxDisappeared", 20)),
+            max_distance=float(data.get("maxDistance", 0.15))
+        )
+        
+        self.flush_interval_sec = float(data.get("flushIntervalSec", 60.0))
+        self.last_flush_time = time.time()
+        self.auto_log = data.get("autoLog", True)
+
+    def process(self, msg: dict):
+        payload = msg.get("payload", {})
+        if isinstance(payload, dict) and "detections" in payload:
+            detections = payload.get("detections", [])
+        elif isinstance(payload, list):
+            detections = payload
+        else:
+            detections = []
+
+        if self.class_filter and len(self.class_filter) > 0:
+            filtered_detections = [d for d in detections if d.get("label") in self.class_filter]
+        else:
+            filtered_detections = detections
+
+        active_tracks = self.tracker.update(filtered_detections)
+
+        newly_counted = 0
+        camera_id = msg.get("camera_id") or msg.get("metadata", {}).get("camera_id") or "default"
+
+        for track in active_tracks:
+            if track.counted:
+                continue
+
+            hit = False
+            if self.mode == "line":
+                from ai_engine.centroid_tracker import line_intersects
+                lx1, ly1, lx2, ly2 = self.line
+                if line_intersects(track.prev_centroid, track.centroid, (lx1, ly1), (lx2, ly2)):
+                    hit = True
+            else:
+                from ai_engine.centroid_tracker import point_in_roi
+                if point_in_roi(track.centroid, self.roi):
+                    hit = True
+
+            if hit:
+                track.counted = True
+                lbl = track.label or "unknown"
+                self.cumulative_totals[lbl] = self.cumulative_totals.get(lbl, 0) + 1
+                self.interval_deltas[lbl] = self.interval_deltas.get(lbl, 0) + 1
+                self.total_count += 1
+                newly_counted += 1
+
+        now = time.time()
+        should_broadcast = (newly_counted > 0) or (now - getattr(self, '_last_broadcast_time', 0) >= 0.5)
+        if should_broadcast and self.router.metadata_callback:
+            self._last_broadcast_time = now
+            self.router.metadata_callback({
+                "type": "flow_counter_update",
+                "node_id": self.node_id,
+                "counts": dict(self.cumulative_totals),
+                "total": self.total_count,
+                "newly_counted": newly_counted,
+                "camera_id": camera_id
+            })
+
+        if self.auto_log and (now - self.last_flush_time >= self.flush_interval_sec):
+            self.flush_to_db(camera_id)
+            self.last_flush_time = now
+
+        msg["payload"] = {
+            "counts": dict(self.cumulative_totals),
+            "total": self.total_count,
+            "newly_counted": newly_counted
+        }
+        return msg
+
+    def flush_to_db(self, camera_id: str):
+        try:
+            import sys
+            from pathlib import Path
+            backend_dir = Path("/home/pi/iriv-vision-studio/backend")
+            if str(backend_dir) not in sys.path:
+                sys.path.insert(0, str(backend_dir))
+            from db.database import db
+
+            db.log_class_count(
+                project_id=self.router.project_id,
+                camera_id=camera_id,
+                node_id=self.node_id,
+                class_counts=dict(self.interval_deltas),
+                cumulative_totals=dict(self.cumulative_totals)
+            )
+            self.interval_deltas.clear()
+        except Exception as e:
+            logger.error(f"FlowCounterNode {self.node_id} flush error: {e}")
+
+    def reset_counts(self):
+        self.cumulative_totals.clear()
+        self.interval_deltas.clear()
+        self.total_count = 0
+        if self.router.metadata_callback:
+            self.router.metadata_callback({
+                "type": "flow_counter_update",
+                "node_id": self.node_id,
+                "counts": {},
+                "total": 0
+            })
+
 class FunctionNode(PipelineNode):
     def __init__(self, node_id, data, router):
-        super().__init__(node_id, data, router)
+        super().__init__(node_id, data, router, node_type="functionNode")
         self.code = data.get("code", "def process(msg):\n    return msg")
         self.local_env = {}
         try:
@@ -193,6 +316,9 @@ class FunctionNode(PipelineNode):
         return msg
 
 class ActionNode(PipelineNode):
+    def __init__(self, node_id, data, router):
+        super().__init__(node_id, data, router, node_type="actionNode")
+
     def process(self, msg: dict):
         val = bool(msg.get("payload"))
         trigger_on = str(self.data.get("triggerOn", "true")).lower() == "true"
@@ -204,7 +330,7 @@ class ActionNode(PipelineNode):
 
 class DashboardOutputNode(PipelineNode):
     def __init__(self, node_id, data, router):
-        super().__init__(node_id, data, router)
+        super().__init__(node_id, data, router, node_type="dashboardOutputNode")
         self.last_sent_time = 0
         self.last_val = None
 
@@ -255,7 +381,7 @@ class DashboardOutputNode(PipelineNode):
 
 class HardwareOutputNode(PipelineNode):
     def __init__(self, node_id, data, router, hw_type="digital_output"):
-        super().__init__(node_id, data, router)
+        super().__init__(node_id, data, router, node_type=f"hardwareOutputNode_{hw_type}")
         self.hw_type = hw_type
         self.pin = data.get("pin")
         self._last_is_active = None
@@ -287,7 +413,7 @@ class HardwareOutputNode(PipelineNode):
 
 class SnapshotNode(PipelineNode):
     def __init__(self, node_id, data, router):
-        super().__init__(node_id, data, router)
+        super().__init__(node_id, data, router, node_type="snapshotNode")
         self.label = data.get("label", "Snapshot")
         self.last_payload = False
         self._proc = None
@@ -319,6 +445,11 @@ class SnapshotNode(PipelineNode):
                             "ffmpeg", "-y", "-rtsp_transport", "tcp", "-i", rtsp_url, 
                             "-vframes", "1", "-q:v", "2", str(filepath)
                         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        try:
+                            from ai_engine.telemetry_manager import telemetry_mgr
+                            telemetry_mgr.register_process(self.router.project_id, f"ffmpeg snapshot ({self.label})", self._proc.pid)
+                        except Exception:
+                            pass
                     
                     # Log to DB
                     import sys
@@ -336,6 +467,7 @@ class SnapshotNode(PipelineNode):
                         
                     db.log_event(
                         node_id=self.node_id,
+                        project_id=self.router.project_id,
                         event_type=f"SNAPSHOT",
                         payload={"label": self.label, "trigger": payload},
                         camera_id=camera_id,
@@ -357,17 +489,65 @@ class MessageRouter:
         self.msg_queue = queue.Queue(maxsize=30)
         self.running = False
         self.thread = None
-        self.metadata_callback = metadata_callback
+        self._lock = threading.RLock()
 
     def add_node(self, node_id: str, node_instance: PipelineNode):
-        self.nodes[node_id] = node_instance
-        if node_id not in self.edges:
-            self.edges[node_id] = []
+        with self._lock:
+            self.nodes[node_id] = node_instance
+            if node_id not in self.edges:
+                self.edges[node_id] = []
 
-    def add_edge(self, source_id: str, target_id: str):
-        if source_id not in self.edges:
-            self.edges[source_id] = []
-        self.edges[source_id].append(target_id)
+    def add_edge(self, source_id: str, target_id: str, source_handle: str = None):
+        with self._lock:
+            if source_id not in self.edges:
+                self.edges[source_id] = []
+            self.edges[source_id].append((target_id, source_handle))
+
+    def hot_reload(self, new_nodes: dict, new_edges: dict):
+        """
+        Hot-reloads the node graph without stopping the event loop or dropping incoming messages.
+        Preserves internal state (e.g. counts, tracking state) from old nodes if their IDs match.
+        """
+        logger.info(f"Hot-reloading MessageRouter for project {self.project_id}: {len(new_nodes)} nodes")
+        with self._lock:
+            # Transfer state from existing nodes to new nodes
+            for nid, new_node in new_nodes.items():
+                if nid in self.nodes:
+                    old_node = self.nodes[nid]
+                    # Preserve CounterNode state
+                    if hasattr(old_node, 'count') and hasattr(new_node, 'count'):
+                        new_node.count = old_node.count
+                        new_node.last_payload = getattr(old_node, 'last_payload', False)
+                    # Preserve FlowCounterNode state
+                    if hasattr(old_node, 'total_count') and hasattr(new_node, 'total_count'):
+                        new_node.total_count = old_node.total_count
+                        new_node.cumulative_totals = getattr(old_node, 'cumulative_totals', {})
+                        new_node.interval_deltas = getattr(old_node, 'interval_deltas', {})
+                        if hasattr(old_node, 'tracker') and hasattr(new_node, 'tracker'):
+                            new_node.tracker = old_node.tracker
+                    # Preserve ShelfSlotMonitorNode state
+                    if hasattr(old_node, 'slot_states') and hasattr(new_node, 'slot_states'):
+                        new_node.slot_states = getattr(old_node, 'slot_states', {})
+                        new_node.slot_counts = getattr(old_node, 'slot_counts', {})
+                        new_node.first_empty_times = getattr(old_node, 'first_empty_times', {})
+                        new_node.last_person_seen_time = getattr(old_node, 'last_person_seen_time', 0.0)
+                    # Preserve ForkliftZoneNode state
+                    if hasattr(old_node, 'zone_states') and hasattr(new_node, 'zone_states'):
+                        new_node.zone_states = getattr(old_node, 'zone_states', {})
+                        new_node.zone_counts = getattr(old_node, 'zone_counts', {})
+                        new_node.first_occupied_times = getattr(old_node, 'first_occupied_times', {})
+                        new_node.near_miss_count = getattr(old_node, 'near_miss_count', 0)
+                    # Preserve RateLimitNode last_sent_time
+                    if hasattr(old_node, 'last_sent_time') and hasattr(new_node, 'last_sent_time'):
+                        new_node.last_sent_time = old_node.last_sent_time
+
+            # Update nodes' router reference
+            for node in new_nodes.values():
+                node.router = self
+
+            self.nodes = new_nodes
+            self.edges = new_edges
+        logger.info("MessageRouter hot-reload complete.")
 
     def inject_message(self, source_id: str, msg: dict):
         """Entry point for new messages (e.g. from Hailo Pad Probe or Digital Input)."""
@@ -403,12 +583,43 @@ class MessageRouter:
                 q = [(source_id, msg)]
                 while q:
                     curr_source, curr_msg = q.pop(0)
-                    targets = self.edges.get(curr_source, [])
-                    for target_id in targets:
-                        if target_id in self.nodes:
-                            target_node = self.nodes[target_id]
+                    with self._lock:
+                        targets = list(self.edges.get(curr_source, []))
+                    for item in targets:
+                        if isinstance(item, tuple):
+                            target_id, source_handle = item
+                        else:
+                            target_id, source_handle = item, None
+
+                        target_node = None
+                        with self._lock:
+                            target_node = self.nodes.get(target_id)
+                        if target_node:
                             try:
-                                out_msg = target_node.process(curr_msg.copy())
+                                t_node_start = time.perf_counter()
+                                # Route handle-specific payload if applicable
+                                if source_handle and isinstance(curr_msg.get("_handle_payloads"), dict) and source_handle in curr_msg["_handle_payloads"]:
+                                    routed_msg = curr_msg.copy()
+                                    routed_msg["payload"] = curr_msg["_handle_payloads"][source_handle]
+                                else:
+                                    routed_msg = curr_msg.copy()
+                                routed_msg["_source_node_id"] = curr_source
+
+                                out_msg = target_node.process(routed_msg)
+                                t_node_dur = time.perf_counter() - t_node_start
+
+                                try:
+                                    from ai_engine.telemetry_manager import telemetry_mgr
+                                    n_type = getattr(target_node, 'node_type', target_node.__class__.__name__)
+                                    telemetry_mgr.record_router_node_execution(
+                                        self.project_id,
+                                        target_id,
+                                        n_type,
+                                        t_node_dur
+                                    )
+                                except Exception:
+                                    pass
+
                                 if out_msg is not None:
                                     q.append((target_id, out_msg))
                             except Exception as e:

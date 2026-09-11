@@ -3,6 +3,7 @@ import { Handle, Position, useHandleConnections, useNodesData } from '@xyflow/re
 import { Filter, ChevronDown, ChevronRight, Zap, Code, LayoutList, GripVertical, Plus } from 'lucide-react';
 import NodeMenu from './NodeMenu';
 import usePipelineStore from '../../../store/usePipelineStore';
+import NodeTelemetryBadge from './NodeTelemetryBadge';
 
 // ── Quick-insert snippets (for Code Mode) ────────────────────────────────────
 const SNIPPETS = [
@@ -362,6 +363,8 @@ export default function LogicNode({ id, data }) {
           />
         </label>
 
+        {/* Live Telemetry (CPU & Exec rate) */}
+        <NodeTelemetryBadge nodeId={id} />
       </div>
 
       <Handle type="target" position={Position.Left}  className="w-3 h-3 bg-orange-500 border-2 border-gray-900" />
