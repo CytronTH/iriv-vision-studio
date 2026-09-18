@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Camera, BrainCircuit, Bell, Save, Trash2, Plus, Film, Upload, ArrowUpCircle, Archive } from 'lucide-react';
+import { 
+  Camera, BrainCircuit, Bell, Save, Trash2, Plus, Film, Upload, ArrowUpCircle, Archive,
+  Copy, Check, Cpu, ShieldCheck, Tag, FileCode
+} from 'lucide-react';
 import UpdateManager from './UpdateManager';
 import BackupManager from './BackupManager';
+import ModelUploadModal from './ModelUploadModal';
 
 export default function Settings() {
   const [entities, setEntities] = useState({ cameras: [], models: [], integrations: [] });
@@ -14,6 +18,25 @@ export default function Settings() {
   const [videoUploading, setVideoUploading] = useState(false);
   const [soFiles, setSoFiles] = useState([]);
   const [videoDevices, setVideoDevices] = useState([]);
+
+  // Model Upload & Hash Copying states
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [copiedHashId, setCopiedHashId] = useState(null);
+
+  const handleCopyHash = (id, hash) => {
+    if (!hash) return;
+    navigator.clipboard.writeText(hash);
+    setCopiedHashId(id);
+    setTimeout(() => setCopiedHashId(null), 2000);
+  };
+
+  const formatFileSize = (bytes) => {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
 
   useEffect(() => {
     fetchEntities();
@@ -348,141 +371,234 @@ export default function Settings() {
         {/* MODELS */}
         {activeTab === 'models' && (
           <div className="flex flex-col gap-4">
-                       {/* Upload Form */}
-            <div className="bg-gray-800 p-3 sm:p-4 rounded-lg border border-purple-500/50 mb-2 shadow-lg shadow-purple-900/10">
-              <h3 className="text-base sm:text-lg font-bold text-purple-400 mb-3">Upload Custom Model</h3>
-              <form onSubmit={handleUploadModel} className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <label className="flex flex-col gap-1 text-sm text-gray-400">
-                  Model Name
-                  <input type="text" name="name" required placeholder="e.g. Expiry Date Detector" className="bg-gray-900 border border-gray-700 rounded p-2 text-white" />
-                </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-400">
-                  Task Type
-                  <select name="task" className="bg-gray-900 border border-gray-700 rounded p-2 text-white">
-                    <option value="detection">Object Detection</option>
-                    <option value="pose">Pose Estimation</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-400">
-                  .HEF File
-                  <input type="file" name="hef_file" accept=".hef" required className="text-white mt-1 text-xs file:mr-4 file:py-1 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-500" />
-                </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-400">
-                  metadata.yaml <span className="text-gray-600 text-xs">(optional)</span>
-                  <input type="file" name="metadata_file" accept=".yaml,.yml" className="text-white mt-1 text-xs file:mr-4 file:py-1 file:px-4 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-gray-700 file:text-white hover:file:bg-gray-600" />
-                </label>
-                <label className="flex flex-col gap-1 text-sm text-gray-400 sm:col-span-2">
-                  Post-Process Library (.so)
-                  <select name="so_name" required className="bg-gray-900 border border-gray-700 rounded p-2 text-white">
-                    {soFiles.length === 0 ? (
-                      <option value="">Loading .so files...</option>
-                    ) : (
-                      soFiles.map(f => (
-                        <option key={f} value={f}>{f}</option>
-                      ))
-                    )}
-                  </select>
-                  <span className="text-xs text-gray-500 mt-1">Select from TAPPAS libs installed on this device</span>
-                </label>
-                <button type="submit" disabled={uploading} className="sm:col-span-2 bg-purple-600 hover:bg-purple-500 text-white rounded p-2.5 font-bold mt-2 transition-colors active:scale-95">
-                  {uploading ? 'Uploading...' : 'Upload Model'}
-                </button>
-              </form>
-            </div>
-
-            <h3 className="text-base sm:text-lg font-bold text-gray-300 mt-2 pb-2 border-b border-gray-800">Available Models</h3>
-
-            {entities.models.map(model => (
-              <div key={model.id} className="bg-gray-800/50 p-3 sm:p-4 rounded-lg border border-gray-700 flex flex-col sm:flex-row gap-3 sm:gap-4 items-stretch sm:items-start">
-                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                  <label className="flex flex-col gap-1 text-sm text-gray-400">
-                    Name
-                    <input type="text" value={model.name} onChange={e => handleUpdate('models', model.id, 'name', e.target.value)} className="bg-gray-900 border border-gray-700 rounded p-2 text-white" />
-                  </label>
-                  <label className="flex flex-col gap-1 text-sm text-gray-400">
-                    Task Type
-                    <select value={model.task} onChange={e => handleUpdate('models', model.id, 'task', e.target.value)} className="bg-gray-900 border border-gray-700 rounded p-2 text-white">
-                      <option value="detection">Object Detection</option>
-                      <option value="pose">Pose Estimation</option>
-                      <option value="segmentation">Segmentation</option>
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1 text-sm text-gray-400">
-                    .HEF File Name (in backend/models/)
-                    <input type="text" value={model.hef_path} onChange={e => handleUpdate('models', model.id, 'hef_path', e.target.value)} className="bg-gray-900 border border-gray-700 rounded p-2 text-white" />
-                  </label>
-                  <label className="flex flex-col gap-1 text-sm text-gray-400">
-                    .SO File (Post-process)
-                    <select value={model.so_path} onChange={e => handleUpdate('models', model.id, 'so_path', e.target.value)} className="bg-gray-900 border border-gray-700 rounded p-2 text-white">
-                      {soFiles.length === 0 ? (
-                        <option value={model.so_path}>{model.so_path}</option>
-                      ) : (
-                        soFiles.map(f => (
-                          <option key={f} value={f}>{f}</option>
-                        ))
-                      )}
-                    </select>
-                  </label>
-                  <label className="flex flex-col gap-1 text-sm text-gray-400 sm:col-span-2">
-                    <div className="flex items-center justify-between">
-                      <span>Class Names <span className="text-gray-600 text-xs">(comma-separated)</span></span>
-                      <label className="cursor-pointer text-xs text-purple-400 hover:text-purple-300 flex items-center gap-1 transition-colors">
-                        <Upload size={12} />
-                        Upload metadata.yaml
-                        <input
-                          type="file"
-                          accept=".yaml,.yml"
-                          className="hidden"
-                          onChange={async (e) => {
-                            const file = e.target.files[0];
-                            if (!file) return;
-                            const formData = new FormData();
-                            formData.append('metadata_file', file);
-                            try {
-                              const res = await fetch(`/api/models/${model.id}/metadata`, { method: 'POST', body: formData });
-                              const data = await res.json();
-                              if (data.status === 'success') {
-                                handleUpdate('models', model.id, 'classes', data.classes);
-                                alert(`✅ Loaded ${data.classes.length} classes: ${data.classes.join(', ')}`);
-                              } else {
-                                alert('Error: ' + data.message);
-                              }
-                            } catch(err) {
-                              alert('Upload failed: ' + err.message);
-                            }
-                          }}
-                        />
-                      </label>
-                    </div>
-                    <input
-                      type="text"
-                      value={(model.classes || []).join(', ')}
-                      onChange={e => handleUpdate('models', model.id, 'classes', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
-                      placeholder="cup, person, car"
-                      className="bg-gray-900 border border-gray-700 rounded p-2 text-white"
-                    />
-                    {(model.classes || []).length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {(model.classes || []).map(cls => (
-                          <span key={cls} className="bg-purple-900/50 text-purple-300 text-xs px-2 py-0.5 rounded-full border border-purple-700/50">{cls}</span>
-                        ))}
-                      </div>
-                    )}
-                  </label>
+            {/* Top Bar with Call-to-action */}
+            <div className="bg-gradient-to-r from-purple-950/40 via-gray-900 to-gray-900 p-4 rounded-xl border border-purple-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-lg shadow-purple-950/20">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-purple-600/20 text-purple-400 rounded-xl border border-purple-500/30">
+                  <BrainCircuit size={22} />
                 </div>
-                <div className="flex justify-end sm:mt-6">
-                  <button onClick={() => handleDelete('models', model.id)} className="p-2 text-red-500 hover:bg-red-500/20 rounded active:scale-95 transition-colors" title="Delete Model">
-                    <Trash2 size={20} />
-                  </button>
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    AI Model Registry
+                    <span className="text-xs bg-purple-900/60 text-purple-300 px-2 py-0.5 rounded-full border border-purple-700/50">
+                      {entities.models.length} Models
+                    </span>
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    Manage compiled .hef neural models, versioning, classes, and Hailo-8L post-processing libraries.
+                  </p>
                 </div>
               </div>
-            ))}
-            <button 
-              onClick={() => handleAdd('models', { name: 'New Model', task: 'detection', hef_path: 'model.hef', so_path: 'lib.so' })}
-              className="border-2 border-dashed border-gray-700 hover:border-gray-500 text-gray-400 p-4 rounded-lg flex items-center justify-center gap-2 transition-colors active:scale-95"
-            >
-              <Plus size={18} /> Add New Model Entity
-            </button>
+
+              <button
+                onClick={() => setIsUploadModalOpen(true)}
+                className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition-all shadow-lg shadow-purple-900/30 hover:scale-[1.02] active:scale-95 shrink-0"
+              >
+                <Plus size={16} />
+                Upload New AI Model
+              </button>
+            </div>
+
+            {/* Model Cards List */}
+            <div className="grid grid-cols-1 gap-3">
+              {entities.models.map(model => {
+                const isCopied = copiedHashId === model.id;
+                return (
+                  <div 
+                    key={model.id} 
+                    className="bg-gray-800/60 hover:bg-gray-800/80 p-4 rounded-xl border border-gray-700/70 hover:border-purple-500/40 transition-all flex flex-col gap-3.5 shadow-md"
+                  >
+                    {/* Card Top Row: Name, Badges, Delete */}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-gray-700/50 pb-3">
+                      <div className="flex items-center gap-2.5 flex-wrap">
+                        <div className="p-1.5 bg-purple-900/40 text-purple-300 rounded-lg border border-purple-700/40">
+                          <Cpu size={16} />
+                        </div>
+                        <input 
+                          type="text" 
+                          value={model.name} 
+                          onChange={e => handleUpdate('models', model.id, 'name', e.target.value)} 
+                          className="bg-transparent border-b border-transparent hover:border-gray-600 focus:border-purple-500 font-bold text-white text-base focus:bg-gray-900 px-1 py-0.5 rounded transition-colors" 
+                          title="Click to rename"
+                        />
+                        <span className="text-[11px] font-mono font-bold bg-purple-900/60 text-purple-300 border border-purple-700/50 px-2 py-0.5 rounded-full">
+                          {model.version || 'v1.0'}
+                        </span>
+                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full border ${
+                          model.task === 'pose' 
+                            ? 'bg-amber-950/60 text-amber-300 border-amber-800/50' 
+                            : model.task === 'segmentation'
+                            ? 'bg-emerald-950/60 text-emerald-300 border-emerald-800/50'
+                            : model.task === 'classification'
+                            ? 'bg-blue-950/60 text-blue-300 border-blue-800/50'
+                            : 'bg-indigo-950/60 text-indigo-300 border-indigo-800/50'
+                        }`}>
+                          {model.task || 'detection'}
+                        </span>
+                        <span className="text-[10px] text-gray-400 bg-gray-900 px-2 py-0.5 rounded-full border border-gray-800 flex items-center gap-1">
+                          <ShieldCheck size={11} className="text-green-400" /> Hailo-8L Ready
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        <button 
+                          onClick={() => {
+                            if (window.confirm(`Delete model '${model.name}'? Active projects using this model will be affected.`)) {
+                              handleDelete('models', model.id);
+                            }
+                          }} 
+                          className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors" 
+                          title="Delete Model"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Metadata Specs Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs">
+                      {/* Stored & Original Filename */}
+                      <div className="bg-gray-900/70 p-2.5 rounded-lg border border-gray-800/80 space-y-1">
+                        <div className="text-gray-400 text-[11px] font-semibold flex items-center gap-1">
+                          <FileCode size={13} className="text-purple-400" /> File Identity
+                        </div>
+                        <div className="text-gray-200 font-mono text-[11px] truncate" title={model.hef_path}>
+                          {model.hef_path}
+                        </div>
+                        <div className="text-gray-500 text-[10px] truncate" title={model.original_filename || model.hef_path}>
+                          Orig: {model.original_filename || model.hef_path}
+                        </div>
+                      </div>
+
+                      {/* Checksum & Size */}
+                      <div className="bg-gray-900/70 p-2.5 rounded-lg border border-gray-800/80 space-y-1">
+                        <div className="text-gray-400 text-[11px] font-semibold flex items-center justify-between">
+                          <span>SHA-256 Checksum</span>
+                          <span className="text-purple-300 font-mono text-[10px]">
+                            {formatFileSize(model.file_size)}
+                          </span>
+                        </div>
+                        {model.file_hash ? (
+                          <button
+                            type="button"
+                            onClick={() => handleCopyHash(model.id, model.file_hash)}
+                            className="w-full flex items-center justify-between bg-gray-950 hover:bg-gray-900 border border-gray-800 rounded px-2 py-1 text-[11px] font-mono text-gray-300 transition-colors"
+                            title={`Click to copy full SHA-256: ${model.file_hash}`}
+                          >
+                            <span className="truncate">{model.file_hash.substring(0, 14)}...</span>
+                            {isCopied ? (
+                              <span className="text-green-400 text-[10px] flex items-center gap-0.5">
+                                <Check size={11} /> Copied
+                              </span>
+                            ) : (
+                              <Copy size={11} className="text-gray-500 hover:text-gray-300" />
+                            )}
+                          </button>
+                        ) : (
+                          <div className="text-gray-500 text-[11px] italic">No hash recorded</div>
+                        )}
+                      </div>
+
+                      {/* Post-Process .so */}
+                      <div className="bg-gray-900/70 p-2.5 rounded-lg border border-gray-800/80 space-y-1">
+                        <div className="text-gray-400 text-[11px] font-semibold">
+                          Post-Process (.so)
+                        </div>
+                        <select 
+                          value={model.so_path} 
+                          onChange={e => handleUpdate('models', model.id, 'so_path', e.target.value)} 
+                          className="w-full bg-gray-950 border border-gray-800 rounded p-1 text-xs text-gray-200 focus:outline-none focus:border-purple-500 font-mono"
+                        >
+                          {soFiles.length === 0 ? (
+                            <option value={model.so_path}>{model.so_path}</option>
+                          ) : (
+                            soFiles.map(f => (
+                              <option key={f} value={f}>{f}</option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Classes Tags Row */}
+                    <div className="bg-gray-900/50 p-2.5 rounded-lg border border-gray-800/60 space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-semibold text-gray-300 flex items-center gap-1.5">
+                          <Tag size={12} className="text-purple-400" />
+                          Classes ({model.classes ? model.classes.length : 0})
+                        </span>
+                        <label className="cursor-pointer text-[11px] text-purple-400 hover:text-purple-300 flex items-center gap-1 bg-purple-950/40 hover:bg-purple-900/40 px-2 py-0.5 rounded border border-purple-800/40 transition-colors">
+                          <Upload size={11} />
+                          Upload metadata.yaml
+                          <input
+                            type="file"
+                            accept=".yaml,.yml"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files[0];
+                              if (!file) return;
+                              const formData = new FormData();
+                              formData.append('metadata_file', file);
+                              try {
+                                const res = await fetch(`/api/models/${model.id}/metadata`, { method: 'POST', body: formData });
+                                const data = await res.json();
+                                if (data.status === 'success') {
+                                  handleUpdate('models', model.id, 'classes', data.classes);
+                                  alert(`✅ Loaded ${data.classes.length} classes for ${model.name}`);
+                                } else {
+                                  alert('Error: ' + data.message);
+                                }
+                              } catch(err) {
+                                alert('Upload failed: ' + err.message);
+                              }
+                            }}
+                          />
+                        </label>
+                      </div>
+
+                      {model.classes && model.classes.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {model.classes.map((cls, idx) => (
+                            <span key={idx} className="bg-purple-950/80 text-purple-300 border border-purple-800/50 text-[11px] px-2 py-0.5 rounded-md font-mono">
+                              {cls}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-gray-500 italic">
+                          No class names defined (will use default COCO or model indices).
+                        </div>
+                      )}
+
+                      {/* Quick comma-separated class editor */}
+                      <input
+                        type="text"
+                        value={(model.classes || []).join(', ')}
+                        onChange={e => handleUpdate('models', model.id, 'classes', e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+                        placeholder="Edit classes comma-separated: cup, bottle, person"
+                        className="w-full bg-gray-950/80 border border-gray-800 rounded px-2 py-1 text-[11px] text-gray-300 placeholder-gray-600 focus:outline-none focus:border-purple-500 font-mono"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+
+              {entities.models.length === 0 && (
+                <div className="text-center py-10 bg-gray-800/30 rounded-xl border border-gray-800 text-gray-500 text-sm">
+                  No AI models registered yet. Click &quot;Upload New AI Model&quot; to add your first Hailo model.
+                </div>
+              )}
+            </div>
+
+            {/* Modal for Model Upload */}
+            <ModelUploadModal
+              isOpen={isUploadModalOpen}
+              onClose={() => setIsUploadModalOpen(false)}
+              onUploadSuccess={(data) => {
+                fetchEntities();
+              }}
+              soFiles={soFiles}
+            />
           </div>
         )}
 

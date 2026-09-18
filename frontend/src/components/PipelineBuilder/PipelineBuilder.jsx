@@ -1,8 +1,9 @@
 import React, { useRef, useCallback, useState, useEffect } from 'react';
 import { ReactFlow, Controls, Background, MiniMap, ReactFlowProvider } from '@xyflow/react';
-import { MousePointer2, Hand, Play, ChevronRight, ChevronLeft, Plus, Activity, ChevronDown, Zap, RefreshCw, Check, AlertTriangle, Loader2, Download, Trash2 } from 'lucide-react';
+import { MousePointer2, Hand, Play, ChevronRight, ChevronLeft, Plus, Activity, ChevronDown, Zap, RefreshCw, Check, AlertTriangle, Loader2, Download, Trash2, Terminal, Network } from 'lucide-react';
 import '@xyflow/react/dist/style.css';
 import Sidebar from './Sidebar';
+import DebugPanel from './DebugPanel';
 import DebugWebSocket from './DebugWebSocket';
 import usePipelineStore from '../../store/usePipelineStore';
 import ExportProjectModal from '../Home/ExportProjectModal';
@@ -17,6 +18,7 @@ export default function PipelineBuilder({ projectId, onOpenWiki }) {
   const [reactFlowInstance, setReactFlowInstance] = React.useState(null);
   const [isSelectMode, setIsSelectMode] = useState(true);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isDebugPanelOpen, setIsDebugPanelOpen] = useState(false);
   const [isMobilePaletteOpen, setIsMobilePaletteOpen] = useState(false);
   const [currentProject, setCurrentProject] = useState(null);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -24,6 +26,7 @@ export default function PipelineBuilder({ projectId, onOpenWiki }) {
   const { 
     nodes, edges, onNodesChange, onEdgesChange, onConnect, addNode, 
     setPipeline, setProjectId, showMetricsOverlay, toggleMetricsOverlay,
+    advancedDebugMode, toggleAdvancedDebugMode,
     dirtyNodeIds, deployMode, setDeployMode, markAsDeployed,
     deleteNodes, deleteEdge
   } = usePipelineStore();
@@ -172,22 +175,22 @@ export default function PipelineBuilder({ projectId, onOpenWiki }) {
     }
   };
 
-  // Handle keyboard Delete / Backspace for multi-node deletion
+  // Handle keyboard shortcuts (Delete / Backspace, v, h)
   useEffect(() => {
     const handleKeyDown = (event) => {
-      if (event.key === 'Delete' || event.key === 'Backspace') {
-        const activeEl = document.activeElement;
-        const tag = activeEl?.tagName?.toLowerCase();
-        if (
-          tag === 'input' ||
-          tag === 'textarea' ||
-          tag === 'select' ||
-          activeEl?.isContentEditable ||
-          activeEl?.closest('.nodrag')
-        ) {
-          return;
-        }
+      const activeEl = document.activeElement;
+      const tag = activeEl?.tagName?.toLowerCase();
+      if (
+        tag === 'input' ||
+        tag === 'textarea' ||
+        tag === 'select' ||
+        activeEl?.isContentEditable ||
+        activeEl?.closest('.nodrag')
+      ) {
+        return;
+      }
 
+      if (event.key === 'Delete' || event.key === 'Backspace') {
         const selectedNodes = nodes.filter(n => n.selected && !n.data?.isTutorialMock);
         const selectedEdges = edges.filter(e => e.selected && !e.data?.isTutorialMock);
 
@@ -200,6 +203,10 @@ export default function PipelineBuilder({ projectId, onOpenWiki }) {
             selectedEdges.forEach(e => deleteEdge(e.id));
           }
         }
+      } else if (event.key === 'v' || event.key === 'V') {
+        setIsSelectMode(true);
+      } else if (event.key === 'h' || event.key === 'H') {
+        setIsSelectMode(false);
       }
     };
 
@@ -227,6 +234,13 @@ export default function PipelineBuilder({ projectId, onOpenWiki }) {
   return (
     <div className="flex h-full bg-gray-950 rounded-xl overflow-hidden border border-gray-800 shadow-2xl animate-in fade-in duration-500 relative">
       <ReactFlowProvider>
+        {/* Desktop Collapsible Sidebar Container (Moved to Left) */}
+        <div className={`hidden md:flex transition-all duration-300 ease-in-out overflow-hidden shrink-0 border-r border-gray-800 ${isSidebarOpen ? 'w-64' : 'w-0'}`}>
+          <div className="w-64 shrink-0 flex h-full">
+            <Sidebar onOpenWiki={onOpenWiki} onAddNode={handleTapAddNode} />
+          </div>
+        </div>
+
         <div className="flex-grow relative" ref={reactFlowWrapper}>
           
           {/* Toast Notification Banner */}
@@ -281,6 +295,20 @@ export default function PipelineBuilder({ projectId, onOpenWiki }) {
             >
               <Activity size={16} className={showMetricsOverlay ? 'text-purple-400 animate-pulse' : ''} />
               <span className="hidden md:inline">Telemetry</span>
+            </button>
+
+            {/* Toggle Advanced Debug Mode */}
+            <button
+              onClick={toggleAdvancedDebugMode}
+              className={`p-1.5 sm:p-2 rounded-xl flex items-center gap-1.5 text-xs font-semibold transition-all ${
+                advancedDebugMode 
+                  ? 'bg-blue-950/80 border border-blue-600 text-blue-300 shadow-md shadow-blue-950/40' 
+                  : 'bg-gray-800 border border-gray-700 text-gray-400 hover:text-gray-200'
+              }`}
+              title="Toggle Advanced Debug Mode (Show payloads on edges)"
+            >
+              <Terminal size={16} className={advancedDebugMode ? 'text-blue-400' : ''} />
+              <span className="hidden md:inline">Debug Flow</span>
             </button>
 
             {/* Export Project Quick Action */}
@@ -471,22 +499,27 @@ export default function PipelineBuilder({ projectId, onOpenWiki }) {
           </ReactFlow>
           <DebugWebSocket />
           
-          {/* Desktop Sidebar Toggle Button */}
+          {/* Desktop Sidebar Toggle Button (Moved to Left) */}
           <button
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-            className="hidden md:flex absolute top-4 right-4 z-20 bg-gray-800 border border-gray-700 text-white p-2 rounded-full shadow-lg hover:bg-gray-700 transition-colors"
+            className="hidden md:flex absolute top-4 left-4 z-20 bg-gray-800 border border-gray-700 text-white p-2 rounded-full shadow-lg hover:bg-gray-700 transition-colors"
             title="Toggle Node Palette"
           >
-            {isSidebarOpen ? <ChevronRight size={20} /> : <ChevronLeft size={20} />}
+            {isSidebarOpen ? <ChevronLeft size={20} /> : <Network size={20} />}
+          </button>
+
+          {/* Desktop Debug Panel Toggle Button */}
+          <button
+            onClick={() => setIsDebugPanelOpen(!isDebugPanelOpen)}
+            className="hidden md:flex absolute top-4 right-4 z-20 bg-gray-800 border border-gray-700 text-white p-2 rounded-full shadow-lg hover:bg-gray-700 transition-colors"
+            title="Toggle Debug Panel"
+          >
+            {isDebugPanelOpen ? <ChevronRight size={20} /> : <Terminal size={20} className={nodes.some(n => n.type === 'debugNode' && n.data?.outputType === 'text') ? 'text-purple-400' : ''} />}
           </button>
         </div>
         
-        {/* Desktop Collapsible Sidebar Container */}
-        <div className={`hidden md:flex transition-all duration-300 ease-in-out overflow-hidden shrink-0 ${isSidebarOpen ? 'w-64' : 'w-0'}`}>
-          <div className="w-64 shrink-0 flex h-full">
-            <Sidebar onOpenWiki={onOpenWiki} onAddNode={handleTapAddNode} />
-          </div>
-        </div>
+        {/* Debug Panel Container (Right) */}
+        <DebugPanel isOpen={isDebugPanelOpen} onClose={() => setIsDebugPanelOpen(false)} />
 
         {/* Mobile Node Palette Slide-in Drawer */}
         {isMobilePaletteOpen && (

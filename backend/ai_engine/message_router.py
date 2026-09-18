@@ -93,6 +93,7 @@ class LogicNode(PipelineNode):
 
             eval_ctx = {
                 "msg": msg,
+                "context": msg.get("context", {}),
                 "count": len(parsed_results),
                 "labels": label_set,
                 "detections": parsed_results,
@@ -167,6 +168,12 @@ class CounterNode(PipelineNode):
             self.router.metadata_callback({
                 "type": "dashboard_update",
                 "node_id": f"dashboard.{self.node_id}.value",
+                "value": self.count,
+                "camera_id": msg.get("camera_id", msg.get("metadata", {}).get("camera_id"))
+            })
+            self.router.metadata_callback({
+                "type": "counter_update",
+                "node_id": self.node_id,
                 "value": self.count,
                 "camera_id": msg.get("camera_id", msg.get("metadata", {}).get("camera_id"))
             })
@@ -354,7 +361,7 @@ class DashboardOutputNode(PipelineNode):
                         return None
                 return val
 
-            val = get_nested({"payload": msg.get("payload")}, source_path)
+            val = get_nested(msg, source_path)
 
             import time
             current_time = time.time()
@@ -579,6 +586,11 @@ class MessageRouter:
                 if source_id is None:
                     continue
                 
+                # IDEA 1: Ensure context exists and save initial payload from source
+                if "context" not in msg:
+                    msg["context"] = {}
+                msg["context"][source_id] = msg.get("payload")
+                
                 # BFS traversal for this message
                 q = [(source_id, msg)]
                 while q:
@@ -621,6 +633,11 @@ class MessageRouter:
                                     pass
 
                                 if out_msg is not None:
+                                    # IDEA 1: Save target node's payload into context
+                                    if "context" not in out_msg:
+                                        out_msg["context"] = {}
+                                    out_msg["context"][target_id] = out_msg.get("payload")
+                                    
                                     q.append((target_id, out_msg))
                             except Exception as e:
                                 logger.error(f"Error executing node {target_id}: {e}")

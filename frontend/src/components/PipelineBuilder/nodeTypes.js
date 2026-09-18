@@ -12,6 +12,7 @@ import DashboardVideoNode from './nodes/DashboardVideoNode';
 import DashboardMetricNode from './nodes/DashboardMetricNode';
 import DashboardTextNode from './nodes/DashboardTextNode';
 import DashboardLogNode from './nodes/DashboardLogNode';
+import DashboardChartNode from './nodes/DashboardChartNode';
 import DebugNode from './nodes/DebugNode';
 import DebugOutputNode from './nodes/DebugOutputNode';
 import FunctionNode from './nodes/FunctionNode';
@@ -40,6 +41,7 @@ export const nodeTypes = {
   dashboardMetricNode: DashboardMetricNode,
   dashboardTextNode: DashboardTextNode,
   dashboardLogNode: DashboardLogNode,
+  dashboardChartNode: DashboardChartNode,
   debugNode: DebugNode,
   debugOutputNode: DebugOutputNode,
   functionNode: FunctionNode,

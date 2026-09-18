@@ -17,8 +17,16 @@ export default function DebugWebSocket() {
     const cameras = new Map();
     const logics = new Map();
     
-    // We monitor sources connected to ANY debug node or output window
-    // Actually, we just map all sources connected to any debugNode
+    // 1. Self-subscribing nodes (nodes that have their own live UI)
+    nodes.forEach(n => {
+      if (n.type === 'flowCounterNode' || n.type === 'shelfSlotMonitorNode' || n.type === 'forkliftZoneNode' || n.type === 'counterNode') {
+        const list = logics.get(n.id) || [];
+        list.push(n.id);
+        logics.set(n.id, list);
+      }
+    });
+
+    // 2. Debug Nodes subscribe to their upstream sources
     const debugNodes = nodes.filter(n => n.type === 'debugNode');
     debugNodes.forEach(debugNode => {
       if (debugNode.data?.isPaused) return; // Skip paused nodes
@@ -107,25 +115,27 @@ export default function DebugWebSocket() {
           let isMonitored = false;
           let sourceDebugNodeIds = [];
 
+          const advancedDebugMode = usePipelineStore.getState().advancedDebugMode;
+
           if (data.type === 'shelf_slot_monitor_update' || data.type === 'forklift_zone_update') {
             if (data.node_id && setDebugData) {
               setDebugData(data.node_id, data);
             }
-            if (data.node_id && logics.has(data.node_id)) {
+            if (data.node_id && (logics.has(data.node_id) || advancedDebugMode)) {
               isMonitored = true;
-              sourceDebugNodeIds = logics.get(data.node_id);
+              sourceDebugNodeIds = logics.get(data.node_id) || [];
             }
-          } else if (data.type === 'logic_state' || data.type === 'rate_limit_state' || data.type === 'flow_counter_update') {
-            if (data.node_id && logics.has(data.node_id)) {
+          } else if (data.type === 'logic_state' || data.type === 'rate_limit_state' || data.type === 'flow_counter_update' || data.type === 'counter_update') {
+            if (data.node_id && (logics.has(data.node_id) || advancedDebugMode)) {
               isMonitored = true;
-              sourceDebugNodeIds = logics.get(data.node_id);
+              sourceDebugNodeIds = logics.get(data.node_id) || [];
               if (setDebugData) setDebugData(data.node_id, data);
             }
           } else if (data.camera_id) {
-            if (cameras.has(data.camera_id)) {
+            if (cameras.has(data.camera_id) || advancedDebugMode) {
               if (data.type === 'detection' || data.type === 'classification' || data.type === 'pose' || data.type === 'segmentation' || !data.type) {
                 isMonitored = true;
-                sourceDebugNodeIds = cameras.get(data.camera_id);
+                sourceDebugNodeIds = cameras.get(data.camera_id) || [];
                 if (setDebugData) setDebugData(data.camera_id, data);
               }
             }

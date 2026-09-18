@@ -8,7 +8,8 @@ import AINodeSettingsModal from './AINodeSettingsModal';
 import NodeTelemetryBadge from './NodeTelemetryBadge';
 
 export default function AINode({ id, data }) {
-  const updateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const globalUpdateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const updateNodeData = data?.onUpdate || globalUpdateNodeData;
   const [models, setModels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showROIEditor, setShowROIEditor] = useState(false);
@@ -88,7 +89,7 @@ export default function AINode({ id, data }) {
               <option value="" disabled>Select Model</option>
               {models.map(model => (
                 <option key={model.id} value={model.id}>
-                  {model.name}
+                  {model.name} {model.version ? `(${model.version})` : ''} • [{model.original_filename || model.hef_path}]
                 </option>
               ))}
             </select>
@@ -112,10 +113,39 @@ export default function AINode({ id, data }) {
 
         {/* Preview of the selected entity's config */}
         {selectedModel && (
-          <div className="text-[10px] text-gray-500 bg-gray-800 p-2 rounded-md break-all mt-1">
-            <div className="text-purple-400 uppercase font-semibold mb-1">Config:</div>
-            <div>Task: {selectedModel.task}</div>
-            <div className="mt-1 opacity-70 truncate" title={selectedModel.hef_path}>HEF: {selectedModel.hef_path.split('/').pop()}</div>
+          <div className="text-[11px] text-gray-400 bg-gray-950/80 border border-gray-800 p-2.5 rounded-xl space-y-1 mt-1 shadow-inner">
+            <div className="flex items-center justify-between text-purple-300 font-bold">
+              <span className="truncate max-w-[130px]" title={selectedModel.name}>{selectedModel.name}</span>
+              <span className="bg-purple-900/60 text-purple-300 text-[9px] px-1.5 py-0.5 rounded font-mono border border-purple-700/50">
+                {selectedModel.version || 'v1.0'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-gray-400 text-[10px]">
+              <span>Task:</span>
+              <span className="text-gray-200 capitalize font-medium">{selectedModel.task || 'detection'}</span>
+            </div>
+            <div className="flex items-center justify-between text-gray-400 text-[10px]">
+              <span>File:</span>
+              <span className="text-gray-200 font-mono truncate max-w-[120px]" title={selectedModel.original_filename || selectedModel.hef_path}>
+                {selectedModel.original_filename || selectedModel.hef_path}
+              </span>
+            </div>
+            {selectedModel.file_hash && (
+              <div className="flex items-center justify-between text-gray-400 text-[10px]">
+                <span>SHA-256:</span>
+                <span className="text-purple-400 font-mono text-[9px]" title={selectedModel.file_hash}>
+                  #{selectedModel.file_hash.substring(0, 8)}
+                </span>
+              </div>
+            )}
+            {selectedModel.classes && selectedModel.classes.length > 0 && (
+              <div className="text-[10px] text-gray-400 pt-0.5 flex items-center justify-between border-t border-gray-800/80 mt-1">
+                <span>Classes ({selectedModel.classes.length}):</span>
+                <span className="text-purple-300 font-mono truncate max-w-[100px]">
+                  {selectedModel.classes.slice(0, 2).join(', ')}{selectedModel.classes.length > 2 ? '...' : ''}
+                </span>
+              </div>
+            )}
           </div>
         )}
 

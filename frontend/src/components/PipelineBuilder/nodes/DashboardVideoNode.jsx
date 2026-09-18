@@ -6,7 +6,8 @@ import usePipelineStore from '../../../store/usePipelineStore';
 import NodeTelemetryBadge from './NodeTelemetryBadge';
 
 export default function DashboardVideoNode({ id, data }) {
-  const updateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const globalUpdateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const updateNodeData = data?.onUpdate || globalUpdateNodeData;
 
   const handleLabelChange = (e) => {
     updateNodeData(id, { label: e.target.value });

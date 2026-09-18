@@ -12,24 +12,22 @@ export const mockNodeData = {
   dashboardMetricNode: { label: 'Number / Metric' },
   dashboardTextNode: { label: 'Text Value', defaultText: 'Door is closed' },
   dashboardLogNode: { label: 'Log History (Dashboard)' },
+  dashboardChartNode: { label: 'Chart (Dashboard)' },
   debugNode: { label: 'Debug Node' }
 };
 
 export const nodeTutorials = {
   inputNode: {
     title: "Input Source",
-    description: "โหนดเริ่มต้นสำหรับดึงภาพวิดีโอจากกล้องเข้าสู่ระบบ",
-    input: {
-      desc: "ไม่รับข้อมูลจากโหนดอื่น (เป็นจุดเริ่มต้น)",
-      example: "N/A"
-    },
-    process: {
-      desc: "เชื่อมต่อกับกล้องผ่านโปรโตคอล RTSP หรือเรียกใช้กล้อง USB/CSI บนบอร์ดโดยตรง เพื่อดึงภาพวิดีโอแบบสด (Live Stream) เข้ามาประมวลผล",
-      example: "ตั้งค่า RTSP URL: rtsp://192.168.1.100:554/stream1"
-    },
-    output: {
-      desc: "ภาพวิดีโอ (Video Frames) สำหรับส่งต่อให้โหนด AI หรือโหนดแสดงผล",
-      example: "Video Stream"
+    description: "โหนดเริ่มต้นสำหรับดึงภาพวิดีโอจากแหล่งข้อมูลต่างๆ เข้าสู่ระบบ",
+    explanation: "โหนด Input Source เปรียบเสมือน 'ดวงตา' ของระบบ AI Pipeline โดยจะทำหน้าที่ดึงภาพวิดีโอแบบสด (Live Stream) ไม่ว่าจะเป็นจากกล้องวงจรปิด (CCTV) ผ่านโปรโตคอล RTSP, กล้อง USB บนตัวเครื่อง, หรือไฟล์วิดีโอ แล้วส่งต่อเฟรมภาพ (Video Frames) เหล่านั้นไปยังโหนด AI หรือโหนดแสดงผลอื่นๆ ทันที โดยที่ตัวมันเองไม่ต้องรับข้อมูลจากใคร",
+    mockSettings: {
+      options: [
+        { id: 'video_file', label: 'ไฟล์วิดีโอ (Video File)', icon: 'video' },
+        { id: 'cctv', label: 'กล้องวงจรปิด (CCTV / RTSP)', icon: 'cctv' },
+        { id: 'onboard', label: 'กล้องบนตัวบอร์ด (On-board Camera)', icon: 'camera' }
+      ],
+      note: "หมายเหตุ: ในโหมดจำลอง (Wiki Sandbox) ระบบจะเตรียมวิดีโอพิเศษไว้ให้ทดสอบ 2 คลิป (สำหรับ Object Detection และ Pose Estimation) เพื่อป้องกันปัญหาการเข้าถึงกล้องจริง คุณสามารถเลือกเปลี่ยนคลิปใน Dropdown ด้านบนได้เลย"
     },
     supportedInputs: [],
     supportedOutputs: ['aiNode', 'dashboardVideoNode', 'debugNode']
@@ -250,6 +248,24 @@ export const nodeTutorials = {
     supportedInputs: ['logicNode', 'digitalInputNode'],
     supportedOutputs: []
   },
+  dashboardChartNode: {
+    title: "Chart (Dashboard)",
+    description: "โหนดแสดงกราฟข้อมูลบน Live Dashboard",
+    input: {
+      desc: "รับข้อมูลประเภทอาร์เรย์ (Array) หรือประวัติ (History) จาก Counter หรือโหนดอื่นๆ",
+      example: "ต่อสายจาก Counter Node"
+    },
+    process: {
+      desc: "นำข้อมูลสถิติหรือประวัติมาพล็อตเป็นกราฟเส้นหรือกราฟแท่งบน Live Dashboard เพื่อดูแนวโน้ม (Trend)",
+      example: "แสดงกราฟจำนวนรถที่วิ่งผ่านในแต่ละชั่วโมง"
+    },
+    output: {
+      desc: "ส่งข้อมูลกราฟไปยังหน้า Dashboard (ฝั่ง UI)",
+      example: "N/A"
+    },
+    supportedInputs: ['counterNode', 'flowCounterNode', 'logicNode'],
+    supportedOutputs: []
+  },
   debugNode: {
     title: "Debug Node",
     description: "โหนดสำหรับนักพัฒนาเพื่อทดสอบและตรวจสอบข้อมูล",
@@ -267,5 +283,95 @@ export const nodeTutorials = {
     },
     supportedInputs: ['aiNode', 'logicNode', 'inputNode', 'digitalInputNode'],
     supportedOutputs: ['logicNode', 'dashboardVideoNode', 'dashboardMetricNode', 'actionNode']
+  },
+  counterNode: {
+    title: "Counter",
+    description: "โหนดนับจำนวนสะสม (Accumulate) หรือหาค่าเฉลี่ย",
+    input: {
+      desc: "รับข้อมูลตัวเลข (เช่น Count) หรือสถานะจาก Logic Node",
+      example: "รับค่า { count: 2 }"
+    },
+    process: {
+      desc: "บวกสะสมค่าที่ได้รับในแต่ละเฟรม หรือนับเวลาที่เงื่อนไขเป็นจริง",
+      example: "นับจำนวนคนเดินผ่านไปแล้วทั้งหมด 15 คน"
+    },
+    output: {
+      desc: "ผลรวมของตัวเลข (Total Count) หรือค่าสถิติอื่นๆ",
+      example: "{ total_count: 15 }"
+    },
+    supportedInputs: ['logicNode'],
+    supportedOutputs: ['dashboardMetricNode', 'dashboardTextNode']
+  },
+  flowCounterNode: {
+    title: "Flow Counter",
+    description: "โหนดนับจำนวนคนหรือวัตถุที่เดินข้ามเส้น (Line Crossing)",
+    input: {
+      desc: "รับข้อมูล AI Metadata (พิกัดกล่อง) จาก AI Node",
+      example: "ต่อสายจาก Output ของ AI Model"
+    },
+    process: {
+      desc: "ตรวจสอบว่ามีพิกัดของวัตถุเคลื่อนที่ตัดผ่านเส้นสมมติที่ลากไว้หรือไม่ พร้อมจำแนกทิศทาง (เข้า/ออก)",
+      example: "ลากเส้นหน้าประตู เพื่อพิจารณาคนเดินเข้า (In) และเดินออก (Out)"
+    },
+    output: {
+      desc: "จำนวนวัตถุที่เดินผ่านเส้น แบ่งตามทิศทาง",
+      example: "{ in: 5, out: 2, net: 3 }"
+    },
+    supportedInputs: ['aiNode'],
+    supportedOutputs: ['dashboardMetricNode', 'actionNode']
+  },
+  shelfSlotMonitorNode: {
+    title: "Shelf Monitor",
+    description: "โหนดตรวจสอบสถานะช่องวางของบนชั้นวาง (Shelf Slot)",
+    input: {
+      desc: "รับข้อมูล AI Metadata จาก AI Node",
+      example: "ต่อสายจาก AI Model ที่มีผลลัพธ์การตรวจจับสินค้า"
+    },
+    process: {
+      desc: "เปรียบเทียบกล่องวัตถุ (Bounding Box) กับพื้นที่ช่องวางของ (ROIs) ที่กำหนดไว้ เพื่อดูว่าช่องไหนว่าง หรือช่องไหนมีของ",
+      example: "ตรวจชั้นวางว่ามีสินค้ายี่ห้อ A วางอยู่ในช่องที่ 1 หรือไม่"
+    },
+    output: {
+      desc: "สถานะของแต่ละช่องบนชั้นวาง (Occupied / Empty)",
+      example: "{ slot_1: 'occupied', slot_2: 'empty' }"
+    },
+    supportedInputs: ['aiNode'],
+    supportedOutputs: ['dashboardTextNode', 'actionNode']
+  },
+  forkliftZoneNode: {
+    title: "Forklift Safety",
+    description: "โหนดแจ้งเตือนความปลอดภัยเมื่อมีคนหรือวัตถุเข้าใกล้รถโฟล์คลิฟท์",
+    input: {
+      desc: "รับข้อมูล AI Metadata (พิกัดคนและรถโฟล์คลิฟท์) จาก AI Node",
+      example: "ต่อสายจาก AI Model (เช่น YOLO) ที่เทรนมาเพื่อจับคนและรถ"
+    },
+    process: {
+      desc: "คำนวณระยะห่างระหว่าง 'คน' กับ 'รถโฟล์คลิฟท์' หากมีคนเข้าไปในรัศมีอันตราย จะส่งสัญญาณแจ้งเตือนทันที",
+      example: "หากคนอยู่ห่างจากรถ < 2 เมตร ให้ออกสถานะเตือนภัยอันตราย"
+    },
+    output: {
+      desc: "สถานะความปลอดภัย และระยะห่างที่เกิดอันตราย",
+      example: "{ status: 'danger', distance: 1.5 }"
+    },
+    supportedInputs: ['aiNode'],
+    supportedOutputs: ['actionNode', 'buzzerNode', 'dashboardTextNode']
+  },
+  snapshotNode: {
+    title: "Snapshot",
+    description: "โหนดบันทึกภาพนิ่ง (Snapshot) เมื่อเกิดเหตุการณ์สำคัญ",
+    input: {
+      desc: "รับภาพวิดีโอจาก Input/AI และสัญญาณ Trigger จาก Logic/Action",
+      example: "ต่อสาย Video จาก AI Node และสาย Trigger จาก Logic Node"
+    },
+    process: {
+      desc: "เมื่อได้รับสัญญาณ Trigger (True) จะทำการแคปเจอร์เฟรมวิดีโอปัจจุบันและบันทึกลงในระบบ หรือส่งแจ้งเตือน",
+      example: "ถ่ายภาพบันทึกหลักฐานเมื่อมีผู้บุกรุกตอน 22:00 น."
+    },
+    output: {
+      desc: "เส้นทางรูปภาพ (Image Path) หรือ URL ของภาพที่ถูกบันทึกไว้ในระบบ",
+      example: "{ image_url: '/snapshots/12345.jpg' }"
+    },
+    supportedInputs: ['inputNode', 'aiNode', 'logicNode', 'digitalInputNode'],
+    supportedOutputs: ['actionNode', 'dashboardLogNode']
   }
 };

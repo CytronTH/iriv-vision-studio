@@ -12,8 +12,10 @@ export default function FlowCounterNode({ id, data }) {
 
   const [showROIEditor, setShowROIEditor] = useState(false);
   const [cameras, setCameras] = useState([]);
-  const [liveCounts, setLiveCounts] = useState(data?.counts || {});
-  const [liveTotal, setLiveTotal] = useState(data?.total || 0);
+  const debugData = usePipelineStore(s => s.debugData || {});
+  const debugState = debugData[id];
+  const liveCounts = debugState?.counts || data?.counts || {};
+  const liveTotal = debugState?.total ?? data?.total ?? 0;
 
   // Initialize default node data
   useEffect(() => {
@@ -93,8 +95,6 @@ export default function FlowCounterNode({ id, data }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ project_id: 'default', node_id: id })
       });
-      setLiveCounts({});
-      setLiveTotal(0);
     } catch (err) {
       console.error("Failed to reset counter:", err);
     }

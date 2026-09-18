@@ -7,6 +7,8 @@ import time
 from datetime import datetime, timedelta
 from typing import Generator, List, Dict, Any, Optional
 from sqlalchemy import event, text
+import hashlib
+import shutil
 from sqlmodel import SQLModel, create_engine, Session, select, func, delete
 # Import models to ensure they are registered with SQLModel before create_all
 from .models import *
@@ -36,6 +38,7 @@ class DatabaseManager:
             cursor.close()
         
         self._init_db()
+        self._reconcile_existing_models()
         
         # Bounded queue to avoid Out-Of-Memory (OOM) on Raspberry Pi
         self.log_queue = Queue(maxsize=10000)
@@ -73,10 +76,75 @@ class DatabaseManager:
                     conn.commit()
                 except Exception:
                     pass  # Column already exists
+
+                # AIModel schema migrations
+                for col_sql in [
+                    "ALTER TABLE aimodel ADD COLUMN original_filename VARCHAR DEFAULT '';",
+                    "ALTER TABLE aimodel ADD COLUMN file_hash VARCHAR DEFAULT '';",
+                    "ALTER TABLE aimodel ADD COLUMN file_size INTEGER DEFAULT 0;",
+                    "ALTER TABLE aimodel ADD COLUMN version VARCHAR DEFAULT 'v1.0';",
+                    "ALTER TABLE aimodel ADD COLUMN description VARCHAR DEFAULT '';",
+                ]:
+                    try:
+                        conn.execute(text(col_sql))
+                        conn.commit()
+                    except Exception:
+                        pass
                 
             logger.info(f"Database initialized successfully with indexes at {self.db_path}")
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
+
+    def _reconcile_existing_models(self):
+        """Populate missing metadata (hash, size, version) for existing models and resolve file collisions."""
+        try:
+            models_dir = Path(__file__).resolve().parent.parent / "models"
+            with Session(self.engine) as session:
+                models = session.exec(select(AIModel)).all()
+                modified = False
+                for m in models:
+                    needs_update = False
+                    if not m.original_filename:
+                        m.original_filename = Path(m.hef_path).name if m.hef_path else ""
+                        needs_update = True
+                    if not m.version:
+                        m.version = "v1.0"
+                        needs_update = True
+                    
+                    # Specific resolution for known collision: Gallon Detector (model_1788861629)
+                    if m.id == "model_1788861629" and m.hef_path == "best.hef":
+                        src_best = models_dir / "best.hef"
+                        dest_best = models_dir / "model_1788861629_best.hef"
+                        if src_best.exists() and not dest_best.exists():
+                            shutil.copy2(src_best, dest_best)
+                            logger.info(f"Copied Gallon Detector model from {src_best} to {dest_best}")
+                        m.hef_path = "model_1788861629_best.hef"
+                        needs_update = True
+
+                    # Calculate hash and size if file exists on disk
+                    if m.hef_path:
+                        file_path = models_dir / m.hef_path
+                        if file_path.exists() and file_path.is_file():
+                            if not m.file_size or m.file_size == 0:
+                                m.file_size = file_path.stat().st_size
+                                needs_update = True
+                            if not m.file_hash:
+                                h = hashlib.sha256()
+                                with open(file_path, "rb") as f:
+                                    while chunk := f.read(65536):
+                                        h.update(chunk)
+                                m.file_hash = h.hexdigest()
+                                needs_update = True
+                    
+                    if needs_update:
+                        session.add(m)
+                        modified = True
+                
+                if modified:
+                    session.commit()
+                    logger.info("AIModel reconciliation and metadata population completed.")
+        except Exception as e:
+            logger.warning(f"Failed to reconcile existing models: {e}")
             
     def get_session(self) -> Generator[Session, None, None]:
         """Provides a database session for FastAPI dependencies."""

@@ -6,11 +6,21 @@ import usePipelineStore from '../../../store/usePipelineStore';
 import NodeTelemetryBadge from './NodeTelemetryBadge';
 
 export default function InputNode({ id, data }) {
-  const updateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const globalUpdateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const updateNodeData = data?.onUpdate || globalUpdateNodeData;
   const [cameras, setCameras] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (data?.isWikiMode) {
+      setCameras([
+        { id: 'wiki_mock_obj_det', name: 'คลิปจำลอง (Object Detection)', type: 'file', path: 'public/videos/wiki_obj_det.mp4', is_enabled: true },
+        { id: 'wiki_mock_pose', name: 'คลิปจำลอง (Pose Estimation)', type: 'file', path: 'public/videos/wiki_pose.mp4', is_enabled: true }
+      ]);
+      setLoading(false);
+      return;
+    }
+
     fetch('/api/entities', { cache: 'no-store' })
       .then(res => res.json())
       .then(json => {
@@ -24,7 +34,7 @@ export default function InputNode({ id, data }) {
         console.error("Failed to fetch entities", err);
         setLoading(false);
       });
-  }, [id, data?.entityId, updateNodeData]);
+  }, [id, data?.entityId, data?.isWikiMode, updateNodeData]);
 
   const handleEntityChange = (e) => {
     updateNodeData(id, { entityId: e.target.value });

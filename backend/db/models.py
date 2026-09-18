@@ -30,6 +30,11 @@ class AIModel(SQLModel, table=True):
     type: str = "model"
     hardware: str = ""
     hef_path: str
+    original_filename: str = Field(default="")
+    file_hash: str = Field(default="")
+    file_size: int = Field(default=0)
+    version: str = Field(default="v1.0")
+    description: str = Field(default="")
     so_path: str
     task: str
     tags_json: str = "[]"

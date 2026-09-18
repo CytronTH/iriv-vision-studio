@@ -151,6 +151,11 @@ class PipelineParser:
                 config.dashboard_nodes.append({
                     "id": f"dashboard.{nid}.value", "name": ndata.get("label", "Text"), "dataType": "text"
                 })
+            elif ntype == "dashboardChartNode":
+                router.add_node(nid, DashboardOutputNode(nid, ndata, router))
+                config.dashboard_nodes.append({
+                    "id": f"dashboard.{nid}.history", "name": ndata.get("label", "Chart"), "dataType": "array_number"
+                })
             elif ntype == "shelfSlotMonitorNode":
                 from ai_engine.shelf_slot_monitor import ShelfSlotMonitorNode
                 router.add_node(nid, ShelfSlotMonitorNode(nid, ndata, router))
@@ -184,7 +189,25 @@ class PipelineParser:
         for input_node in input_nodes:
             node_data = input_node.get("data", {})
             entity_id = node_data.get("entityId")
-            camera = next((c for c in entities.get("cameras", []) if c.get("id") == entity_id), None)
+            
+            if str(entity_id).startswith("wiki_mock_"):
+                if entity_id == "wiki_mock_pose":
+                    mock_video_url = "/videos/wiki_pose.mp4"
+                elif entity_id == "wiki_mock_obj_det":
+                    mock_video_url = "/videos/wiki_obj_det.mp4"
+                else:
+                    mock_video_url = node_data.get("mockVideoUrl", "/videos/default.mp4")
+                    
+                abs_path = f"/home/pi/iriv-vision-studio/frontend/public{mock_video_url}"
+                camera = {
+                    "id": entity_id,
+                    "name": f"Wiki Video ({entity_id})",
+                    "is_enabled": True,
+                    "type": "file",
+                    "path": abs_path
+                }
+            else:
+                camera = next((c for c in entities.get("cameras", []) if c.get("id") == entity_id), None)
             
             if camera and not camera.get("is_enabled", True):
                 cam_label = camera.get("name", entity_id)
@@ -267,8 +290,9 @@ class PipelineParser:
                     
                     if model:
                         stream_config.ai_task = model.get("task", "detection")
-                        hef_path = models_dir / model.get("hef_path", "yolov8s.hef")
-                        stream_config.hef_path = str(hef_path) if hef_path.exists() else str(models_dir / "yolov8s.hef")
+                        raw_hef = model.get("hef_path", "yolov8s.hef")
+                        hef_candidate = Path(raw_hef) if Path(raw_hef).is_absolute() else (models_dir / raw_hef)
+                        stream_config.hef_path = str(hef_candidate) if hef_candidate.exists() else str(models_dir / "yolov8s.hef")
                         so_path = Path(hailo_post_process_dir) / model.get("so_path", "libyolo_hailortpp_post.so")
                         stream_config.so_path = str(so_path) if so_path.exists() else f"{hailo_post_process_dir}/libyolo_hailortpp_post.so"
                         stream_config.classes = model.get("classes", [])

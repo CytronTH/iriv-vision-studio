@@ -5,7 +5,8 @@ import NodeMenu from './NodeMenu';
 import usePipelineStore from '../../../store/usePipelineStore';
 
 export default function DashboardMetricNode({ id, data }) {
-  const updateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const globalUpdateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const updateNodeData = data?.onUpdate || globalUpdateNodeData;
   const edges = usePipelineStore((state) => state.edges);
   const nodes = usePipelineStore((state) => state.nodes);
   const debugData = usePipelineStore((state) => state.debugData || {});

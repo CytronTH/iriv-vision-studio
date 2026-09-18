@@ -8,7 +8,7 @@ const initialNodes = [
 
 const cleanNodeData = (data) => {
   if (!data || typeof data !== 'object') return {};
-  const { selected, dragging, position, positionAbsolute, width, height, ...rest } = data;
+  const { selected, dragging, position, positionAbsolute, width, height, isPaused, ...rest } = data;
   return rest;
 };
 
@@ -73,6 +73,7 @@ const usePipelineStore = create((set, get) => ({
       highlightedNodeIds: [],
       telemetryData: null,
       showMetricsOverlay: true,
+      advancedDebugMode: false,
       
       setDeployMode: (mode) => set({ deployMode: mode }),
       setHighlightedNodeIds: (ids) => set({ highlightedNodeIds: ids }),
@@ -80,6 +81,7 @@ const usePipelineStore = create((set, get) => ({
       setTelemetryData: (data) => set({ telemetryData: data }),
       setShowMetricsOverlay: (show) => set({ showMetricsOverlay: show }),
       toggleMetricsOverlay: () => set((state) => ({ showMetricsOverlay: !state.showMetricsOverlay })),
+      toggleAdvancedDebugMode: () => set((state) => ({ advancedDebugMode: !state.advancedDebugMode })),
       
       setDebugData: (nodeId, data) => {
         set((state) => ({

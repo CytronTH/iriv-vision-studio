@@ -33,6 +33,7 @@ const NODE_CATEGORIES = [
       { type: 'dashboardMetricNode', label: 'Number / Metric', textIcon: '🔢', bg: 'bg-pink-900/30 border-pink-700/50 text-pink-400' },
       { type: 'dashboardTextNode', label: 'Text Value', textIcon: '📝', bg: 'bg-pink-900/30 border-pink-700/50 text-pink-400' },
       { type: 'dashboardLogNode', label: 'Log History', textIcon: '📋', bg: 'bg-indigo-900/30 border-indigo-700/50 text-indigo-400' },
+      { type: 'dashboardChartNode', label: 'Chart', textIcon: '📊', bg: 'bg-indigo-900/30 border-indigo-700/50 text-indigo-400' },
     ]
   },
   {

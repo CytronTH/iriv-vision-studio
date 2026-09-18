@@ -83,7 +83,10 @@ export default memo(({ data, isConnectable, id }) => {
   const debugData = usePipelineStore((state) => state.debugData || {});
   const projectId = usePipelineStore((state) => state.projectId);
   const highlightedNodeIds = usePipelineStore((state) => state.highlightedNodeIds);
-  const updateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const globalUpdateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const updateNodeData = data?.onUpdate || globalUpdateNodeData;
+  const isWikiMode = data?.isWikiMode;
+  const activeProjectId = isWikiMode ? 'wiki_sandbox' : projectId;
   
   const connections = useHandleConnections({ type: 'target' });
   const sourceNode = useNodesData(connections[0]?.source || 'empty-id');
@@ -106,23 +109,25 @@ export default memo(({ data, isConnectable, id }) => {
   const isHighlighted = highlightedNodeIds?.includes(id);
   const isPaused = data?.isPaused;
   const togglePause = () => updateNodeData(id, { isPaused: !isPaused });
-  const toggleMode = () => updateNodeData(id, { outputType: isVideoMode ? 'text' : 'video' });
 
   let whepUrl = null;
   let currentStreamId = null;
   
   if (sourceNode?.type === 'inputNode') {
     const cameraId = sourceNode.data?.entityId;
-    if (cameraId) {
+    if (isWikiMode) {
+      currentStreamId = `cam_${sourceNode.id}`;
+      whepUrl = `http://${window.location.hostname}:8889/${activeProjectId}_${currentStreamId}/whep`;
+    } else if (cameraId) {
       currentStreamId = cameraId;
       whepUrl = `http://${window.location.hostname}:8889/shared_${cameraId}/whep`;
-    } else if (projectId) {
+    } else if (activeProjectId) {
       currentStreamId = `cam_${sourceNode.id}`;
-      whepUrl = `http://${window.location.hostname}:8889/${projectId}_${currentStreamId}/whep`;
+      whepUrl = `http://${window.location.hostname}:8889/${activeProjectId}_${currentStreamId}/whep`;
     }
   } else if (sourceNode?.type === 'aiNode') {
     const aiIncomingEdge = edges.find(e => e.target === sourceNode.id);
-    if (aiIncomingEdge && projectId) {
+    if (aiIncomingEdge && activeProjectId) {
       const srcId = aiIncomingEdge.source;
       
       // Find all AI nodes connected to this input node in the exact order they appear in edges
@@ -140,7 +145,7 @@ export default memo(({ data, isConnectable, id }) => {
       }
       
       currentStreamId = `cam_${srcId}${streamSuffix}`;
-      whepUrl = `http://${window.location.hostname}:8889/${projectId}_${currentStreamId}/whep`;
+      whepUrl = `http://${window.location.hostname}:8889/${activeProjectId}_${currentStreamId}/whep`;
     }
   } else if (sourceNode?.type === 'forkliftZoneNode') {
     // Trace backwards to find upstream aiNode and inputNode
@@ -150,7 +155,7 @@ export default memo(({ data, isConnectable, id }) => {
       targetAiNode = nodes.find(n => n.id === incomingEdge.source && n.type === 'aiNode');
     }
 
-    if (targetAiNode && projectId) {
+    if (targetAiNode && activeProjectId) {
       const aiIncomingEdge = edges.find(e => e.target === targetAiNode.id);
       if (aiIncomingEdge) {
         const srcId = aiIncomingEdge.source;
@@ -167,13 +172,13 @@ export default memo(({ data, isConnectable, id }) => {
           }
         }
         currentStreamId = `cam_${srcId}${streamSuffix}`;
-        whepUrl = `http://${window.location.hostname}:8889/${projectId}_${currentStreamId}/whep`;
+        whepUrl = `http://${window.location.hostname}:8889/${activeProjectId}_${currentStreamId}/whep`;
       }
-    } else if (projectId) {
+    } else if (activeProjectId) {
       const anyInput = nodes.find(n => n.type === 'inputNode');
       if (anyInput) {
         currentStreamId = `cam_${anyInput.id}`;
-        whepUrl = `http://${window.location.hostname}:8889/${projectId}_${currentStreamId}/whep`;
+        whepUrl = `http://${window.location.hostname}:8889/${activeProjectId}_${currentStreamId}/whep`;
       }
     }
   }
@@ -192,6 +197,16 @@ export default memo(({ data, isConnectable, id }) => {
       latestDataRef.current = debugData[currentStreamId];
     }
   }, [debugData, currentStreamId]);
+
+  useEffect(() => {
+    if (videoRef.current) {
+      if (isPaused) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play().catch(e => console.log('[WHEP] Play error:', e));
+      }
+    }
+  }, [isPaused]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -412,38 +427,13 @@ export default memo(({ data, isConnectable, id }) => {
   
   if (!sourceNode) {
     content = <div className="text-gray-500 text-xs text-center px-2 py-4">Not Connected</div>;
-  } else if (data?.outputType === 'text' || sourceNode?.type === 'rateLimitNode' || sourceNode?.type === 'functionNode') {
-    content = (
-      <div className="flex flex-col items-center justify-center p-3 gap-1 bg-gray-900/50">
-        <span className="text-xs text-gray-400">JSON Mode</span>
-        <span className="text-[10px] text-gray-500 text-center leading-tight mt-1">Connect to Output Window<br/>to view logs</span>
-      </div>
-    );
-  } else if (sourceNode.type === 'logicNode') {
-    const state = debugData[sourceNode.id];
-    let displayValue = "--", color = "text-gray-400";
-    if (state !== undefined) {
-      if (typeof state === 'boolean' || typeof state?.value === 'boolean') {
-        const val = typeof state === 'boolean' ? state : state.value;
-        displayValue = val ? "TRUE" : "FALSE";
-        color = val ? "text-green-400" : "text-red-400";
-      } else {
-        displayValue = String(state?.value || state);
-        color = "text-blue-400";
-      }
-    }
-    content = (
-      <div className="flex flex-col items-center justify-center p-3 gap-1 bg-gray-900/50">
-        <span className="text-xs text-gray-400">Logic Output</span>
-        <span className={`text-xl font-bold ${color}`}>{displayValue}</span>
-      </div>
-    );
+
   } else if (isVideoMode && (sourceNode.type === 'aiNode' || sourceNode.type === 'inputNode' || isForkliftNode)) {
     content = (
       <div className="relative w-64 aspect-video bg-black flex items-center justify-center">
         <video 
           ref={videoRef} 
-          className={`w-full h-full object-contain ${isPaused ? 'opacity-50' : ''} ${(!whepUrl || status === 'error') ? 'hidden' : ''}`} 
+          className={`w-full h-full object-contain ${(!whepUrl || status === 'error') ? 'hidden' : ''}`} 
           autoPlay 
           playsInline 
           muted 
@@ -468,11 +458,10 @@ export default memo(({ data, isConnectable, id }) => {
         </div>
       </div>
     );
-  } else if (data?.outputType === 'text' && (sourceNode?.type === 'rateLimitNode' || sourceNode?.type === 'functionNode')) {
+  } else if (data?.outputType === 'text' || sourceNode?.type === 'rateLimitNode' || sourceNode?.type === 'functionNode') {
     content = (
-      <div className="flex flex-col items-center justify-center p-3 gap-1 bg-gray-900/50">
-        <span className="text-xs text-gray-400">JSON Mode</span>
-        <span className="text-[10px] text-gray-500 text-center leading-tight mt-1">Connect to Output Window<br/>to view logs</span>
+      <div className="flex flex-col items-center justify-center p-3 gap-1 bg-gray-900/50 min-h-[60px]">
+        <span className="text-[10px] text-gray-500 text-center leading-tight">Open right Debug Panel<br/>to view payload</span>
       </div>
     );
   } else if (sourceNode.type === 'logicNode') {
@@ -698,29 +687,52 @@ export default memo(({ data, isConnectable, id }) => {
     content = <div className="text-gray-400 text-xs text-center px-2 py-3">Unsupported Node</div>;
   }
 
+  const hasVideoPreview = isVideoMode && sourceNode && (sourceNode.type === 'aiNode' || sourceNode.type === 'inputNode' || isForkliftNode);
+
   return (
-    <div className={`bg-gray-800 border-2 rounded-lg shadow-xl min-w-[150px] overflow-hidden transition-all duration-300 relative ${
-      isHighlighted ? 'border-blue-500 shadow-[0_0_25px_rgba(59,130,246,0.8)] scale-105 z-50' : 'border-gray-600'
-    } ${isPaused ? 'opacity-50 grayscale' : ''}`}>
+    <div className={`bg-gray-900 border-2 rounded-xl shadow-2xl min-w-[180px] overflow-hidden transition-all duration-300 relative ${
+      isHighlighted ? 'border-blue-500 shadow-[0_0_25px_rgba(59,130,246,0.6)] scale-105 z-50' : 'border-gray-700/80'
+    } ${isPaused ? 'border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]' : ''}`}>
       <Handle type="target" position={Position.Left} isConnectable={isConnectable} className="w-3 h-3 bg-gray-400 border-2 border-gray-800" />
-      <Handle type="source" position={Position.Right} isConnectable={isConnectable} className="w-3 h-3 bg-purple-400 border-2 border-gray-800" />
-      <div className="bg-gray-700/80 px-3 py-2 border-b border-gray-600 flex items-center justify-between">
+      <div className={`px-3 py-2 border-b flex items-center justify-between ${
+        isPaused ? 'bg-amber-950/40 border-amber-900/50' : 'bg-gray-800/80 border-gray-700/80'
+      }`}>
         <div className="flex items-center gap-2">
-          <Bug size={14} className="text-gray-300" />
-          <span className="text-xs font-semibold text-gray-200 uppercase tracking-wider">Debug Node</span>
+          <div className={`p-1.5 rounded-md ${isPaused ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-700 text-gray-300'}`}>
+            <Bug size={14} />
+          </div>
+          <span className="text-xs font-bold text-gray-200 uppercase tracking-wider">Debug Node</span>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={toggleMode} className="bg-gray-900/80 hover:bg-gray-700 p-1 rounded text-gray-300 shadow-md transition-colors" title={isVideoMode ? "Switch to Card/Value Mode" : "Switch to Live Video Stream"}>
-            {isVideoMode ? <Code size={12} className="text-purple-400" /> : <MonitorPlay size={12} className="text-cyan-400" />}
-          </button>
-          <button onClick={togglePause} className="bg-gray-900/80 hover:bg-gray-700 p-1 rounded text-gray-300 shadow-md transition-colors" title={isPaused ? "Resume Node" : "Pause Node"}>
-            {isPaused ? <Play size={12} className="text-green-400" /> : <Pause size={12} className="text-amber-400" />}
-          </button>
+          {hasVideoPreview && (
+            <button onClick={togglePause} className="bg-gray-900/80 hover:bg-gray-700 p-1 rounded text-gray-300 shadow-md transition-colors" title={isPaused ? "Resume Node" : "Pause Node"}>
+              {isPaused ? <Play size={12} className="text-green-400" /> : <Pause size={12} className="text-amber-400" />}
+            </button>
+          )}
           <NodeMenu id={id} />
         </div>
       </div>
-      <div className="bg-gray-800 flex flex-col min-h-[40px]">
-        {content}
+      <div className="bg-gray-950 flex flex-col relative min-h-[40px]">
+        <div className={`transition-all duration-300 ${isPaused ? 'opacity-40 grayscale pointer-events-none' : ''}`}>
+          {content}
+        </div>
+        
+        {/* BIG PAUSE BUTTON (Only for non-video modes) */}
+        {!hasVideoPreview && (
+          <div className="p-2 border-t border-gray-800/50 bg-gray-900/50">
+            <button 
+              onClick={togglePause} 
+              className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold text-[11px] uppercase tracking-wider shadow-sm transition-all active:scale-95 ${
+                isPaused 
+                  ? 'bg-amber-500 text-gray-900 hover:bg-amber-400 border border-amber-400/50' 
+                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700 border border-gray-700 hover:text-white'
+              }`}
+            >
+              {isPaused ? <Play size={14} className="fill-current" /> : <Pause size={14} className="fill-current" />}
+              {isPaused ? 'Resume Debug' : 'Pause Debug'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

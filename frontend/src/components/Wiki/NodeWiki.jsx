@@ -1,24 +1,114 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { nodeTutorials, mockNodeData } from '../../data/nodeTutorials';
+import { nodeSimulators, nodeUseCases } from '../../data/nodeWikiExtras';
+import MiniPipelineDiagram from './MiniPipelineDiagram';
+import NodeSimulator from './NodeSimulator';
+import VideoWidget from '../DashboardWidgets/VideoWidget';
 import { 
   Activity, Cpu, LogIn, LogOut, BookOpen, 
   Camera, BrainCircuit, Filter, Bell, ToggleLeft, 
-  ToggleRight, Lightbulb, BellRing, Settings2, Info, X 
+  ToggleRight, Lightbulb, BellRing, Settings2, Info, X, Layers, ShieldAlert, Play, Video, Cctv 
 } from 'lucide-react';
 
 export default function NodeWiki({ initialNode }) {
   const [selectedNode, setSelectedNode] = useState(initialNode || Object.keys(nodeTutorials)[0]);
   const [isMobileWikiSidebarOpen, setIsMobileWikiSidebarOpen] = useState(false);
+  const diagramRef = useRef(null);
+  const [isSandboxRunning, setIsSandboxRunning] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [sandboxVideoId, setSandboxVideoId] = useState(null);
+  const [telemetry, setTelemetry] = useState({});
 
-  // Handle external changes to initialNode
+  useEffect(() => {
+    let ws;
+    if (isSandboxRunning) {
+      ws = new WebSocket(`ws://${window.location.hostname}:8000/ws/metadata/wiki_sandbox`);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          setTelemetry(data);
+        } catch (e) {}
+      };
+    }
+    return () => {
+      if (ws) ws.close();
+    };
+  }, [isSandboxRunning]);
+
+  const handleStopSandbox = async () => {
+    try {
+      await fetch('/api/wiki/sandbox/stop', { method: 'POST' });
+      setIsSandboxRunning(false);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  // Handle external changes to initialNode and stop sandbox on navigation
   useEffect(() => {
     if (initialNode && nodeTutorials[initialNode]) {
       setSelectedNode(initialNode);
     }
-  }, [initialNode]);
+    return () => {
+      if (isSandboxRunning) handleStopSandbox();
+    };
+  }, [initialNode, selectedNode]);
+
+  const handleAutoDeploy = async (payload) => {
+    // If there is a sandbox running, stop it first before starting a new one
+    // But since handleStopSandbox is async, we can just POST to deploy which overwrites the backend state.
+    // Actually, backend /api/wiki/sandbox/deploy stops the previous one anyway.
+    
+    setIsDeploying(true);
+    try {
+      const useCase = nodeUseCases[selectedNode]?.[0];
+      payload.nodes = payload.nodes.map(n => {
+        if (n.type === 'inputNode') {
+          // If the entityId doesn't start with wiki_mock_, we force it to wiki_mock_cam
+          const currentEntityId = n.data?.entityId || '';
+          if (!currentEntityId.startsWith('wiki_mock_')) {
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                entityId: 'wiki_mock_cam',
+                mockVideoUrl: useCase?.videoUrl && useCase.videoUrl !== 'REQUEST_VIDEO_URL' ? useCase.videoUrl : '/videos/default.mp4'
+              }
+            };
+          }
+        }
+        return n;
+      });
+
+      let streamIdForVideo = null;
+      const videoNode = payload.nodes.find(n => n.type === 'dashboardVideoNode');
+      if (videoNode) {
+        streamIdForVideo = videoNode.id;
+      } else {
+        const inputNode = payload.nodes.find(n => n.type === 'inputNode');
+        if (inputNode) {
+          streamIdForVideo = `cam_${inputNode.id}`;
+        }
+      }
+      setSandboxVideoId(streamIdForVideo);
+
+      payload.project_id = 'wiki_sandbox';
+
+      const res = await fetch('/api/wiki/sandbox/deploy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) setIsSandboxRunning(true);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsDeploying(false);
+    }
+  };
 
   const categories = {
-    'Nodes': ['inputNode', 'aiNode', 'logicNode', 'counterNode', 'actionNode', 'snapshotNode'],
+    'Nodes': ['inputNode', 'aiNode', 'logicNode', 'counterNode', 'flowCounterNode', 'shelfSlotMonitorNode', 'forkliftZoneNode', 'actionNode', 'snapshotNode'],
     'Hardware (CM5)': ['digitalInputNode', 'digitalOutputNode', 'ledNode', 'buzzerNode', 'rs485Node'],
     'Dashboard Outputs': ['dashboardVideoNode', 'dashboardMetricNode', 'dashboardTextNode', 'dashboardLogNode'],
     'Debugging': ['debugNode']
@@ -30,6 +120,9 @@ export default function NodeWiki({ initialNode }) {
       case 'aiNode': return <BrainCircuit size={18} className="text-purple-400" />;
       case 'logicNode': return <Filter size={18} className="text-orange-400" />;
       case 'counterNode': return <span className="text-emerald-400 font-bold px-1">∑</span>;
+      case 'flowCounterNode': return <span className="text-teal-400 font-bold px-1">⇄</span>;
+      case 'shelfSlotMonitorNode': return <Layers size={18} className="text-amber-400" />;
+      case 'forkliftZoneNode': return <ShieldAlert size={18} className="text-rose-400" />;
       case 'actionNode': return <Bell size={18} className="text-green-400" />;
       case 'snapshotNode': return <Camera size={18} className="text-pink-400" />;
       case 'digitalInputNode': return <ToggleLeft size={18} className="text-cyan-400" />;
@@ -155,7 +248,7 @@ export default function NodeWiki({ initialNode }) {
             <p>กรุณาเลือก Node เพื่อดูรายละเอียด</p>
           </div>
         ) : (
-          <div className="max-w-4xl mx-auto p-4 sm:p-8 md:p-12 pb-24 w-full">
+          <div className="max-w-7xl mx-auto p-4 sm:p-6 md:p-8 pb-24 w-full">
             
             {/* Header */}
             <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-5 mb-6 sm:mb-10 pb-6 sm:pb-8 border-b border-gray-800">
@@ -171,96 +264,180 @@ export default function NodeWiki({ initialNode }) {
             {/* Detailed Sections */}
             <div className="space-y-6 sm:space-y-8">
               
-              {/* Input Section */}
-              <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md hover:border-gray-700 transition-all duration-300">
-                <div className="flex items-center gap-3 mb-3 sm:mb-4">
-                  <div className="bg-green-900/30 p-2 rounded-lg text-green-400">
-                    <LogIn size={20} />
-                  </div>
-                  <h3 className="text-lg sm:text-xl font-semibold text-gray-200">1. ข้อมูลขาเข้า (Input)</h3>
-                </div>
-                <div className="pl-0 sm:pl-11 space-y-3 sm:space-y-4">
-                  <p className="text-gray-300 leading-relaxed text-xs sm:text-sm md:text-base">{data.input.desc}</p>
-                  <div className="bg-black/40 border border-gray-800 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-gray-400 border-l-4 border-l-green-500 font-mono shadow-inner overflow-x-auto">
-                    <span className="font-semibold text-gray-300">ตัวอย่าง: </span>{data.input.example}
-                  </div>
-                </div>
-              </section>
-
-              {/* Process Section */}
-              <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md hover:border-gray-700 transition-all duration-300">
-                <div className="flex items-center gap-3 mb-3 sm:mb-4">
-                  <div className="bg-blue-900/30 p-2 rounded-lg text-blue-400">
-                    <Cpu size={20} />
-                  </div>
-                  <h3 className="text-lg sm:text-xl font-semibold text-gray-200">2. การประมวลผล (Process)</h3>
-                </div>
-                <div className="pl-0 sm:pl-11 space-y-3 sm:space-y-4">
-                  <p className="text-gray-300 leading-relaxed text-xs sm:text-sm md:text-base">{data.process.desc}</p>
-                  <div className="bg-black/40 border border-gray-800 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-gray-400 border-l-4 border-l-blue-500 font-mono shadow-inner overflow-x-auto">
-                    <span className="font-semibold text-gray-300">ตัวอย่าง: </span>{data.process.example}
-                  </div>
-                </div>
-              </section>
-
-              {/* Output Section */}
-              <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md hover:border-gray-700 transition-all duration-300">
-                <div className="flex items-center gap-3 mb-3 sm:mb-4">
-                  <div className="bg-orange-900/30 p-2 rounded-lg text-orange-400">
-                    <LogOut size={20} />
-                  </div>
-                  <h3 className="text-lg sm:text-xl font-semibold text-gray-200">3. ข้อมูลขาออก (Output)</h3>
-                </div>
-                <div className="pl-0 sm:pl-11 space-y-3 sm:space-y-4">
-                  <p className="text-gray-300 leading-relaxed text-xs sm:text-sm md:text-base">{data.output.desc}</p>
-                  <div className="bg-black/40 border border-gray-800 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-gray-400 border-l-4 border-l-orange-500 font-mono shadow-inner overflow-x-auto">
-                    <span className="font-semibold text-gray-300">ตัวอย่าง: </span>{data.output.example}
-                  </div>
-                </div>
-              </section>
-
-
-              {/* Compatibility Section */}
-              {(data.supportedInputs?.length > 0 || data.supportedOutputs?.length > 0) && (
-                <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 shadow-sm mt-8">
-                  <h3 className="text-lg font-semibold text-gray-200 mb-6 flex items-center gap-2">
-                    <Activity size={18} className="text-gray-400"/> การเชื่อมต่อที่รองรับ
+              {/* Explanation Section (New Layout) */}
+              {data.explanation && (
+                <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 shadow-sm">
+                  <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
+                    <Info size={18} className="text-blue-400"/> หลักการทำงาน
                   </h3>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                    {/* Supported Inputs */}
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">รับข้อมูลจากโหนด (Inputs)</h4>
-                      {data.supportedInputs && data.supportedInputs.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {data.supportedInputs.map(t => (
-                            <div key={t} className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-md text-sm text-gray-300 flex items-center gap-2">
-                              {getIcon(t)} {nodeTutorials[t]?.title || t}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-500 italic">ไม่มี (เป็นโหนดเริ่มต้น)</p>
-                      )}
-                    </div>
+                  <p className="text-gray-300 leading-relaxed text-sm md:text-base">
+                    {data.explanation}
+                  </p>
+                </section>
+              )}
 
-                    {/* Supported Outputs */}
-                    <div>
-                      <h4 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">ส่งต่อให้โหนด (Outputs)</h4>
-                      {data.supportedOutputs && data.supportedOutputs.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {data.supportedOutputs.map(t => (
-                            <div key={t} className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-md text-sm text-gray-300 flex items-center gap-2">
-                              {getIcon(t)} {nodeTutorials[t]?.title || t}
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-500 italic">ไม่มี (เป็นโหนดปลายทาง)</p>
-                      )}
+              {/* Input Section (Legacy Layout) */}
+              {data.input && (
+                <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md hover:border-gray-700 transition-all duration-300">
+                  <div className="flex items-center gap-3 mb-3 sm:mb-4">
+                    <div className="bg-green-900/30 p-2 rounded-lg text-green-400">
+                      <LogIn size={20} />
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-semibold text-gray-200">1. ข้อมูลขาเข้า (Input)</h3>
+                  </div>
+                  <div className="pl-0 sm:pl-11 space-y-3 sm:space-y-4">
+                    <p className="text-gray-300 leading-relaxed text-xs sm:text-sm md:text-base">{data.input.desc}</p>
+                    <div className="bg-black/40 border border-gray-800 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-gray-400 border-l-4 border-l-green-500 font-mono shadow-inner overflow-x-auto">
+                      <span className="font-semibold text-gray-300">ตัวอย่าง: </span>{data.input.example}
                     </div>
                   </div>
                 </section>
+              )}
+
+              {/* Process Section */}
+              {data.process && (
+                <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md hover:border-gray-700 transition-all duration-300">
+                  <div className="flex items-center gap-3 mb-3 sm:mb-4">
+                    <div className="bg-blue-900/30 p-2 rounded-lg text-blue-400">
+                      <Cpu size={20} />
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-semibold text-gray-200">2. การประมวลผล (Process)</h3>
+                  </div>
+                  <div className="pl-0 sm:pl-11 space-y-3 sm:space-y-4">
+                    <p className="text-gray-300 leading-relaxed text-xs sm:text-sm md:text-base">{data.process.desc}</p>
+                    <div className="bg-black/40 border border-gray-800 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-gray-400 border-l-4 border-l-blue-500 font-mono shadow-inner overflow-x-auto">
+                      <span className="font-semibold text-gray-300">ตัวอย่าง: </span>{data.process.example}
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* Output Section */}
+              {data.output && (
+                <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md hover:border-gray-700 transition-all duration-300">
+                  <div className="flex items-center gap-3 mb-3 sm:mb-4">
+                    <div className="bg-orange-900/30 p-2 rounded-lg text-orange-400">
+                      <LogOut size={20} />
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-semibold text-gray-200">3. ข้อมูลขาออก (Output)</h3>
+                  </div>
+                  <div className="pl-0 sm:pl-11 space-y-3 sm:space-y-4">
+                    <p className="text-gray-300 leading-relaxed text-xs sm:text-sm md:text-base">{data.output.desc}</p>
+                    <div className="bg-black/40 border border-gray-800 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-gray-400 border-l-4 border-l-orange-500 font-mono shadow-inner overflow-x-auto">
+                      <span className="font-semibold text-gray-300">ตัวอย่าง: </span>{data.output.example}
+                    </div>
+                  </div>
+                </section>
+              )}
+
+
+              {/* Compatibility Section (Mini Pipeline Diagram) */}
+              {(data.supportedInputs?.length > 0 || data.supportedOutputs?.length > 0) && (
+                <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 shadow-sm mt-8">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+                    <h3 className="text-lg font-semibold text-gray-200 flex items-center gap-2">
+                      <Activity size={18} className="text-gray-400"/> ตัวอย่างการเชื่อมต่อ (Auto-Generated Pipeline)
+                    </h3>
+                    <div className="flex gap-2">
+                       {isDeploying ? (
+                         <div className="px-4 py-2 bg-gray-800 text-gray-400 rounded-lg text-sm font-bold flex items-center gap-2 border border-gray-700">
+                           <Activity size={16} className="animate-spin" /> Deploying...
+                         </div>
+                       ) : isSandboxRunning ? (
+                         <div className="px-4 py-2 bg-emerald-900/30 text-emerald-400 border border-emerald-500/30 rounded-lg text-sm font-bold flex items-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.15)]">
+                           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Live Simulation Running
+                         </div>
+                       ) : null}
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-6">
+                    <div className="flex flex-col xl:flex-row gap-6">
+                        <div className="flex-1">
+                          <MiniPipelineDiagram 
+                            ref={diagramRef}
+                            nodeType={selectedNode} 
+                            supportedInputs={data.supportedInputs} 
+                            supportedOutputs={data.supportedOutputs} 
+                            nodeTutorials={nodeTutorials}
+                            onReady={handleAutoDeploy}
+                          />
+                        </div>
+                        {/* Mock Settings Panel */}
+                        {data.mockSettings && (
+                          <div className="w-full xl:w-72 shrink-0 bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col">
+                             <h4 className="text-sm font-semibold text-gray-200 mb-4 border-b border-gray-800 pb-3 flex items-center gap-2">
+                               <Settings2 size={16} className="text-gray-400"/> การตั้งค่าโหนด
+                             </h4>
+                             <div className="space-y-2 mb-4 flex-1">
+                               {data.mockSettings.options.map(opt => (
+                                 <button key={opt.id} className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-700 bg-gray-800 hover:bg-gray-700 text-sm text-left text-gray-300 transition-colors shadow-sm">
+                                   <div className="bg-gray-900 p-2 rounded text-gray-400">
+                                     {opt.icon === 'video' ? <Video size={16}/> : opt.icon === 'cctv' ? <Cctv size={16}/> : <Camera size={16}/>}
+                                   </div>
+                                   {opt.label}
+                                 </button>
+                               ))}
+                             </div>
+                             <div className="bg-blue-900/10 border border-blue-900/30 p-3.5 rounded-lg text-[11px] sm:text-xs text-blue-300/90 leading-relaxed text-justify">
+                               {data.mockSettings.note}
+                             </div>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Live Stream Panel */}
+                      {isSandboxRunning && sandboxVideoId && (
+                        <div className="h-[400px] w-full animate-in fade-in slide-in-from-top-4 duration-300">
+                          <VideoWidget 
+                            projectId="wiki_sandbox"
+                            metadata={telemetry}
+                            config={{
+                              title: 'Live Sandbox Stream',
+                              stream_id: sandboxVideoId,
+                              dataPath: sandboxVideoId,
+                              has_ai: true
+                            }}
+                          />
+                        </div>
+                      )}
+                  </div>
+                </section>
+              )}
+
+              {/* Use Cases Section */}
+              {nodeUseCases[selectedNode] && nodeUseCases[selectedNode].length > 0 && (
+                <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 shadow-sm mt-8">
+                  <h3 className="text-lg font-semibold text-gray-200 mb-6 flex items-center gap-2">
+                    <BookOpen size={18} className="text-blue-400"/> ตัวอย่างการใช้งานจริง (Use Cases)
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 gap-6">
+                    {nodeUseCases[selectedNode].map((uc, idx) => (
+                      <div key={idx} className="bg-gray-800/50 border border-gray-700 rounded-xl p-5 flex flex-col md:flex-row gap-5 items-start">
+                        <div className="flex-1">
+                          <h4 className="text-md font-bold text-gray-200 mb-2">{uc.title}</h4>
+                          <p className="text-sm text-gray-400 leading-relaxed">{uc.description}</p>
+                        </div>
+                        <div className="w-full md:w-64 h-36 bg-gray-950 rounded-lg border border-gray-800 flex items-center justify-center shrink-0 overflow-hidden relative group">
+                          {uc.videoUrl && uc.videoUrl !== 'REQUEST_VIDEO_URL' ? (
+                            <video src={uc.videoUrl} autoPlay loop muted playsInline className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                          ) : (
+                            <div className="text-center p-4">
+                               <Camera size={24} className="text-gray-600 mx-auto mb-2" />
+                               <span className="text-xs text-gray-500">รอเพิ่มวิดีโอตัวอย่าง</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              {/* Simulator Section */}
+              {nodeSimulators[selectedNode] && (
+                <NodeSimulator config={nodeSimulators[selectedNode]} nodeType={selectedNode} />
               )}
 
             </div>

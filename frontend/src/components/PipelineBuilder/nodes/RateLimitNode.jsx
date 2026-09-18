@@ -5,7 +5,8 @@ import NodeMenu from './NodeMenu';
 import usePipelineStore from '../../../store/usePipelineStore';
 
 export default function RateLimitNode({ id, data, isConnectable }) {
-  const updateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const globalUpdateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const updateNodeData = data?.onUpdate || globalUpdateNodeData;
 
   const handleRateChange = (e) => {
     updateNodeData(id, { rate: parseFloat(e.target.value) || 1 });

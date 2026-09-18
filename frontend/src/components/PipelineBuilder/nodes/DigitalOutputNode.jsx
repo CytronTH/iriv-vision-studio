@@ -5,7 +5,8 @@ import { ToggleRight } from 'lucide-react';
 import NodeMenu from './NodeMenu';
 
 export default function DigitalOutputNode({ id, data }) {
-  const updateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const globalUpdateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const updateNodeData = data?.onUpdate || globalUpdateNodeData;
   return (
     <div className="bg-gray-900 border-2 border-orange-500 rounded-xl p-4 shadow-xl shadow-orange-900/20 w-64">
       <Handle type="target" position={Position.Left} className="w-3 h-3 bg-orange-500 border-2 border-gray-900" />

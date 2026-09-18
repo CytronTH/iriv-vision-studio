@@ -25,6 +25,38 @@
 - 
 -->
 
+## [2026-09-11] - พัฒนาระบบ AI Model Registry ป้องกันการอัปโหลดไฟล์โมเดลชื่อชนกัน (Unique Storage, SHA-256 Checksum, Versioning) และยกเครื่อง UX/UI Model Upload
+
+### 🎯 เป้าหมาย (Goals)
+- [x] แก้ปัญหาไฟล์โมเดลชื่อเหมือนกัน (เช่น `best.hef` จาก YOLO) ถูกอัปโหลดทับไฟล์เดิมบนดิสก์ ส่งผลให้โปรเจ็กต์ดึงโมเดลไปรันผิดตัว
+- [x] เพิ่มระบบจำแนกและระบุตัวตนของโมเดลนอกเหนือจากชื่อไฟล์: Unique Stored Path (`<model_id>_<clean_filename>`), SHA-256 Checksum, File Size, Version Tag, Description และ Original Filename
+- [x] ทำ Database Migration & Reconciliation อัตโนมัติสำหรับโมเดลเดิมในระบบ และแยกไฟล์โมเดลที่เคยชนกัน (`congee1ul` vs `Gallon Detector`) ออกจากกันอย่างปลอดภัย
+- [x] ปรับปรุง Pipeline Parser (`pipeline_parser.py`) และ Project Backup (`project_backup.py`) ให้รองรับ Unique File Storage
+- [x] ออกแบบหน้าจอ AI Model Upload ใหม่ทั้งหมด (`ModelUploadModal.jsx`): รองรับ Drag & Drop, Smart Auto-naming, Smart Task Selector จับคู่ไลบรารี `.so` ให้อัตโนมัติ, และแสดง Class Names Preview ทันทีจาก `metadata.yaml`
+- [x] ปรับปรุง UI หน้า `Settings.jsx` (AI Model Registry Cards) และ `AINode.jsx` ให้แสดง Version, SHA-256 Chip (1-Click Copy), ขนาดไฟล์ และ Class Badges อย่างชัดเจน
+
+### 🛠️ สิ่งที่ทำเสร็จแล้ว (Accomplished)
+- **Database & Migration (`backend/db/`)**:
+  - `models.py`: เพิ่มฟิลด์ `original_filename`, `file_hash`, `file_size`, `version`, `description` ลงใน `AIModel`
+  - `database.py`: เพิ่ม Migration Statements อัตโนมัติ และฟังก์ชัน `_reconcile_existing_models()` คำนวณ SHA-256/ขนาดไฟล์ให้โมเดลเดิม และแยกไฟล์ `model_1788861629_best.hef` ป้องกันไฟล์ชน
+- **Backend APIs & Pipeline Engine (`backend/`)**:
+  - `main.py`: ปรับปรุง `/api/models/upload`, `/api/upload-hef`, `/api/compile-onnx` ให้สตรีมคำนวณ SHA-256 พร้อมจัดเก็บไฟล์ด้วย Unique ID Prefix ไม่มีการเขียนทับไฟล์เดิมบนดิสก์
+  - `pipeline_parser.py`: รองรับการ Resolve ไฟล์โมเดลทั้งแบบ Relative และ Absolute Path เข้าสู่ HailoRT
+  - `project_backup.py`: ปรับปรุง Export Manifest และ Import Unpack ให้เก็บและรักษาข้อมูล Hash, Version และ Original Filename
+  - `test_model_registry.py`: เขียน Automated Unit Tests ทดสอบ Collision Prevention, SHA-256 Verification, Pipeline Resolution ผ่าน 100%
+- **Frontend Modernization (`frontend/src/`)**:
+  - `ModelUploadModal.jsx`: สร้าง Component Modal อัปโหลดโมเดลใหม่พร้อม Drag & Drop Dropzone, Auto-naming, Visual Task Buttons, Client-side YAML Class Parser, และ Loading Animation
+  - `Settings.jsx`: ยกเครื่องแท็บ AI Models เป็น Model Registry โฉมใหม่ แสดงการ์ดโมเดลพร้อม Version Pill, SHA-256 Monospace Badge พร้อมปุ่ม Copy, ขนาดไฟล์, และปุ่มลบพร้อมกล่องยืนยันความปลอดภัย
+  - `AINode.jsx`: ตัวเลือกใน Dropdown แสดง `{model.name} ({model.version}) • [{filename}]` พร้อมการ์ดสรุปข้อมูลโมเดลแสดง SHA-256 Hash และจำนวน Class ชัดเจน
+
+### 🧠 การตัดสินใจทางเทคนิค (Decisions & Context)
+- **เรื่องที่ตัดสินใจ:** ใช้ Unique Storage Naming `<model_id>_<clean_filename>` บนดิสก์ ควบคู่กับการเก็บ `original_filename` ในฐานข้อมูล
+- **เหตุผล:** โมเดลส่วนใหญ่ที่ผู้ใช้ส่งออกมาจาก Ultralytics YOLO จะมีชื่อตั้งต้นว่า `best.hef` เหมือนกันหมด การบันทึกด้วยชื่อเดิมทำให้เกิดการเขียนทับโดยไม่รู้ตัว การใช้ ID นำหน้าทำให้ HailoRT โหลดได้ตรงตามไฟล์เฉพาะของโมเดลนั้น 100% โดยที่ผู้ใช้ยังเห็นชื่อไฟล์ต้นฉบับได้เหมือนเดิม
+- **เรื่องที่ตัดสินใจ:** เพิ่มการจับคู่ Task Type กับ Post-Process `.so` ให้อัตโนมัติในหน้า Upload
+- **เหตุผล:** ผู้ใช้ทั่วไปไม่ควรต้องมานั่งจำชื่อไฟล์ไดนามิกไลบรารี Linux เช่น `libyolo_hailortpp_post.so` การทำ Smart Mapping ช่วยลด Human Error และทำให้การใช้งานลื่นไหลขึ้น
+
+---
+
 ## [2026-09-10] - เพิ่มโหนด Forklift Safety Monitor และ Polygon Danger Zone Editor สำหรับทางแยกคลังสินค้า (Warehouse Safety)
 
 ### 🎯 เป้าหมาย (Goals)

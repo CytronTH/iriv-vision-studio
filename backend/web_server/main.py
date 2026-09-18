@@ -2,6 +2,8 @@ import logging
 import asyncio
 import json
 import yaml
+import re
+import hashlib
 from datetime import datetime
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form
@@ -256,6 +258,11 @@ def write_entities(data):
                 model_obj.type = m.get("type", "model")
                 model_obj.hardware = m.get("hardware", "")
                 model_obj.hef_path = m.get("hef_path", "")
+                model_obj.original_filename = m.get("original_filename", getattr(model_obj, "original_filename", "") or "")
+                model_obj.file_hash = m.get("file_hash", getattr(model_obj, "file_hash", "") or "")
+                model_obj.file_size = m.get("file_size", getattr(model_obj, "file_size", 0) or 0)
+                model_obj.version = m.get("version", getattr(model_obj, "version", "v1.0") or "v1.0")
+                model_obj.description = m.get("description", getattr(model_obj, "description", "") or "")
                 model_obj.so_path = m.get("so_path", "")
                 model_obj.task = m.get("task", "")
                 model_obj.tags_json = tags_str
@@ -268,6 +275,11 @@ def write_entities(data):
                     type=m.get("type", "model"),
                     hardware=m.get("hardware", ""),
                     hef_path=m.get("hef_path", ""),
+                    original_filename=m.get("original_filename", ""),
+                    file_hash=m.get("file_hash", ""),
+                    file_size=m.get("file_size", 0),
+                    version=m.get("version", "v1.0"),
+                    description=m.get("description", ""),
                     so_path=m.get("so_path", ""),
                     task=m.get("task", ""),
                     tags_json=tags_str,
@@ -449,26 +461,54 @@ async def upload_model(
     name: str = Form(...),
     task: str = Form(...),
     hef_file: UploadFile = File(...),
-    so_name: str = Form(...),
+    so_name: Optional[str] = Form(None),
     metadata_file: Optional[UploadFile] = File(None),
+    version: Optional[str] = Form("v1.0"),
+    description: Optional[str] = Form(""),
 ):
     """
-    Upload a custom .hef model and select a post-process .so from those
-    already installed on this device (TAPPAS post_processes directory).
+    Upload a custom .hef model and select/assign a post-process .so from those
+    installed on this device. Uses unique stored filename and SHA-256 checksum to prevent collisions.
     Optionally accepts a metadata.yaml file to extract class names.
     """
     try:
-        # Validate that the requested .so actually exists on the device
+        # Default .so map if not explicitly chosen
+        if not so_name or not so_name.strip():
+            so_map = {
+                "detection": "libyolo_hailortpp_post.so",
+                "classification": "libclassification_post.so",
+                "pose": "libyolo_hailortpp_post.so",
+                "segmentation": "libyolo_hailortpp_post.so",
+            }
+            so_name = so_map.get(task, "libyolo_hailortpp_post.so")
+
+        # Validate that the requested .so actually exists on the device if dir exists
         so_full_path = HAILO_POST_PROCESS_DIR / so_name
         if not so_full_path.exists():
-            return {"status": "error", "message": f".so file not found on device: {so_name}"}
+            default_fallback = HAILO_POST_PROCESS_DIR / "libyolo_hailortpp_post.so"
+            if default_fallback.exists():
+                logger.warning(f".so file {so_name} not found, falling back to libyolo_hailortpp_post.so")
+                so_name = "libyolo_hailortpp_post.so"
+            else:
+                return {"status": "error", "message": f".so file not found on device: {so_name}"}
 
         models_dir = Path(__file__).resolve().parent.parent / "models"
         models_dir.mkdir(exist_ok=True)
 
-        hef_path = models_dir / hef_file.filename
-        with open(hef_path, "wb") as f:
-            shutil.copyfileobj(hef_file.file, f)
+        new_model_id = f"model_{int(time.time())}"
+        orig_filename = Path(hef_file.filename).name if hef_file.filename else "model.hef"
+        safe_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", orig_filename)
+        unique_stored_name = f"{new_model_id}_{safe_name}"
+        hef_dest_path = models_dir / unique_stored_name
+
+        hasher = hashlib.sha256()
+        file_size = 0
+        with open(hef_dest_path, "wb") as f:
+            while chunk := await hef_file.read(65536):
+                hasher.update(chunk)
+                file_size += len(chunk)
+                f.write(chunk)
+        file_hash = hasher.hexdigest()
 
         # Parse class names from metadata.yaml if provided
         classes = []
@@ -488,23 +528,38 @@ async def upload_model(
                 logger.warning(f"Failed to parse metadata.yaml: {e}")
 
         entities = read_entities()
-        new_model_id = f"model_{int(time.time())}"
-
         if "models" not in entities:
             entities["models"] = []
 
-        entities["models"].append({
+        model_entry = {
             "id": new_model_id,
-            "name": name,
+            "name": name.strip() if name else safe_name,
             "task": task,
-            "hef_path": hef_file.filename,
+            "hef_path": unique_stored_name,
+            "original_filename": orig_filename,
+            "file_hash": file_hash,
+            "file_size": file_size,
+            "version": (version or "v1.0").strip(),
+            "description": (description or "").strip(),
             "so_path": so_name,
             "classes": classes
-        })
-
+        }
+        entities["models"].append(model_entry)
         write_entities(entities)
 
-        return {"status": "success", "model_id": new_model_id, "classes_found": len(classes)}
+        logger.info(f"Model successfully uploaded: {name} (ID: {new_model_id}, File: {unique_stored_name}, SHA: {file_hash[:8]})")
+
+        return {
+            "status": "success",
+            "model_id": new_model_id,
+            "classes_found": len(classes),
+            "stored_file": unique_stored_name,
+            "original_filename": orig_filename,
+            "file_hash": file_hash,
+            "file_size": file_size,
+            "version": model_entry["version"],
+            "model": model_entry
+        }
     except Exception as e:
         logger.error(f"Failed to upload model: {e}")
         return {"status": "error", "message": str(e)}
@@ -571,48 +626,71 @@ async def update_model_classes(model_id: str, data: Dict[str, Any]):
 async def upload_hef_only(
     hef_file: UploadFile = File(...),
     name: str = Form(...),
-    task: str = Form("detection")
+    task: str = Form("detection"),
+    version: Optional[str] = Form("v1.0")
 ):
     """
     Simplified .hef upload from IRIV Model Studio (local Docker compile).
     Accepts only the .hef file — automatically assigns the correct post-process .so
-    based on task type.
+    based on task type, generates unique stored filename and SHA-256 checksum.
     """
     try:
         models_dir = Path(__file__).resolve().parent.parent / "models"
         models_dir.mkdir(exist_ok=True)
 
-        hef_path = models_dir / hef_file.filename
-        with open(hef_path, "wb") as f:
-            shutil.copyfileobj(hef_file.file, f)
+        new_model_id = f"model_{int(time.time())}"
+        orig_filename = Path(hef_file.filename).name if hef_file.filename else f"{name}.hef"
+        safe_name = re.sub(r"[^a-zA-Z0-9_.-]", "_", orig_filename)
+        unique_stored_name = f"{new_model_id}_{safe_name}"
+        hef_dest_path = models_dir / unique_stored_name
+
+        hasher = hashlib.sha256()
+        file_size = 0
+        with open(hef_dest_path, "wb") as f:
+            while chunk := await hef_file.read(65536):
+                hasher.update(chunk)
+                file_size += len(chunk)
+                f.write(chunk)
+        file_hash = hasher.hexdigest()
 
         # Map task → default post-process shared library
         so_map = {
             "detection": "libyolo_hailortpp_post.so",
             "classification": "libclassification_post.so",
             "pose": "libyolo_hailortpp_post.so",
+            "segmentation": "libyolo_hailortpp_post.so",
         }
         default_so = so_map.get(task, "libyolo_hailortpp_post.so")
 
         entities = read_entities()
-        new_model_id = f"model_{int(time.time())}"
         if "models" not in entities:
             entities["models"] = []
 
-        entities["models"].append({
+        model_entry = {
             "id": new_model_id,
             "name": name,
             "task": task,
-            "hef_path": hef_file.filename,
+            "hef_path": unique_stored_name,
+            "original_filename": orig_filename,
+            "file_hash": file_hash,
+            "file_size": file_size,
+            "version": (version or "v1.0").strip(),
+            "description": "Uploaded from IRIV Model Studio",
             "so_path": default_so,
             "classes": []
-        })
+        }
+        entities["models"].append(model_entry)
         write_entities(entities)
 
-        logger.info(f"HEF uploaded and registered: {name} ({task})")
+        logger.info(f"HEF uploaded and registered: {name} (ID: {new_model_id}, File: {unique_stored_name})")
         return {
             "status": "success",
             "model_id": new_model_id,
+            "stored_file": unique_stored_name,
+            "original_filename": orig_filename,
+            "file_hash": file_hash,
+            "file_size": file_size,
+            "version": model_entry["version"],
             "message": f"Model '{name}' uploaded and registered successfully"
         }
     except Exception as e:
@@ -787,6 +865,41 @@ class PipelinePayload(BaseModel):
     nodes: List[Dict[str, Any]]
     edges: List[Dict[str, Any]]
     deploy_mode: Optional[str] = "modified_nodes"  # "modified_nodes" | "modified_flows" | "full"
+
+@app.post("/api/wiki/sandbox/deploy")
+async def deploy_wiki_sandbox(payload: PipelinePayload):
+    project_id = "wiki_sandbox"
+    logger.info(f"Received sandbox deployment for Wiki: {len(payload.nodes)} nodes")
+    try:
+        if project_id in active_workers:
+            logger.info("Stopping existing sandbox worker...")
+            active_workers[project_id].stop()
+            del active_workers[project_id]
+        
+        parser = PipelineParser(payload.nodes, payload.edges)
+        pipeline_def = parser.parse()
+        
+        worker = HailoPipelineWorker(pipeline_def, project_id=project_id)
+        worker.set_metadata_callback(functools.partial(on_metadata_received, project_id))
+        worker.start()
+        active_workers[project_id] = worker
+        
+        return {"status": "success", "message": "Sandbox deployed"}
+    except Exception as e:
+        logger.error(f"Failed to deploy sandbox: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/wiki/sandbox/stop")
+async def stop_wiki_sandbox():
+    project_id = "wiki_sandbox"
+    try:
+        if project_id in active_workers:
+            logger.info("Stopping sandbox worker...")
+            active_workers[project_id].stop()
+            del active_workers[project_id]
+        return {"status": "success", "message": "Sandbox stopped"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @app.post("/api/pipeline/deploy")
 async def deploy_pipeline(payload: PipelinePayload):
@@ -1003,7 +1116,15 @@ except Exception as e:
     combined_output = result.stdout + result.stderr
     
     if "COMPILE_SUCCESS" in combined_output and hef_path.exists():
-        # Auto-register compiled model in entities.json
+        # Compute hash and size
+        hasher = hashlib.sha256()
+        file_size = hef_path.stat().st_size
+        with open(hef_path, "rb") as f:
+            while chunk := f.read(65536):
+                hasher.update(chunk)
+        file_hash = hasher.hexdigest()
+
+        # Auto-register compiled model in entities
         entities = read_entities()
         new_model_id = f"model_{int(time.time())}"
         if "models" not in entities:
@@ -1014,6 +1135,11 @@ except Exception as e:
             "name": model_name,
             "task": task,
             "hef_path": hef_path.name,
+            "original_filename": onnx_file.filename or f"{model_name}.onnx",
+            "file_hash": file_hash,
+            "file_size": file_size,
+            "version": "v1.0",
+            "description": "Compiled from ONNX via Hailo DFC",
             "so_path": "libyolo_hailortpp_post.so" if task == "detection" else "libclassification_post.so"
         })
         write_entities(entities)
@@ -1023,7 +1149,9 @@ except Exception as e:
             "status": "success",
             "message": f"Model '{model_name}' compiled and registered successfully",
             "model_id": new_model_id,
-            "hef_path": hef_path.name
+            "hef_path": hef_path.name,
+            "file_hash": file_hash,
+            "file_size": file_size
         }
     else:
         logger.error(f"Compilation failed: {combined_output}")

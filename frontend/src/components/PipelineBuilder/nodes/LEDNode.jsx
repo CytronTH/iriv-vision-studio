@@ -5,7 +5,8 @@ import NodeMenu from './NodeMenu';
 import usePipelineStore from '../../../store/usePipelineStore';
 
 export default function LEDNode({ id, data }) {
-  const updateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const globalUpdateNodeData = usePipelineStore((state) => state.updateNodeData);
+  const updateNodeData = data?.onUpdate || globalUpdateNodeData;
 
   const handlePinChange = (e) => {
     updateNodeData(id, { pin: e.target.value });

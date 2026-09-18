@@ -226,6 +226,10 @@ async def export_project(
                     "name": m.get("name"),
                     "task": m.get("task", ""),
                     "hef_file": hef_fname,
+                    "original_filename": m.get("original_filename", hef_fname or ""),
+                    "file_hash": m.get("file_hash", ""),
+                    "version": m.get("version", "v1.0"),
+                    "description": m.get("description", ""),
                     "so_file": so_fname,
                     "file_size": hef_size,
                     "classes": m.get("classes", [])
@@ -590,6 +594,11 @@ async def import_project(
                         existing_m.name = m.get("name", existing_m.name)
                         existing_m.task = m.get("task", existing_m.task)
                         existing_m.hef_path = m.get("hef_path", existing_m.hef_path)
+                        existing_m.original_filename = m.get("original_filename", getattr(existing_m, "original_filename", "") or "")
+                        existing_m.file_hash = m.get("file_hash", getattr(existing_m, "file_hash", "") or "")
+                        existing_m.file_size = m.get("file_size", getattr(existing_m, "file_size", 0) or 0)
+                        existing_m.version = m.get("version", getattr(existing_m, "version", "v1.0") or "v1.0")
+                        existing_m.description = m.get("description", getattr(existing_m, "description", "") or "")
                         existing_m.so_path = m.get("so_path", existing_m.so_path)
                         existing_m.tags_json = tags_str
                         existing_m.classes_json = classes_str
@@ -601,6 +610,11 @@ async def import_project(
                             type=m.get("type", "model"),
                             hardware=m.get("hardware", ""),
                             hef_path=m.get("hef_path", ""),
+                            original_filename=m.get("original_filename", ""),
+                            file_hash=m.get("file_hash", ""),
+                            file_size=m.get("file_size", 0),
+                            version=m.get("version", "v1.0"),
+                            description=m.get("description", ""),
                             so_path=m.get("so_path", ""),
                             task=m.get("task", "detection"),
                             tags_json=tags_str,
