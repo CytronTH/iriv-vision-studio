@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BaseEdge, EdgeLabelRenderer, getBezierPath } from '@xyflow/react';
 import usePipelineStore from '../../../store/usePipelineStore';
-import { X } from 'lucide-react';
+import { X, GripHorizontal } from 'lucide-react';
 
 export default function ButtonEdge({
   id,
@@ -30,19 +30,57 @@ export default function ButtonEdge({
   const nodes = usePipelineStore((state) => state.nodes);
   const edges = usePipelineStore((state) => state.edges);
 
+  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
+
   const onEdgeClick = (evt, id) => {
     evt.stopPropagation();
     deleteEdge(id);
   };
 
-  let payload = null;
+  const handlePointerDown = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setIsDragging(true);
+    dragStartRef.current = { x: e.clientX - dragOffset.x, y: e.clientY - dragOffset.y };
+  };
+
+  useEffect(() => {
+    const handlePointerMove = (e) => {
+      if (!isDragging) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOffset({
+        x: e.clientX - dragStartRef.current.x,
+        y: e.clientY - dragStartRef.current.y
+      });
+    };
+
+    const handlePointerUp = (e) => {
+      if (isDragging) {
+        setIsDragging(false);
+      }
+    };
+
+    if (isDragging) {
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+    }
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [isDragging]);
+
+  let rawPayload = null;
   if (advancedDebugMode) {
     const sourceNode = nodes.find((n) => n.id === source);
     if (sourceNode) {
       if (
         ['logicNode', 'rateLimitNode', 'flowCounterNode', 'counterNode', 'shelfSlotMonitorNode', 'forkliftZoneNode'].includes(sourceNode.type)
       ) {
-        payload = debugData[source];
+        rawPayload = debugData[source];
       } else if (sourceNode.type === 'aiNode') {
         const aiIncoming = edges.find((e) => e.target === source);
         if (aiIncoming) {
@@ -59,12 +97,21 @@ export default function ButtonEdge({
             const aiIdx = siblingAiNodeIds.indexOf(source);
             camId = `cam_${inputNodeId}_${aiIdx >= 0 ? aiIdx : 0}`;
           }
-          payload = debugData[camId];
+          rawPayload = debugData[camId];
         }
       } else if (sourceNode.type === 'inputNode') {
-        payload = debugData[`cam_${source}`];
+        rawPayload = debugData[`cam_${source}`];
       }
     }
+  }
+
+  // Extract the full msg envelope if available, else fallback to the raw payload
+  let displayPayload = rawPayload;
+  if (rawPayload && rawPayload.msg) {
+    displayPayload = rawPayload.msg;
+  } else if (rawPayload && rawPayload.type === "detection") {
+     // Format raw detection if msg envelope is not directly attached
+     displayPayload = rawPayload.msg || rawPayload;
   }
 
   return (
@@ -90,15 +137,33 @@ export default function ButtonEdge({
           >
             <X size={12} strokeWidth={3} />
           </button>
-          
-          {advancedDebugMode && payload && (
-            <div className="bg-gray-900/85 backdrop-blur-sm border border-gray-700 rounded p-2 text-green-400 font-mono text-[10px] leading-tight max-w-[300px] overflow-hidden shadow-lg shadow-black/50">
-              <pre className="whitespace-pre-wrap word-break">
-                {JSON.stringify(payload, null, 2)}
-              </pre>
-            </div>
-          )}
         </div>
+
+        {advancedDebugMode && displayPayload && (
+          <div
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX + dragOffset.x}px,${labelY + dragOffset.y}px)`,
+              pointerEvents: 'all',
+            }}
+            className="nodrag nopan z-50 flex flex-col items-center"
+          >
+            <div className="bg-gray-900/90 backdrop-blur-md border border-gray-600 rounded shadow-xl overflow-hidden min-w-[250px] max-w-[400px]">
+              <div 
+                className="bg-gray-800 border-b border-gray-700 p-1 flex justify-center cursor-grab active:cursor-grabbing hover:bg-gray-700 transition-colors"
+                onPointerDown={handlePointerDown}
+                title="Drag to move"
+              >
+                <GripHorizontal size={14} className="text-gray-400" />
+              </div>
+              <div className="p-2 text-green-400 font-mono text-[10px] leading-tight max-h-[300px] overflow-y-auto custom-scrollbar shadow-inner">
+                <pre className="whitespace-pre-wrap word-break m-0">
+                  {JSON.stringify(displayPayload, null, 2)}
+                </pre>
+              </div>
+            </div>
+          </div>
+        )}
       </EdgeLabelRenderer>
     </>
   );

@@ -6,6 +6,7 @@ import Sidebar from './Sidebar';
 import DebugPanel from './DebugPanel';
 import DebugWebSocket from './DebugWebSocket';
 import usePipelineStore from '../../store/usePipelineStore';
+import { useShallow } from 'zustand/react/shallow';
 import ExportProjectModal from '../Home/ExportProjectModal';
 
 import { nodeTypes, edgeTypes } from './nodeTypes';
@@ -13,7 +14,7 @@ import { nodeTypes, edgeTypes } from './nodeTypes';
 let id = 0;
 const getId = () => `dndnode_${Date.now()}_${id++}`;
 
-export default function PipelineBuilder({ projectId, onOpenWiki }) {
+export default React.memo(function PipelineBuilder({ projectId, onOpenWiki }) {
   const reactFlowWrapper = useRef(null);
   const [reactFlowInstance, setReactFlowInstance] = React.useState(null);
   const [isSelectMode, setIsSelectMode] = useState(true);
@@ -29,7 +30,26 @@ export default function PipelineBuilder({ projectId, onOpenWiki }) {
     advancedDebugMode, toggleAdvancedDebugMode,
     dirtyNodeIds, deployMode, setDeployMode, markAsDeployed,
     deleteNodes, deleteEdge
-  } = usePipelineStore();
+  } = usePipelineStore(useShallow((state) => ({
+    nodes: state.nodes,
+    edges: state.edges,
+    onNodesChange: state.onNodesChange,
+    onEdgesChange: state.onEdgesChange,
+    onConnect: state.onConnect,
+    addNode: state.addNode,
+    setPipeline: state.setPipeline,
+    setProjectId: state.setProjectId,
+    showMetricsOverlay: state.showMetricsOverlay,
+    toggleMetricsOverlay: state.toggleMetricsOverlay,
+    advancedDebugMode: state.advancedDebugMode,
+    toggleAdvancedDebugMode: state.toggleAdvancedDebugMode,
+    dirtyNodeIds: state.dirtyNodeIds,
+    deployMode: state.deployMode,
+    setDeployMode: state.setDeployMode,
+    markAsDeployed: state.markAsDeployed,
+    deleteNodes: state.deleteNodes,
+    deleteEdge: state.deleteEdge
+  })));
 
   React.useEffect(() => {
     if (!projectId) return;
@@ -62,7 +82,7 @@ export default function PipelineBuilder({ projectId, onOpenWiki }) {
       event.preventDefault();
 
       const type = event.dataTransfer.getData('application/reactflow');
-      if (typeof type === 'undefined' || !type) {
+      if (typeof type === 'undefined' || !type || !reactFlowInstance) {
         return;
       }
 
@@ -219,12 +239,26 @@ export default function PipelineBuilder({ projectId, onOpenWiki }) {
   }, [nodes]);
 
   const styledNodes = React.useMemo(() => {
-    return nodes
-      .filter(node => !node.data?.isTutorialMock)
-      .map(node => ({
-        ...node,
-        className: `${node.className || ''} ${node.data?.disabled ? 'node-disabled' : ''} ${dirtyNodeIds.includes(node.id) ? 'node-dirty' : ''}`.trim()
-      }));
+    return nodes.reduce((acc, node) => {
+      if (node.data?.isTutorialMock) return acc;
+      
+      const isDirty = dirtyNodeIds.includes(node.id);
+      const isDisabled = node.data?.disabled;
+      
+      let baseClassName = node.className || '';
+      baseClassName = baseClassName.replace('node-disabled', '').replace('node-dirty', '').trim();
+      // Only keep a single space between classes
+      baseClassName = baseClassName.replace(/\s+/g, ' ');
+      
+      const targetClassName = `${baseClassName} ${isDisabled ? 'node-disabled' : ''} ${isDirty ? 'node-dirty' : ''}`.trim().replace(/\s+/g, ' ');
+      
+      if (node.className === targetClassName) {
+        acc.push(node);
+      } else {
+        acc.push({ ...node, className: targetClassName });
+      }
+      return acc;
+    }, []);
   }, [nodes, dirtyNodeIds]);
 
   const mainEdges = React.useMemo(() => {
@@ -282,6 +316,8 @@ export default function PipelineBuilder({ projectId, onOpenWiki }) {
                 <MousePointer2 size={18} className="sm:w-5 sm:h-5" />
               </button>
             </div>
+
+            <div className="w-px h-6 sm:h-8 bg-gray-700"></div>
 
             {/* Toggle Live Telemetry Overlay */}
             <button
@@ -486,6 +522,7 @@ export default function PipelineBuilder({ projectId, onOpenWiki }) {
             onDragOver={onDragOver}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
+            onlyRenderVisibleElements={false}
             fitView
             className="bg-gray-900"
           >
@@ -548,4 +585,4 @@ export default function PipelineBuilder({ projectId, onOpenWiki }) {
       </ReactFlowProvider>
     </div>
   );
-}
+});

@@ -3,6 +3,7 @@ import time
 import queue
 import threading
 from typing import Dict, Any, List
+from ai_engine.telemetry_db import telemetry_db
 
 logger = logging.getLogger(__name__)
 
@@ -136,7 +137,8 @@ class LogicNode(PipelineNode):
                 "type": "logic_state",
                 "node_id": self.node_id,
                 "value": final_val,
-                "camera_id": msg.get("camera_id")
+                "camera_id": msg.get("camera_id"),
+                "msg": msg
             })
 
         return msg
@@ -169,13 +171,23 @@ class CounterNode(PipelineNode):
                 "type": "dashboard_update",
                 "node_id": f"dashboard.{self.node_id}.value",
                 "value": self.count,
-                "camera_id": msg.get("camera_id", msg.get("metadata", {}).get("camera_id"))
+                "camera_id": msg.get("camera_id", msg.get("metadata", {}).get("camera_id")),
+                "msg": msg
             })
+            
+            ts = msg.get("metadata", {}).get("timestamp", time.time())
+            
+            # Optimize TSDB insertions: only insert if value changed
+            if getattr(self, '_last_telemetry_count', None) != self.count:
+                telemetry_db.insert_history(self.node_id, ts, self.count)
+                self._last_telemetry_count = self.count
+            
             self.router.metadata_callback({
                 "type": "counter_update",
                 "node_id": self.node_id,
                 "value": self.count,
-                "camera_id": msg.get("camera_id", msg.get("metadata", {}).get("camera_id"))
+                "camera_id": msg.get("camera_id", msg.get("metadata", {}).get("camera_id")),
+                "msg": msg
             })
             
         return msg
@@ -250,13 +262,26 @@ class FlowCounterNode(PipelineNode):
         should_broadcast = (newly_counted > 0) or (now - getattr(self, '_last_broadcast_time', 0) >= 0.5)
         if should_broadcast and self.router.metadata_callback:
             self._last_broadcast_time = now
+            
+            payload_data = {
+                "counts": dict(self.cumulative_totals),
+                "total": self.total_count,
+                "newly_counted": newly_counted
+            }
+            ts = msg.get("metadata", {}).get("timestamp", now)
+            
+            if getattr(self, '_last_telemetry_total', None) != self.total_count:
+                telemetry_db.insert_history(self.node_id, ts, payload_data)
+                self._last_telemetry_total = self.total_count
+
             self.router.metadata_callback({
                 "type": "flow_counter_update",
                 "node_id": self.node_id,
                 "counts": dict(self.cumulative_totals),
                 "total": self.total_count,
                 "newly_counted": newly_counted,
-                "camera_id": camera_id
+                "camera_id": camera_id,
+                "msg": msg
             })
 
         if self.auto_log and (now - self.last_flush_time >= self.flush_interval_sec):
@@ -346,7 +371,10 @@ class DashboardOutputNode(PipelineNode):
             source_path = self.data.get("sourcePath", "msg.payload")
             
             def get_nested(d, path):
-                keys = path.split('.')
+                import re
+                # Convert array notation [0] to dot notation .0
+                clean_path = re.sub(r'\[(\d+)\]', r'.\1', path)
+                keys = clean_path.split('.')
                 # allow starting with "msg."
                 if keys and keys[0] == "msg":
                     keys = keys[1:]
@@ -355,9 +383,20 @@ class DashboardOutputNode(PipelineNode):
                 for k in keys:
                     if isinstance(val, dict) and k in val:
                         val = val[k]
-                    elif isinstance(val, list) and k == "length":
-                        val = len(val)
+                    elif isinstance(val, list):
+                        if k == "length":
+                            val = len(val)
+                        elif k.isdigit() and int(k) < len(val):
+                            val = val[int(k)]
+                        else:
+                            return None
                     else:
+                        # MAGIC FOR UI COMPATIBILITY: 
+                        # If the backend payload is a primitive (like bool from LogicNode)
+                        # but the UI dropdown shows the websocket envelope fields (type, node_id, value),
+                        # we map ".value" directly to the primitive itself so the dashboard works.
+                        if k == "value" and isinstance(val, (bool, int, float, str)):
+                            return val
                         return None
                 return val
 

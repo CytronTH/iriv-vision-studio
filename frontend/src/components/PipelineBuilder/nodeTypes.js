@@ -1,3 +1,4 @@
+import React, { memo } from 'react';
 import InputNode from './nodes/InputNode';
 import AINode from './nodes/AINode';
 import LogicNode from './nodes/LogicNode';
@@ -24,31 +25,31 @@ import SnapshotNode from './nodes/SnapshotNode';
 import ButtonEdge from './edges/ButtonEdge';
 
 export const edgeTypes = {
-  buttonEdge: ButtonEdge,
+  buttonEdge: memo(ButtonEdge),
 };
 
 export const nodeTypes = {
-  inputNode: InputNode,
-  aiNode: AINode,
-  logicNode: LogicNode,
-  actionNode: ActionNode,
-  digitalInputNode: DigitalInputNode,
-  digitalOutputNode: DigitalOutputNode,
-  ledNode: LEDNode,
-  buzzerNode: BuzzerNode,
-  rs485Node: RS485Node,
-  dashboardVideoNode: DashboardVideoNode,
-  dashboardMetricNode: DashboardMetricNode,
-  dashboardTextNode: DashboardTextNode,
-  dashboardLogNode: DashboardLogNode,
-  dashboardChartNode: DashboardChartNode,
-  debugNode: DebugNode,
-  debugOutputNode: DebugOutputNode,
-  functionNode: FunctionNode,
-  rateLimitNode: RateLimitNode,
-  counterNode: CounterNode,
-  flowCounterNode: FlowCounterNode,
-  shelfSlotMonitorNode: ShelfSlotMonitorNode,
-  forkliftZoneNode: ForkliftZoneNode,
-  snapshotNode: SnapshotNode,
+  inputNode: memo(InputNode),
+  aiNode: memo(AINode),
+  logicNode: memo(LogicNode),
+  actionNode: memo(ActionNode),
+  digitalInputNode: memo(DigitalInputNode),
+  digitalOutputNode: memo(DigitalOutputNode),
+  ledNode: memo(LEDNode),
+  buzzerNode: memo(BuzzerNode),
+  rs485Node: memo(RS485Node),
+  dashboardVideoNode: memo(DashboardVideoNode),
+  dashboardMetricNode: memo(DashboardMetricNode),
+  dashboardTextNode: memo(DashboardTextNode),
+  dashboardLogNode: memo(DashboardLogNode),
+  dashboardChartNode: memo(DashboardChartNode),
+  debugNode: memo(DebugNode),
+  debugOutputNode: memo(DebugOutputNode),
+  functionNode: memo(FunctionNode),
+  rateLimitNode: memo(RateLimitNode),
+  counterNode: memo(CounterNode),
+  flowCounterNode: memo(FlowCounterNode),
+  shelfSlotMonitorNode: memo(ShelfSlotMonitorNode),
+  forkliftZoneNode: memo(ForkliftZoneNode),
+  snapshotNode: memo(SnapshotNode),
 };

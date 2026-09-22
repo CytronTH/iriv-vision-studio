@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Activity, Server, LayoutDashboard, GitMerge, Settings as SettingsIcon, ChevronLeft, Home, Sun, Moon, Power, RefreshCw, BookOpen, Menu, X, Database } from 'lucide-react';
 import LiveDashboard from './components/LiveDashboard';
 import PipelineBuilder from './components/PipelineBuilder/PipelineBuilder';
@@ -20,6 +20,11 @@ function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [wikiNode, setWikiNode] = useState(null);
+
+  const handleOpenWiki = useCallback((nodeType) => {
+    setWikiNode(nodeType);
+    setActiveTab('wiki');
+  }, []);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -91,12 +96,24 @@ function App() {
                 
                 const prevNodeData = newData['dashboard'][data.node_id];
                 const history = prevNodeData?.history || [];
-                const newItem = { timestamp: new Date().toLocaleTimeString(), value: data.value };
                 
-                const newHistory = [newItem, ...history].slice(0, 50);
+                // Only add to history if value changed, to prevent history filling up with identical frames
+                let newHistory = history;
+                if (history.length === 0 || history[0].value !== data.value) {
+                    let ts = new Date().toLocaleTimeString();
+                    if (data.msg && data.msg.metadata && data.msg.metadata.timestamp) {
+                       ts = new Date(data.msg.metadata.timestamp * 1000).toLocaleTimeString();
+                    } else if (data.timestamp) {
+                       ts = new Date(data.timestamp * 1000).toLocaleTimeString();
+                    }
+                    const newItem = { timestamp: ts, value: data.value, msg: data.msg };
+                    newHistory = [newItem, ...history].slice(0, 50);
+                }
+                
                 newData['dashboard'][data.node_id] = {
                    value: data.value,
-                   history: newHistory
+                   history: newHistory,
+                   msg: data.msg
                 };
                 return newData;
              });
@@ -449,10 +466,7 @@ function App() {
                <div className="h-full flex flex-col p-2 sm:p-4 md:p-6">
                  <PipelineBuilder 
                    projectId={activeProject.id} 
-                   onOpenWiki={(nodeType) => {
-                     setWikiNode(nodeType);
-                     setActiveTab('wiki');
-                   }}
+                   onOpenWiki={handleOpenWiki}
                  />
                </div>
              </ErrorBoundary>

@@ -915,7 +915,7 @@ async def deploy_pipeline(payload: PipelinePayload):
         worker = active_workers.get(project_id)
         is_worker_running = worker is not None and getattr(worker, 'is_running', False)
 
-        projects = read_projects()
+        projects = await asyncio.to_thread(read_projects)
         target_project = next((p for p in projects if p["id"] == project_id), None)
         old_nodes = target_project.get("pipeline", {}).get("nodes", []) if target_project else []
         old_edges = target_project.get("pipeline", {}).get("edges", []) if target_project else []
@@ -952,7 +952,7 @@ async def deploy_pipeline(payload: PipelinePayload):
                         p["exposed_data_sources"] = config.dashboard_nodes
                         p["is_running"] = True
                         break
-                write_projects(projects)
+                await asyncio.to_thread(write_projects, projects)
 
                 return {
                     "status": "success",
@@ -981,7 +981,7 @@ async def deploy_pipeline(payload: PipelinePayload):
                 p["exposed_data_sources"] = config.dashboard_nodes
                 p["is_running"] = True
                 break
-        write_projects(projects)
+        await asyncio.to_thread(write_projects, projects)
             
         return {
             "status": "success",
@@ -1546,4 +1546,15 @@ async def get_update_status():
             }
         }
     except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/nodes/{node_id}/history")
+async def get_node_history(node_id: str, limit: int = 300, timeframe_min: int = None, aggregate_min: int = None):
+    """Fetch time-series history for a specific node from telemetry_db"""
+    try:
+        from ai_engine.telemetry_db import telemetry_db
+        history = telemetry_db.get_history(node_id, limit=limit, timeframe_min=timeframe_min, aggregate_min=aggregate_min)
+        return {"status": "success", "data": history}
+    except Exception as e:
+        logger.error(f"Error fetching history for {node_id}: {e}")
         return {"status": "error", "message": str(e)}

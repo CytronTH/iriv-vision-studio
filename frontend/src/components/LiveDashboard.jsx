@@ -304,10 +304,32 @@ export default function LiveDashboard({ metadata, connected, projectId }) {
                   />
                 )}
                 {type === 'chart' && (
-                  <ChartWidget 
-                    title={config.title} 
-                    data={getNestedValue(metadata, config.dataPath) || []} 
-                  />
+                  (() => {
+                    const paths = config.dataPaths || (config.dataPath ? [config.dataPath] : []);
+                    const nodeIds = [];
+                    const nodeDataList = [];
+                    
+                    paths.forEach(path => {
+                        const match = path.match(/^dashboard\.(.+?)\.(?:value|history)$/);
+                        if (match) nodeIds.push({ id: match[1], path });
+                        const nodeDataPath = path.replace(/\.(?:value|history)$/, '');
+                        
+                        // We need a stable way to extract getNestedValue. Let's just pass the parts.
+                        // Actually, doing it here is fine.
+                    });
+                    
+                    // We can just pass the whole metadata and paths, but for performance, 
+                    // passing only what's needed is better. However, ChartWidget can just extract what it needs.
+                    
+                    return (
+                      <ChartWidget 
+                        title={config.title} 
+                        config={config}
+                        paths={paths}
+                        metadata={metadata}
+                      />
+                    );
+                  })()
                 )}
                 {type === 'historicalChart' && (
                   <HistoricalChartWidget 

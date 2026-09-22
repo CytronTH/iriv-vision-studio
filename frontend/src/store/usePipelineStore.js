@@ -13,8 +13,26 @@ const cleanNodeData = (data) => {
 };
 
 const areDataEqual = (d1, d2) => {
+  if (d1 === d2) return true;
   try {
-    return JSON.stringify(cleanNodeData(d1)) === JSON.stringify(cleanNodeData(d2));
+    const c1 = cleanNodeData(d1);
+    const c2 = cleanNodeData(d2);
+    const keys1 = Object.keys(c1);
+    const keys2 = Object.keys(c2);
+    if (keys1.length !== keys2.length) return false;
+    for (let i = 0; i < keys1.length; i++) {
+      const key = keys1[i];
+      const val1 = c1[key];
+      const val2 = c2[key];
+      if (val1 !== val2) {
+        if (typeof val1 === 'object' && val1 !== null && typeof val2 === 'object' && val2 !== null) {
+          if (JSON.stringify(val1) !== JSON.stringify(val2)) return false;
+        } else {
+          return false;
+        }
+      }
+    }
+    return true;
   } catch (e) {
     return false;
   }
@@ -102,7 +120,7 @@ const usePipelineStore = create((set, get) => ({
         const processedEdges = (edges || get().edges).map(edge => ({
           ...edge,
           type: 'buttonEdge',
-          animated: true,
+          animated: false,
           style: { stroke: '#3b82f6', strokeWidth: 2 }
         }));
         const targetNodes = nodes || get().nodes;
@@ -117,7 +135,7 @@ const usePipelineStore = create((set, get) => ({
         const processedEdges = edges.map(edge => ({
           ...edge,
           type: 'buttonEdge',
-          animated: true,
+          animated: false,
           style: { stroke: '#3b82f6', strokeWidth: 2 }
         }));
         set({
@@ -212,7 +230,7 @@ const usePipelineStore = create((set, get) => ({
       },
       
       onConnect: (connection) => {
-        const newEdges = addEdge({ ...connection, type: 'buttonEdge', animated: true, style: { stroke: '#3b82f6', strokeWidth: 2 } }, get().edges);
+        const newEdges = addEdge({ ...connection, type: 'buttonEdge', animated: false, style: { stroke: '#3b82f6', strokeWidth: 2 } }, get().edges);
         const dirtyIds = getDirtyNodeIds(get().nodes, newEdges, get().lastDeployedNodes, get().lastDeployedEdges);
         set({
           edges: newEdges,

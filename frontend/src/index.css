@@ -145,3 +145,21 @@
   outline-offset: 2px !important;
   box-shadow: 0 0 16px rgba(59, 130, 246, 0.4) !important;
 }
+
+/* ========================================================================= */
+/* Pipeline Builder Dual View Modes (Inline vs Compact/Sidebar)             */
+/* ========================================================================= */
+
+/* Sidebar Mode (rendered inside the right sidebar) */
+.node-sidebar-mode .react-flow__handle { display: none !important; }
+.node-sidebar-mode .node-header { display: none !important; }
+.node-sidebar-mode { 
+  border: none !important; 
+  box-shadow: none !important; 
+  width: 100% !important; 
+  min-width: 100% !important;
+  background: transparent !important; 
+  transform: none !important;
+}
+
+

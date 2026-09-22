@@ -18,7 +18,15 @@ export default function WidgetSettingsModal({ isOpen, onClose, onSave, widgetIte
       setFormData({
         title: widgetItem.config.title || '',
         dataPath: widgetItem.config.dataPath || '',
-        unit: widgetItem.config.unit || ''
+        dataPaths: widgetItem.config.dataPaths || (widgetItem.config.dataPath ? [widgetItem.config.dataPath] : []),
+        unit: widgetItem.config.unit || '',
+        chartType: widgetItem.config.chartType || 'stepAfter',
+        color: widgetItem.config.color || '#10b981',
+        threshold: widgetItem.config.threshold || '',
+        timeframe: widgetItem.config.timeframe || '5m',
+        lockTimeframe: widgetItem.config.lockTimeframe || false,
+        yMin: widgetItem.config.yMin || '',
+        yMax: widgetItem.config.yMax || ''
       });
     }
   }, [widgetItem]);
@@ -64,7 +72,7 @@ export default function WidgetSettingsModal({ isOpen, onClose, onSave, widgetIte
           </button>
         </div>
         
-        <div className="p-4 space-y-4">
+        <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-1">Widget Title</label>
             <input 
@@ -79,20 +87,48 @@ export default function WidgetSettingsModal({ isOpen, onClose, onSave, widgetIte
 
           <div>
             <label className="block text-sm font-medium text-gray-400 mb-1">Data Path Binding</label>
-            <select 
-              name="dataPath"
-              value={formData.dataPath}
-              onChange={handleChange}
-              className="w-full bg-gray-950 border border-gray-700 rounded p-2 text-white text-sm focus:border-blue-500 outline-none"
-            >
-              <option value="">-- Select Data Source --</option>
-              {filteredSources.map(ds => (
-                <option key={ds.id} value={ds.id}>{ds.name} ({ds.dataType})</option>
-              ))}
-            </select>
+            {widgetItem.type === 'chart' ? (
+              <div className="w-full bg-gray-950 border border-gray-700 rounded p-2 text-white text-sm focus-within:border-blue-500 max-h-32 overflow-y-auto">
+                {filteredSources.length === 0 ? (
+                  <p className="text-gray-500 italic">No supported sources available.</p>
+                ) : (
+                  filteredSources.map(ds => (
+                    <label key={ds.id} className="flex items-center gap-2 mb-1 cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        checked={formData.dataPaths?.includes(ds.id)}
+                        onChange={(e) => {
+                          const paths = formData.dataPaths || [];
+                          if (e.target.checked) {
+                            setFormData({ ...formData, dataPaths: [...paths, ds.id] });
+                          } else {
+                            setFormData({ ...formData, dataPaths: paths.filter(p => p !== ds.id) });
+                          }
+                        }}
+                        className="rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span>{ds.name} ({ds.dataType})</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            ) : (
+              <select 
+                name="dataPath"
+                value={formData.dataPath}
+                onChange={handleChange}
+                className="w-full bg-gray-950 border border-gray-700 rounded p-2 text-white text-sm focus:border-blue-500 outline-none"
+              >
+                <option value="">-- Select Data Source --</option>
+                {filteredSources.map(ds => (
+                  <option key={ds.id} value={ds.id}>{ds.name} ({ds.dataType})</option>
+                ))}
+              </select>
+            )}
+            
             <p className="text-xs text-gray-500 mt-1">
               {supportedTypes.length > 0 
-                ? `Only data types [${supportedTypes.join(', ')}] are supported for this widget.` 
+                ? `Only data types [${supportedTypes.join(', ')}] are supported.` 
                 : "No data binding required for this widget."}
             </p>
           </div>
@@ -109,6 +145,112 @@ export default function WidgetSettingsModal({ isOpen, onClose, onSave, widgetIte
                 placeholder="e.g. %, persons, °C"
               />
             </div>
+          )}
+
+          {widgetItem.type === 'chart' && (
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Chart Type</label>
+                  <select 
+                    name="chartType"
+                    value={formData.chartType}
+                    onChange={handleChange}
+                    className="w-full bg-gray-950 border border-gray-700 rounded p-2 text-white text-sm focus:border-blue-500 outline-none"
+                  >
+                    <option value="stepAfter">Step Line</option>
+                    <option value="monotone">Smooth Line</option>
+                    <option value="area">Area Chart</option>
+                    <option value="bar">Bar Chart</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Timeframe</label>
+                  <div className="flex flex-col gap-2">
+                    <select 
+                      name="timeframe"
+                      value={formData.timeframe}
+                      onChange={handleChange}
+                      className="w-full bg-gray-950 border border-gray-700 rounded p-2 text-white text-sm focus:border-blue-500 outline-none"
+                    >
+                      <option value="5m">5 Minutes</option>
+                      <option value="15m">15 Minutes</option>
+                      <option value="1h">1 Hour</option>
+                      <option value="24h">24 Hours</option>
+                    </select>
+                    <label className="flex items-center gap-2 cursor-pointer mt-1">
+                      <input 
+                        type="checkbox" 
+                        name="lockTimeframe"
+                        checked={formData.lockTimeframe || false}
+                        onChange={(e) => setFormData({ ...formData, lockTimeframe: e.target.checked })}
+                        className="rounded border-gray-700 bg-gray-800 text-blue-600 focus:ring-blue-500"
+                      />
+                      <span className="text-sm text-gray-400">Lock X-Axis (Fixed Window)</span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Base Color</label>
+                  <div className="flex gap-2">
+                    <input 
+                      type="color" 
+                      name="color"
+                      value={formData.color}
+                      onChange={handleChange}
+                      className="h-9 w-12 bg-gray-950 border border-gray-700 rounded cursor-pointer"
+                    />
+                    <input 
+                      type="text" 
+                      name="color"
+                      value={formData.color}
+                      onChange={handleChange}
+                      className="w-full bg-gray-950 border border-gray-700 rounded p-2 text-white text-sm focus:border-blue-500 outline-none"
+                      placeholder="#10b981"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Alert Threshold</label>
+                  <input 
+                    type="number" 
+                    name="threshold"
+                    value={formData.threshold}
+                    onChange={handleChange}
+                    className="w-full bg-gray-950 border border-gray-700 rounded p-2 text-white text-sm focus:border-blue-500 outline-none"
+                    placeholder="e.g. 5000"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Y-Axis Min (Auto: empty)</label>
+                  <input 
+                    type="number" 
+                    name="yMin"
+                    value={formData.yMin}
+                    onChange={handleChange}
+                    className="w-full bg-gray-950 border border-gray-700 rounded p-2 text-white text-sm focus:border-blue-500 outline-none"
+                    placeholder="Auto"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-400 mb-1">Y-Axis Max (Auto: empty)</label>
+                  <input 
+                    type="number" 
+                    name="yMax"
+                    value={formData.yMax}
+                    onChange={handleChange}
+                    className="w-full bg-gray-950 border border-gray-700 rounded p-2 text-white text-sm focus:border-blue-500 outline-none"
+                    placeholder="Auto"
+                  />
+                </div>
+              </div>
+            </>
           )}
         </div>
 
