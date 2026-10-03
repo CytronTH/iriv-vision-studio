@@ -1,4 +1,4 @@
-# 📖 Iriv Vision Studio - Development Log
+# 📖 PiDo.AI - Development Log
 
 ไฟล์นี้ใช้สำหรับบันทึกความคืบหน้าของการพัฒนาโปรเจ็กต์ ปัญหาที่พบ การตัดสินใจทางเทคนิค และแผนงานต่อไป เพื่อรักษาความต่อเนื่อง (Continuity) ในการทำงาน
 
@@ -91,7 +91,7 @@
 ## [2026-09-10] - เพิ่มระบบ Project Backup & Migration (Export / Import / Deploy สำหรับสำรองข้อมูลและย้ายบอร์ด)
 
 ### 🎯 เป้าหมาย (Goals)
-- [x] พัฒนาระบบ Export / Download โปรเจ็กต์ออกเป็นไฟล์แพ็กเกจ `.irivproj` (ZIP) หรือ `.json` เพื่อนำไปสำรองข้อมูล หรือนำไป Deploy บนบอร์ดเครื่องอื่นได้แบบ Out-of-the-Box
+- [x] พัฒนาระบบ Export / Download โปรเจ็กต์ออกเป็นไฟล์แพ็กเกจ `.pidoproj` (ZIP) หรือ `.json` เพื่อนำไปสำรองข้อมูล หรือนำไป Deploy บนบอร์ดเครื่องอื่นได้แบบ Out-of-the-Box
 - [x] บรรจุทั้งโครงสร้าง Pipeline, เลย์เอาต์ Dashboard, เอนทิตีที่เกี่ยวข้อง, ไฟล์โมเดล AI (`.hef`), และไฟล์วิดีโอตัวอย่างไปพร้อมกัน
 - [x] พัฒนาระบบ Import & Deploy Modal พร้อมระบบตรวจเช็คความพร้อม (Pre-Inspection / Dry-Run) แสดงรายการโมเดล ขนาดไฟล์ และตรวจจับ Conflict ของชื่อหรือ ID บนบอร์ด
 - [x] เพิ่มปุ่ม Export / Import ในหน้า My Projects (`ProjectList.jsx`), ปุ่ม Export บน Floating Dock ของ `PipelineBuilder.jsx` และแท็บ Backups & Migration ใน `Settings.jsx`
@@ -101,10 +101,10 @@
 - **Backend Architecture & APIs (`backend/`)**:
   - `backend/web_server/project_backup.py`: สร้างโมดูลจัดการ Backup & Migration สมบูรณ์
     - `GET /api/projects/backup/export/{project_id}`: รองรับ `bundle_type="full"|"config_only"` และ `include_videos=true|false`
-    - `POST /api/projects/backup/inspect`: ตรวจสอบไฟล์อัปโหลด `.irivproj`/`.json` ล่วงหน้าโดยไม่ต้องบันทึก เพื่อส่ง Preview ข้อมูลให้หน้าต่าง UI
+    - `POST /api/projects/backup/inspect`: ตรวจสอบไฟล์อัปโหลด `.pidoproj`/`.json` ล่วงหน้าโดยไม่ต้องบันทึก เพื่อส่ง Preview ข้อมูลให้หน้าต่าง UI
     - `POST /api/projects/backup/import`: ทำการคลี่ไฟล์แพ็กเกจอย่างปลอดภัย คัดลอกโมเดล `.hef` บันทึกลงฐานข้อมูล SQLite และเลือกว่าจะเริ่มรัน Pipeline ทันทีหรือไม่
     - `GET /api/projects/backup/export-all`: ส่งออกทุกโปรเจ็กต์รวมเป็น Master Archive ชุดเดียว
-    - `POST /api/projects/backup/snapshots/create` & `GET /api/projects/backup/snapshots`: จัดการ Local Snapshots บนบอร์ดที่ `/home/pi/iriv-backups/projects/` พร้อมระบบ One-Click Restore
+    - `POST /api/projects/backup/snapshots/create` & `GET /api/projects/backup/snapshots`: จัดการ Local Snapshots บนบอร์ดที่ `/home/pi/pido-backups/projects/` พร้อมระบบ One-Click Restore
   - `backend/web_server/main.py`: รวม `project_backup.py` router เข้ากับ FastAPI อย่างไร้รอยต่อ
 - **Frontend UI (`frontend/src/`)**:
   - `frontend/src/components/Home/ExportProjectModal.jsx`: หน้าต่างโมดอลเลือกโหมดการส่งออก (Full Deployment Package แนะนำ หรือ Config Only)
@@ -115,7 +115,7 @@
   - `frontend/src/components/Settings/Settings.jsx`: เพิ่มแท็บ **"Backups & Migration"**
 
 ### 🧠 การตัดสินใจทางเทคนิค (Decisions & Context)
-- **เรื่องที่ตัดสินใจ:** รวมไฟล์ไบนารี `.hef` ของโมเดล AI ลงในแพ็กเกจ `.irivproj` โดยอัตโนมัติ (Full Package)
+- **เรื่องที่ตัดสินใจ:** รวมไฟล์ไบนารี `.hef` ของโมเดล AI ลงในแพ็กเกจ `.pidoproj` โดยอัตโนมัติ (Full Package)
 - **เหตุผล:** หากผู้ใช้นำไฟล์โปรเจ็กต์ไปเปิดบนบอร์ดใหม่ที่ยังไม่มีโมเดลติดตั้งไว้ ระบบจะสามารถรัน Pipeline ได้ทันทีโดยไม่เกิดข้อผิดพลาด Missing Model และมีตัวเลือก Config Only สำหรับกรณีที่ต้องการไฟล์ขนาดเล็ก
 - **เรื่องที่ตัดสินใจ:** เพิ่มการตรวจสอบขนาดไฟล์ก่อนคลี่ไฟล์ทับ และใช้ Atomic File Replace
 - **เหตุผล:** ป้องกันปัญหาไฟล์ `.hef` ถูกเขียนทับขณะที่ HailoRT กำลังโหลดใช้งานอยู่
@@ -150,18 +150,18 @@
 ## [2026-09-04] - เพิ่มฟีเจอร์ Platform Updates (ระบบอัปเดตแพลตฟอร์ม One-Click OTA และ Offline Air-Gapped)
 
 ### 🎯 เป้าหมาย (Goals)
-- [x] เพิ่มระบบอัปเดตซอฟต์แวร์ IRIV Vision Studio บนอุปกรณ์ Edge (Raspberry Pi 5) ให้ผู้ใช้งานสามารถอัปเดตเป็นเวอร์ชันล่าสุดได้ง่ายที่สุดผ่าน Web UI โดยไม่ต้องใช้คำสั่ง Terminal/SSH
+- [x] เพิ่มระบบอัปเดตซอฟต์แวร์ PiDo Vision Studio บนอุปกรณ์ Edge (Raspberry Pi 5) ให้ผู้ใช้งานสามารถอัปเดตเป็นเวอร์ชันล่าสุดได้ง่ายที่สุดผ่าน Web UI โดยไม่ต้องใช้คำสั่ง Terminal/SSH
 - [x] รองรับทั้งการอัปเดตแบบ Online One-Click (ผ่าน GitHub) และ Offline Air-Gapped (อัปโหลดไฟล์ `.tar.gz`)
 - [x] สร้างระบบความปลอดภัย ป้องกันข้อมูล Database SQLite, โมเดล AI และคอนฟิกสูญหาย พร้อมระบบ Auto-Backup และ Rollback
 
 ### 🛠️ สิ่งที่ทำเสร็จแล้ว (Accomplished)
 - **Backend & Updater Scripts (`backend/`)**:
   - `backend/scripts/updater.sh`: สคริปต์ตัวจัดการอัปเดตแบบ Detached Process แยกส่วนเพื่อความปลอดภัย ไม่ขาดตอนขณะรีสตาร์ต Service
-    - จัดการ Auto-Backup โฟลเดอร์ `db/` และ `.env` ไปยัง `/home/pi/iriv-backups/` อัตโนมัติ (เก็บย้อนหลัง 5 ชุด)
+    - จัดการ Auto-Backup โฟลเดอร์ `db/` และ `.env` ไปยัง `/home/pi/pido-backups/` อัตโนมัติ (เก็บย้อนหลัง 5 ชุด)
     - ป้องกัน Git Merge Conflict ด้วยการตั้ง `assume-unchanged` ให้กับไฟล์ SQLite
     - ซิงค์ Dependencies (`requirements.txt`, `npm install`) และรัน Database Migration
     - รองรับการแตกไฟล์ออฟไลน์แบบ Selective Sync (ไม่ทับฐานข้อมูลและโมเดลของผู้ใช้)
-    - บันทึกความคืบหน้าแบบ Real-time ลง `/tmp/iriv_update_status.json` และสั่งรีสตาร์ต `iriv-vision.service`
+    - บันทึกความคืบหน้าแบบ Real-time ลง `/tmp/pido_update_status.json` และสั่งรีสตาร์ต `pido-vision.service`
   - `backend/web_server/main.py`: เพิ่ม API Endpoints สำหรับตรวจสอบและสั่งการอัปเดต
     - `GET /api/system/version`: อ่านเวอร์ชัน Git Tag, Commit, Branch และสเปกเครื่อง
     - `GET /api/system/update/check`: ดึงข้อมูลเปรียบเทียบกับ Remote Repository, ตรวจสอบจำนวน Commits Ahead/Behind, และดึง Changelog
@@ -180,7 +180,7 @@
 
 ### 🧠 การตัดสินใจทางเทคนิค (Decisions & Context)
 - **เรื่องที่ตัดสินใจ:** ใช้ Detached Background Process (`updater.sh`) แทนการรันคำสั่งโดยตรงใน Thread ของ FastAPI
-- **เหตุผล:** หากคำสั่งถูกรันภายใน Web Request ของ Uvicorn เมื่อเซอร์วิสสั่ง `sudo systemctl restart iriv-vision.service` หรือโปรเซสถูกปิด ตัวสคริปต์อัปเดตจะถูกฆ่าทิ้งกลางคัน ทำให้การอัปเดตล้มเหลวหรือระบบเสียหาย การแยกโปรเซสด้วย `start_new_session=True` ช่วยให้สคริปต์ทำงานจนเสร็จสมบูรณ์และรีสตาร์ตได้อย่างราบรื่น
+- **เหตุผล:** หากคำสั่งถูกรันภายใน Web Request ของ Uvicorn เมื่อเซอร์วิสสั่ง `sudo systemctl restart pido-vision.service` หรือโปรเซสถูกปิด ตัวสคริปต์อัปเดตจะถูกฆ่าทิ้งกลางคัน ทำให้การอัปเดตล้มเหลวหรือระบบเสียหาย การแยกโปรเซสด้วย `start_new_session=True` ช่วยให้สคริปต์ทำงานจนเสร็จสมบูรณ์และรีสตาร์ตได้อย่างราบรื่น
 - **เรื่องที่ตัดสินใจ:** ตั้ง `assume-unchanged` และแบ็กอัป `vision_studio.sqlite*` ก่อน `git pull`
 - **เหตุผล:** SQLite บนอุปกรณ์ Edge มีการเขียน log และ WAL file อยู่ตลอดเวลา ซึ่งทำให้ Git มองว่าไฟล์ถูกแก้ไขในเครื่อง (Dirty working tree) การไม่กันไว้ล่วงหน้าจะทำให้ `git pull` เกิด Conflict และหยุดทำงานทันที
 
@@ -428,7 +428,7 @@
 ## [2026-08-13] - เริ่มต้นระบบ Devlog
 
 ### 🎯 เป้าหมาย (Goals)
-- [x] สร้างระบบบันทึกการพัฒนา (Devlog) สำหรับโปรเจ็กต์ `iriv-vision-studio`
+- [x] สร้างระบบบันทึกการพัฒนา (Devlog) สำหรับโปรเจ็กต์ `pido-ai`
 
 ### 🛠️ สิ่งที่ทำเสร็จแล้ว (Accomplished)
 - สร้างไฟล์ `DEVLOG.md` เป็นไฟล์หลักในการบันทึก
@@ -442,4 +442,4 @@
 - ยังไม่มี
 
 ### ⏭️ ก้าวต่อไป (Next Steps)
-- เริ่มบันทึกความคืบหน้าของการพัฒนาฟีเจอร์ต่างๆ ใน `iriv-vision-studio` ลงในไฟล์นี้ในเซสชั่นถัดไป
+- เริ่มบันทึกความคืบหน้าของการพัฒนาฟีเจอร์ต่างๆ ใน `pido-ai` ลงในไฟล์นี้ในเซสชั่นถัดไป

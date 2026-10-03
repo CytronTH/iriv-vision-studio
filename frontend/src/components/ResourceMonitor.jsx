@@ -75,42 +75,42 @@ export default function ResourceMonitor() {
       <button
         type="button"
         onClick={() => setIsModalOpen(true)}
-        className="hidden sm:flex items-center gap-3 md:gap-4 bg-gray-900/90 hover:bg-gray-850 border border-gray-800 hover:border-gray-700 rounded-xl px-3.5 py-1.5 shadow-lg transition-all cursor-pointer group"
+        className="hidden sm:flex items-center gap-3 md:gap-4 bg-gray-50 dark:bg-white/90 dark:bg-gray-900/90 hover:bg-gray-850 border border-gray-200 dark:border-gray-800 hover:border-gray-300 dark:border-gray-700 rounded-xl px-3.5 py-1.5 shadow-lg transition-all cursor-pointer group"
         title="Click to view detailed CPU & NPU breakdown by Process, Pipeline, and Node"
       >
         {/* CPU */}
         <div className="flex items-center gap-1.5" title="CPU Usage (Click for details)">
           <Cpu size={15} className="text-blue-400 shrink-0 group-hover:scale-110 transition-transform" />
-          <span className={`text-xs font-mono w-11 ${isCpuHigh ? 'text-red-400 font-bold' : 'text-gray-300'}`}>
+          <span className={`text-xs font-mono w-11 ${isCpuHigh ? 'text-red-400 font-bold' : 'text-gray-700 dark:text-gray-300'}`}>
             {cpuPercent.toFixed(1)}%
           </span>
         </div>
 
         {/* NPU (Hailo) */}
-        <div className="flex items-center gap-1.5 pl-1 border-l border-gray-800" title="Hailo-8L NPU Usage (Click for details)">
+        <div className="flex items-center gap-1.5 pl-1 border-l border-gray-200 dark:border-gray-800" title="Hailo-8L NPU Usage (Click for details)">
           <Zap size={15} className={`shrink-0 transition-transform group-hover:scale-110 ${npuPercent > 0 ? 'text-purple-400 animate-pulse' : 'text-purple-400/60'}`} />
-          <span className={`text-xs font-mono w-11 ${isNpuHigh ? 'text-red-400 font-bold' : npuPercent > 0 ? 'text-purple-300 font-medium' : 'text-gray-400'}`}>
+          <span className={`text-xs font-mono w-11 ${isNpuHigh ? 'text-red-400 font-bold' : npuPercent > 0 ? 'text-purple-300 font-medium' : 'text-gray-600 dark:text-gray-400'}`}>
             {npuPercent.toFixed(1)}%
           </span>
         </div>
 
         {/* RAM */}
-        <div className="flex items-center gap-1.5 pl-1 border-l border-gray-800" title="RAM Usage">
+        <div className="flex items-center gap-1.5 pl-1 border-l border-gray-200 dark:border-gray-800" title="RAM Usage">
           <MemoryStick size={15} className={isRamHigh ? "text-red-500 animate-pulse shrink-0" : "text-emerald-400 shrink-0"} />
-          <span className={`text-xs font-mono w-11 ${isRamHigh ? "text-red-400 font-bold" : "text-gray-300"}`}>
+          <span className={`text-xs font-mono w-11 ${isRamHigh ? "text-red-400 font-bold" : "text-gray-700 dark:text-gray-300"}`}>
             {ramPercent.toFixed(1)}%
           </span>
         </div>
 
         {/* Temperature */}
-        <div className="flex items-center gap-1.5 pl-1 border-l border-gray-800" title="SoC Temperature">
+        <div className="flex items-center gap-1.5 pl-1 border-l border-gray-200 dark:border-gray-800" title="SoC Temperature">
           <Thermometer size={15} className={isTempHigh ? "text-red-500 animate-pulse shrink-0" : "text-orange-400 shrink-0"} />
-          <span className={`text-xs font-mono w-11 ${isTempHigh ? "text-red-400 font-bold" : "text-gray-300"}`}>
+          <span className={`text-xs font-mono w-11 ${isTempHigh ? "text-red-400 font-bold" : "text-gray-700 dark:text-gray-300"}`}>
             {tempC ? `${tempC.toFixed(0)}°C` : 'N/A'}
           </span>
         </div>
 
-        <div className="text-[10px] text-gray-500 group-hover:text-blue-400 flex items-center pl-1 border-l border-gray-800">
+        <div className="text-[10px] text-gray-500 group-hover:text-blue-400 flex items-center pl-1 border-l border-gray-200 dark:border-gray-800">
           <ChevronRight size={14} className="group-hover:translate-x-0.5 transition-transform" />
         </div>
       </button>
@@ -120,7 +120,7 @@ export default function ResourceMonitor() {
         <button
           type="button"
           onClick={() => setShowMobileDetails(prev => !prev)}
-          className="flex items-center gap-1.5 bg-gray-900 border border-gray-800 rounded-lg px-2.5 py-1.5 text-xs font-mono shadow-md text-gray-300 active:scale-95 transition-transform"
+          className="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-1.5 text-xs font-mono shadow-md text-gray-700 dark:text-gray-300 active:scale-95 transition-transform"
           title="Tap to see system resources"
         >
           <Cpu size={14} className="text-blue-400" />
@@ -138,17 +138,17 @@ export default function ResourceMonitor() {
         )}
 
         {showMobileDetails && (
-          <div className="absolute right-0 mt-2 z-50 w-56 bg-gray-900 border border-gray-700 rounded-xl p-3 shadow-2xl flex flex-col gap-2.5 animate-in fade-in zoom-in-95 duration-150">
-            <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-wider border-b border-gray-800 pb-1 flex justify-between">
+          <div className="absolute right-0 mt-2 z-50 w-56 bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-xl p-3 shadow-2xl flex flex-col gap-2.5 animate-in fade-in zoom-in-95 duration-150">
+            <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-800 pb-1 flex justify-between">
               <span>System &amp; NPU</span>
               <span className="text-green-400 font-medium">Online</span>
             </div>
             
             <div className="flex items-center justify-between text-xs font-mono">
-              <span className="flex items-center gap-1.5 text-gray-300">
+              <span className="flex items-center gap-1.5 text-gray-700 dark:text-gray-300">
                 <Cpu size={14} className="text-blue-400" /> CPU
               </span>
-              <span className="text-gray-200">{cpuPercent.toFixed(1)}%</span>
+              <span className="text-gray-800 dark:text-gray-200">{cpuPercent.toFixed(1)}%</span>
             </div>
 
             <div className="flex items-center justify-between text-xs font-mono">
@@ -159,19 +159,19 @@ export default function ResourceMonitor() {
             </div>
 
             <div className="flex items-center justify-between text-xs font-mono">
-              <span className="flex items-center gap-1.5 text-gray-300">
+              <span className="flex items-center gap-1.5 text-gray-700 dark:text-gray-300">
                 <MemoryStick size={14} className={isRamHigh ? "text-red-400" : "text-green-400"} /> RAM
               </span>
-              <span className={isRamHigh ? "text-red-400 font-bold" : "text-gray-200"}>
+              <span className={isRamHigh ? "text-red-400 font-bold" : "text-gray-800 dark:text-gray-200"}>
                 {ramPercent.toFixed(1)}%
               </span>
             </div>
 
             <div className="flex items-center justify-between text-xs font-mono">
-              <span className="flex items-center gap-1.5 text-gray-300">
+              <span className="flex items-center gap-1.5 text-gray-700 dark:text-gray-300">
                 <Thermometer size={14} className={isTempHigh ? "text-red-400" : "text-orange-400"} /> Temp
               </span>
-              <span className={isTempHigh ? "text-red-400 font-bold" : "text-gray-200"}>
+              <span className={isTempHigh ? "text-red-400 font-bold" : "text-gray-800 dark:text-gray-200"}>
                 {tempC.toFixed(1)}°C
               </span>
             </div>

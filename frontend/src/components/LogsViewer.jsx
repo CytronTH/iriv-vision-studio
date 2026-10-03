@@ -248,7 +248,7 @@ export default function LogsViewer({ projectId }) {
   }, [selectedLogIndex, filteredLogs.length]);
 
   return (
-    <div className="h-full flex flex-col p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-5 overflow-y-auto bg-slate-950 text-slate-100 font-sans">
+    <div className="h-full flex flex-col p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-5 overflow-y-auto bg-white dark:bg-slate-950 text-slate-100 font-sans">
       
       {/* ── Top Header & Stats Cards ─────────────────────────────────────── */}
       <div className="flex flex-col gap-4">
@@ -276,7 +276,7 @@ export default function LogsViewer({ projectId }) {
           {/* Quick Global Actions */}
           <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap">            <button 
               onClick={exportCSV}
-              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-medium bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800 hover:border-slate-700 transition-all shadow-sm active:scale-95"
+              className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-medium bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:bg-slate-800 text-slate-300 border border-slate-200 dark:border-slate-800 hover:border-slate-700 transition-all shadow-sm active:scale-95"
             >
               <Download size={14} />
               <span>Export</span>
@@ -287,7 +287,7 @@ export default function LogsViewer({ projectId }) {
               className={`flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs font-medium transition-all border active:scale-95 ${
                 autoRefresh 
                   ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 shadow-md shadow-emerald-500/10' 
-                  : 'bg-slate-900 hover:bg-slate-800 text-slate-400 border-slate-800 hover:border-slate-700'
+                  : 'bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-800 hover:border-slate-700'
               }`}
             >
               {autoRefresh ? <Pause size={14} className="text-emerald-400" /> : <Play size={14} />}
@@ -308,7 +308,7 @@ export default function LogsViewer({ projectId }) {
         {/* Metric Cards Banner */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
           {/* Total Events */}
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800/80 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+          <div className="bg-slate-50 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800/80 rounded-2xl p-4 flex items-center justify-between shadow-sm">
             <div>
               <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Event Logs</p>
               <h3 className="text-2xl font-extrabold text-white mt-1 font-mono tracking-tight">
@@ -322,7 +322,7 @@ export default function LogsViewer({ projectId }) {
           </div>
 
           {/* Snapshots on Disk */}
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800/80 rounded-2xl p-4 flex items-center justify-between shadow-sm">
+          <div className="bg-slate-50 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800/80 rounded-2xl p-4 flex items-center justify-between shadow-sm">
             <div>
               <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Snapshots Stored</p>
               <h3 className="text-2xl font-extrabold text-white mt-1 font-mono tracking-tight">
@@ -338,10 +338,10 @@ export default function LogsViewer({ projectId }) {
           </div>
 
           {/* Inspection Result Ratio or View Switcher Card */}
-          <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between shadow-sm">
+          <div className="bg-slate-50 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200 dark:border-slate-800/80 rounded-2xl p-4 flex flex-col justify-between shadow-sm">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Display Mode</span>
-              <span className="text-[10px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded-md border border-slate-700">
+              <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-300 px-2 py-0.5 rounded-md border border-slate-700">
                 {viewMode === 'gallery' ? 'Visual Grid' : 'Data Table'}
               </span>
             </div>
@@ -351,7 +351,7 @@ export default function LogsViewer({ projectId }) {
                 className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                   viewMode === 'gallery'
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200'
+                    : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <Grid size={14} /> Gallery
@@ -361,7 +361,7 @@ export default function LogsViewer({ projectId }) {
                 className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-all ${
                   viewMode === 'table'
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200'
+                    : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200'
                 }`}
               >
                 <List size={14} /> Table
@@ -372,7 +372,7 @@ export default function LogsViewer({ projectId }) {
       </div>
 
       {/* ── Filter Toolbar & Quick Filter Pills ─────────────────────────── */}
-      <div className="bg-slate-900/90 border border-slate-800/90 rounded-2xl p-3 sm:p-4 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
+      <div className="bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800/90 rounded-2xl p-3 sm:p-4 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
         {/* Quick Filter Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap pb-1 max-w-full scrollbar-none">
           <span className="text-xs font-medium text-slate-400 mr-1 flex items-center gap-1 shrink-0">
@@ -390,7 +390,7 @@ export default function LogsViewer({ projectId }) {
               className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all shrink-0 active:scale-95 ${
                 filters.quick === pill.key
                   ? 'bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-sm'
-                  : 'bg-slate-950/60 hover:bg-slate-800 text-slate-400 border border-slate-800/80'
+                  : 'bg-white dark:bg-slate-950/60 hover:bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-800/80'
               }`}
             >
               {pill.label}
@@ -408,7 +408,7 @@ export default function LogsViewer({ projectId }) {
                 setFilters(prev => ({ ...prev, camera_id: e.target.value }));
                 setPage(1);
               }}
-              className="w-full sm:w-auto bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 appearance-none pr-8 cursor-pointer sm:max-w-[180px] truncate"
+              className="w-full sm:w-auto bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 appearance-none pr-8 cursor-pointer sm:max-w-[180px] truncate"
             >
               <option value="">All Cameras</option>
               {cameras.map(c => (
@@ -428,7 +428,7 @@ export default function LogsViewer({ projectId }) {
               placeholder="Search payload / node..."
               value={filters.search}
               onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 placeholder-slate-500"
+              className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-blue-500 placeholder-slate-500"
             />
           </div>
 
@@ -439,7 +439,7 @@ export default function LogsViewer({ projectId }) {
                 setFilters({ event_type: '', camera_id: '', node_id: '', quick: 'all', search: '' });
                 setPage(1);
               }}
-              className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 px-2.5 py-1.5 bg-slate-800/80 hover:bg-slate-800 rounded-xl border border-slate-700/60 transition-colors active:scale-95"
+              className="flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 px-2.5 py-1.5 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-700/60 transition-colors active:scale-95"
             >
               <X size={13} /> Reset
             </button>
@@ -450,7 +450,7 @@ export default function LogsViewer({ projectId }) {
       {/* ── Main Content Area (Gallery or Table) ────────────────────────── */}
       {viewMode === 'gallery' ? (
         /* ── Visual Gallery View ───────────────────────────────────────── */
-        <div className="flex-1 bg-slate-900/60 border border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col">
+        <div className="flex-1 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/80 rounded-2xl p-5 shadow-xl flex flex-col">
           {loading && logs.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center py-20 text-slate-500 gap-3">
               <RefreshCw size={28} className="animate-spin text-blue-500" />
@@ -478,10 +478,10 @@ export default function LogsViewer({ projectId }) {
                   <div 
                     key={log.id}
                     onClick={() => setSelectedLogIndex(index)}
-                    className="group relative bg-slate-950/80 border border-slate-800/80 hover:border-blue-500/50 rounded-2xl overflow-hidden shadow-md hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300 cursor-pointer flex flex-col"
+                    className="group relative bg-white dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800/80 hover:border-blue-500/50 rounded-2xl overflow-hidden shadow-md hover:shadow-xl hover:shadow-blue-500/5 transition-all duration-300 cursor-pointer flex flex-col"
                   >
                     {/* Image Preview Container */}
-                    <div className="relative aspect-video bg-slate-900 overflow-hidden flex items-center justify-center">
+                    <div className="relative aspect-video bg-slate-50 dark:bg-slate-900 overflow-hidden flex items-center justify-center">
                       {snapUrl ? (
                         <img 
                           src={snapUrl} 
@@ -515,14 +515,14 @@ export default function LogsViewer({ projectId }) {
 
                       {/* Zoom Indicator on Hover */}
                       <div className="absolute inset-0 bg-blue-600/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <div className="w-8 h-8 rounded-full bg-slate-900/80 backdrop-blur-sm flex items-center justify-center text-white shadow-lg">
+                        <div className="w-8 h-8 rounded-full bg-slate-50 dark:bg-slate-900/80 backdrop-blur-sm flex items-center justify-center text-white shadow-lg">
                           <Maximize2 size={14} />
                         </div>
                       </div>
                     </div>
 
                     {/* Meta Footer */}
-                    <div className="p-3 flex flex-col justify-between flex-1 bg-slate-950">
+                    <div className="p-3 flex flex-col justify-between flex-1 bg-white dark:bg-slate-950">
                       <div className="flex items-center justify-between gap-1 text-[11px]">
                         <span className="font-semibold text-slate-300 truncate" title={camName}>
                           {camName}
@@ -532,7 +532,7 @@ export default function LogsViewer({ projectId }) {
                         </span>
                       </div>
 
-                      <div className="mt-1.5 text-[10px] font-mono text-slate-400 bg-slate-900/80 px-2 py-1 rounded-lg border border-slate-800/60 truncate">
+                      <div className="mt-1.5 text-[10px] font-mono text-slate-400 bg-slate-50 dark:bg-slate-900/80 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-800/60 truncate">
                         {log.payload ? JSON.stringify(log.payload) : log.event_type}
                       </div>
                     </div>
@@ -544,10 +544,10 @@ export default function LogsViewer({ projectId }) {
         </div>
       ) : (
         /* ── Enhanced Table View ────────────────────────────────────────── */
-        <div className="flex-1 bg-slate-900/60 border border-slate-800/80 rounded-2xl overflow-hidden flex flex-col shadow-xl">
+        <div className="flex-1 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800/80 rounded-2xl overflow-hidden flex flex-col shadow-xl">
           <div className="overflow-x-auto flex-1">
             <table className="w-full text-left text-xs text-slate-300">
-              <thead className="text-[11px] font-semibold text-slate-400 uppercase bg-slate-900/90 border-b border-slate-800 sticky top-0 backdrop-blur-md z-10">
+              <thead className="text-[11px] font-semibold text-slate-400 uppercase bg-slate-50 dark:bg-slate-900/90 border-b border-slate-200 dark:border-slate-800 sticky top-0 backdrop-blur-md z-10">
                 <tr>
                   <th className="px-4 py-3.5 w-10 text-center"></th>
                   <th className="px-4 py-3.5">Snapshot</th>
@@ -588,13 +588,13 @@ export default function LogsViewer({ projectId }) {
 
                     return (
                       <React.Fragment key={log.id}>
-                        <tr className="hover:bg-slate-800/40 transition-colors group">
+                        <tr className="hover:bg-slate-100 dark:bg-slate-800/40 transition-colors group">
                           {/* Expand Button */}
                           <td className="px-3 py-3 text-center">
                             {log.payload && (
                               <button 
                                 onClick={() => toggleRowExpanded(log.id)}
-                                className="text-slate-500 hover:text-white p-1 rounded-lg transition-colors hover:bg-slate-800"
+                                className="text-slate-500 hover:text-white p-1 rounded-lg transition-colors hover:bg-slate-100 dark:bg-slate-800"
                               >
                                 {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                               </button>
@@ -606,7 +606,7 @@ export default function LogsViewer({ projectId }) {
                             {snapUrl ? (
                               <div 
                                 onClick={() => setSelectedLogIndex(index)}
-                                className="w-14 h-9 rounded-lg overflow-hidden bg-slate-950 border border-slate-800 cursor-pointer relative group/thumb hover:border-blue-500 transition-colors"
+                                className="w-14 h-9 rounded-lg overflow-hidden bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 cursor-pointer relative group/thumb hover:border-blue-500 transition-colors"
                               >
                                 <img 
                                   src={snapUrl} 
@@ -653,9 +653,9 @@ export default function LogsViewer({ projectId }) {
 
                         {/* Expanded Payload Code Block */}
                         {isExpanded && log.payload && (
-                          <tr className="bg-slate-950/70">
+                          <tr className="bg-white dark:bg-slate-950/70">
                             <td colSpan="7" className="px-6 py-4 border-l-2 border-l-blue-500">
-                              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800/80 shadow-inner">
+                              <div className="bg-white dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 shadow-inner">
                                 <div className="flex items-center justify-between mb-2">
                                   <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
                                     Structured Payload Data
@@ -666,7 +666,7 @@ export default function LogsViewer({ projectId }) {
                                       setCopied(true);
                                       setTimeout(() => setCopied(false), 2000);
                                     }}
-                                    className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 transition-colors"
+                                    className="flex items-center gap-1.5 text-[11px] text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 transition-colors"
                                   >
                                     {copied ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
                                     <span>{copied ? 'Copied' : 'Copy JSON'}</span>
@@ -690,7 +690,7 @@ export default function LogsViewer({ projectId }) {
       )}
 
       {/* ── Pagination Bar ─────────────────────────────────────────────── */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400 shadow-sm">
+      <div className="bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400 shadow-sm">
         <div>
           Showing {Math.min((page - 1) * perPage + 1, total)} to {Math.min(page * perPage, total)} of {total.toLocaleString()} records
         </div>
@@ -701,7 +701,7 @@ export default function LogsViewer({ projectId }) {
             <select 
               value={perPage} 
               onChange={(e) => { setPerPage(Number(e.target.value)); setPage(1); }}
-              className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+              className="bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg px-2.5 py-1 text-slate-200 focus:outline-none focus:border-blue-500 cursor-pointer"
             >
               <option value="20">20</option>
               <option value="30">30</option>
@@ -714,17 +714,17 @@ export default function LogsViewer({ projectId }) {
             <button 
               disabled={page <= 1}
               onClick={() => setPage(page - 1)}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl transition-colors text-slate-300 flex items-center gap-1 font-medium"
+              className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl transition-colors text-slate-300 flex items-center gap-1 font-medium"
             >
               <ChevronLeft size={14} /> Prev
             </button>
-            <div className="px-3 py-1 font-semibold text-white bg-slate-950 border border-slate-800 rounded-xl">
+            <div className="px-3 py-1 font-semibold text-white bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl">
               {page} / {totalPages || 1}
             </div>
             <button 
               disabled={page >= totalPages}
               onClick={() => setPage(page + 1)}
-              className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl transition-colors text-slate-300 flex items-center gap-1 font-medium"
+              className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl transition-colors text-slate-300 flex items-center gap-1 font-medium"
             >
               Next <ChevronRight size={14} />
             </button>
@@ -735,10 +735,10 @@ export default function LogsViewer({ projectId }) {
       {/* ── Lightbox Image Inspector Modal ─────────────────────────────── */}
       {selectedLog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4 sm:p-6 animate-in fade-in duration-200">
-          <div className="relative max-w-5xl w-full bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+          <div className="relative max-w-5xl w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
             
             {/* Modal Header */}
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-800 bg-slate-900/90 backdrop-blur-sm">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 backdrop-blur-sm">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400">
                   <ImageIcon size={18} />
@@ -761,7 +761,7 @@ export default function LogsViewer({ projectId }) {
                   <a 
                     href={`/api/snapshots/${selectedLog.snapshot_path.split('/').pop()}`}
                     download
-                    className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors border border-slate-700/80 text-xs flex items-center gap-1.5"
+                    className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-colors border border-slate-700/80 text-xs flex items-center gap-1.5"
                     title="Download high-resolution image"
                   >
                     <Download size={15} />
@@ -770,7 +770,7 @@ export default function LogsViewer({ projectId }) {
                 )}
                 <button 
                   onClick={() => setSelectedLogIndex(null)}
-                  className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl transition-colors border border-slate-700/80"
+                  className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl transition-colors border border-slate-700/80"
                 >
                   <X size={18} />
                 </button>
@@ -778,7 +778,7 @@ export default function LogsViewer({ projectId }) {
             </div>
 
             {/* Modal Body: Image + Metadata */}
-            <div className="flex-1 overflow-y-auto flex flex-col md:flex-row bg-slate-950">
+            <div className="flex-1 overflow-y-auto flex flex-col md:flex-row bg-white dark:bg-slate-950">
               
               {/* Image View with Navigation Arrows */}
               <div className="relative flex-1 bg-black flex items-center justify-center p-4 min-h-[360px] max-h-[65vh]">
@@ -799,7 +799,7 @@ export default function LogsViewer({ projectId }) {
                 {selectedLogIndex > 0 && (
                   <button 
                     onClick={handlePrevImage}
-                    className="absolute left-4 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-slate-700/80 shadow-lg backdrop-blur-md transition-all active:scale-95"
+                    className="absolute left-4 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-slate-50 dark:bg-slate-900/80 hover:bg-slate-100 dark:bg-slate-800 text-white border border-slate-700/80 shadow-lg backdrop-blur-md transition-all active:scale-95"
                     title="Previous Snapshot (Arrow Left)"
                   >
                     <ChevronLeft size={20} />
@@ -809,7 +809,7 @@ export default function LogsViewer({ projectId }) {
                 {selectedLogIndex < filteredLogs.length - 1 && (
                   <button 
                     onClick={handleNextImage}
-                    className="absolute right-4 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-slate-900/80 hover:bg-slate-800 text-white border border-slate-700/80 shadow-lg backdrop-blur-md transition-all active:scale-95"
+                    className="absolute right-4 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-slate-50 dark:bg-slate-900/80 hover:bg-slate-100 dark:bg-slate-800 text-white border border-slate-700/80 shadow-lg backdrop-blur-md transition-all active:scale-95"
                     title="Next Snapshot (Arrow Right)"
                   >
                     <ChevronRight size={20} />
@@ -818,26 +818,26 @@ export default function LogsViewer({ projectId }) {
               </div>
 
               {/* Sidebar Metadata */}
-              <div className="w-full md:w-80 bg-slate-900/80 border-t md:border-t-0 md:border-l border-slate-800 p-5 flex flex-col justify-between overflow-y-auto">
+              <div className="w-full md:w-80 bg-slate-50 dark:bg-slate-900/80 border-t md:border-t-0 md:border-l border-slate-200 dark:border-slate-800 p-5 flex flex-col justify-between overflow-y-auto">
                 <div className="space-y-4">
                   <div>
                     <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">Event Information</h4>
                     <div className="space-y-2 text-xs">
-                      <div className="flex justify-between py-1 border-b border-slate-800/80">
+                      <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800/80">
                         <span className="text-slate-500">Log ID</span>
                         <span className="font-mono text-slate-300">{selectedLog.id}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-800/80">
+                      <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800/80">
                         <span className="text-slate-500">Event Type</span>
                         <span className="text-slate-200 font-semibold">{selectedLog.event_type}</span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-800/80">
+                      <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800/80">
                         <span className="text-slate-500">Camera</span>
                         <span className="text-slate-200 font-medium truncate max-w-[150px]" title={cameraMap[selectedLog.camera_id]}>
                           {cameraMap[selectedLog.camera_id] || selectedLog.camera_id}
                         </span>
                       </div>
-                      <div className="flex justify-between py-1 border-b border-slate-800/80">
+                      <div className="flex justify-between py-1 border-b border-slate-200 dark:border-slate-800/80">
                         <span className="text-slate-500">Pipeline Node</span>
                         <span className="font-mono text-[11px] text-slate-300 truncate max-w-[140px]" title={selectedLog.node_id}>
                           {selectedLog.node_id}
@@ -863,7 +863,7 @@ export default function LogsViewer({ projectId }) {
                           {copied ? 'Copied' : 'Copy'}
                         </button>
                       </div>
-                      <pre className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-[11px] text-blue-200 font-mono whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+                      <pre className="bg-white dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px] text-blue-200 font-mono whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
                         {JSON.stringify(selectedLog.payload, null, 2)}
                       </pre>
                     </div>

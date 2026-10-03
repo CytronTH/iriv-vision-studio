@@ -215,11 +215,11 @@ export default function ChartWidget({ title, config = {}, paths = [], metadata, 
   }
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-xl p-4">
-      <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-800">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden shadow-xl p-4">
+      <div className="flex items-center justify-between mb-4 pb-2 border-b border-gray-200 dark:border-gray-800">
         <div className="flex items-center gap-2">
           <Icon size={20} className="text-emerald-400" />
-          <h3 className="text-gray-400 font-semibold text-sm uppercase tracking-wider">{title}</h3>
+          <h3 className="text-gray-500 dark:text-gray-400 dark:text-gray-400 font-semibold text-sm uppercase tracking-wider">{title}</h3>
         </div>
         <div className="flex items-center gap-2">
           {zoomDomain && (
@@ -230,7 +230,7 @@ export default function ChartWidget({ title, config = {}, paths = [], metadata, 
               Reset Zoom
             </button>
           )}
-          {config.timeframe && <span className="text-xs text-gray-500 bg-gray-800 px-2 py-1 rounded">{config.timeframe} {lockTimeframe && '(Locked)'}</span>}
+          {config.timeframe && <span className="text-xs text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded">{config.timeframe} {lockTimeframe && '(Locked)'}</span>}
         </div>
       </div>
       <div 
@@ -287,7 +287,7 @@ export default function ChartWidget({ title, config = {}, paths = [], metadata, 
             </ChartComponent>
           </ResponsiveContainer>
         ) : (
-          <div className="text-gray-500 text-sm italic flex items-center justify-center h-full">
+          <div className="text-gray-500 dark:text-gray-400 text-sm italic flex items-center justify-center h-full">
             Waiting for data...
           </div>
         )}

@@ -57,7 +57,7 @@ class HailoPipelineWorker:
 
         # We start with the config provided, or build a fallback pipeline later
         self.is_running = False
-        self.acquired_cameras = set()
+        self.acquired_cameras = []
 
     def _remove_probes(self):
         """Remove all attached pad probes to prevent buffers firing during teardown."""
@@ -192,22 +192,24 @@ class HailoPipelineWorker:
 
             if video_src_type == "rtsp":
                 source_bin = (
-                    f"rtspsrc location={video_src} protocols=tcp latency=100 buffer-mode=slave ! "
+                    f'rtspsrc location="{video_src}" protocols=tcp latency=1000 drop-on-latency=false ! '
                     f"rtph264depay ! h264parse ! avdec_h264 ! "
-                    f"queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream"
+                    f"queue max-size-buffers=0 max-size-bytes=0 max-size-time=0"
                 )
-            elif video_src_type == "file" and not loop:
-                speed_filter = f"! videorate rate={speed} " if speed != 1.0 else ""
-                source_bin = f"filesrc location={video_src} ! decodebin {speed_filter}"
             else:
                 # Central Shared Ingestion via CameraManager (local USB/CSI or looping video files)
                 try:
-                    shared_rtsp = camera_mgr.acquire(cam_id, cam_entity)
-                    self.acquired_cameras.add(cam_id)
+                    shared_rtsp = camera_mgr.acquire(
+                        cam_id, 
+                        cam_entity, 
+                        loop=loop, 
+                        loop_count=getattr(first_stream, 'loop_count', 1)
+                    )
+                    self.acquired_cameras.append(cam_id)
                     source_bin = (
-                        f"rtspsrc location={shared_rtsp} protocols=tcp latency=100 buffer-mode=slave ! "
+                        f'rtspsrc location="{shared_rtsp}" protocols=tcp latency=1000 drop-on-latency=false ! '
                         f"rtph264depay ! h264parse ! avdec_h264 ! "
-                        f"queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream"
+                        f"queue max-size-buffers=0 max-size-bytes=0 max-size-time=0"
                     )
                 except Exception as e:
                     logger.error(f"Failed to acquire camera {cam_id}: {e}")
@@ -224,7 +226,7 @@ class HailoPipelineWorker:
                 if has_ai:
                     if not os.path.exists(hef):
                         logger.error(f"HEF file not found: {hef}. Falling back to default YOLOv8s.")
-                        hef = "/home/pi/iriv-vision-studio/backend/models/yolov8s.hef"
+                        hef = "/home/pi/pido-ai/backend/models/yolov8s.hef"
                         so = "/usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/libyolo_hailortpp_post.so"
                         if not os.path.exists(hef):
                             logger.error("Default HEF also not found! Disabling AI for this stream.")
@@ -238,43 +240,59 @@ class HailoPipelineWorker:
                     
                     backend_res = getattr(cam_stream, 'backend_resolution', 'auto')
                     if getattr(cam_stream, 'bbox_draw_mode', 'frontend') == 'backend':
-                        overlay_str = f"hailooverlay line-thickness={getattr(cam_stream, 'bbox_line_thickness', 2)} font-thickness={getattr(cam_stream, 'bbox_font_thickness', 1)} ! "
+                        overlay_str = f"hailooverlay line-thickness={getattr(cam_stream, 'bbox_line_thickness', 2)} font-thickness={getattr(cam_stream, 'bbox_font_thickness', 1)} qos=false ! "
                         if backend_res != 'auto' and not self.quality_mgr.emergency_override:
                             if backend_res == '360p':
                                 stream_W, stream_H, stream_kbps = 640, 360, 400
                             elif backend_res == '480p':
                                 stream_W, stream_H, stream_kbps = 854, 480, 700
-                                fps_throttle_str = "videorate drop-only=true max-rate=15 ! "
                             elif backend_res == '720p':
                                 stream_W, stream_H, stream_kbps = 1280, 720, 2000
-                                fps_throttle_str = "videorate drop-only=true max-rate=15 ! "
                     
-                    # Single-branch pipeline — tee AFTER Hailo so display and bbox share the same frame:
-                    #   source → 640×640 (letterbox) → hailonet → hailofilter → tee
-                    #   ├─ Display: crop(140,140) → scale {W}×{H} → encode → stream
-                    #   └─ Metadata: fakesink probe → correct_y → WebSocket
+                    # Single-branch pipeline with RAW tee and AI tee
+                    #   source → raw_tee
+                    #   raw_tee ├─ (if file) → raw encoder → rtspclientsink (shared_cam)
+                    #           └─ AI branch → hailonet → hailofilter → ai_tee
+                    #   ai_tee ├─ Display: crop → encode → rtspclientsink (AI stream)
+                    #          └─ Metadata: fakesink probe
+                    
+                    if video_src_type == "rtsp":
+                        # We must publish the raw stream to MediaMTX ourselves since camera_manager isn't used
+                        raw_branch = (
+                            f"tee name=raw_tee_{i} "
+                            f"raw_tee_{i}. ! queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 ! videoconvert qos=false ! videoscale qos=false ! video/x-raw,width={W},height={H} ! "
+                            f"x264enc tune=zerolatency speed-preset=ultrafast threads=1 bitrate={kbps} key-int-max=15 ! "
+                            f"video/x-h264,pixel-aspect-ratio=1/1 ! "
+                            f"h264parse config-interval=1 ! "
+                            f"rtspclientsink location=rtsp://127.0.0.1:8554/shared_{cam_id} protocols=tcp latency=0 "
+                            f"raw_tee_{i}. ! queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 ! "
+                        )
+                    else:
+                        # camera_manager already handles the raw stream, so just pass it through
+                        raw_branch = ""
+                        
                     sub_str = (
-                        f"{source_bin} ! "
-                        f"videoconvert ! videoscale ! "
+                        f"{source_bin} ! {raw_branch}"
+                        f"videoconvert qos=false ! videoscale qos=false ! "
                         f"video/x-raw,format=RGB,width=640,height=640,pixel-aspect-ratio=1/1 ! "
                         f"hailonet name=hailonet_{i} hef-path={hef} force-writable=true vdevice-group-id=1 ! "
                         f"hailofilter name=filter_{i} so-path={so} {config_path_arg} qos=false ! "
                         f"{overlay_str}"
                         f"tee name=ai_tee_{i} "
-                        f"ai_tee_{i}. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
+                        f"ai_tee_{i}. ! queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 ! "
                         f"videocrop top=140 bottom=140 ! "
-                        f"videoconvert ! videoscale ! video/x-raw,width={stream_W},height={stream_H} ! "
+                        f"videoconvert qos=false ! videoscale qos=false ! video/x-raw,width={stream_W},height={stream_H} ! "
                         f"{fps_throttle_str}"
                         f"x264enc tune=zerolatency speed-preset=ultrafast threads=1 bitrate={stream_kbps} key-int-max=15 ! "
                         f"video/x-h264,pixel-aspect-ratio=1/1 ! "
                         f"h264parse config-interval=1 ! "
                         f"rtspclientsink location=rtsp://127.0.0.1:8554/{self.project_id}_{stream_id} protocols=tcp latency=0 "
-                        f"ai_tee_{i}. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! fakesink name=sink_{i} sync=false"
+                        f"ai_tee_{i}. ! queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 ! fakesink name=sink_{i} sync=false"
                     )
                 else:
                     sub_str = (
                         f"{source_bin} ! "
-                        f"videoconvert ! videoscale ! video/x-raw,width={W},height={H} ! "
+                        f"videoconvert qos=false ! videoscale qos=false ! video/x-raw,width={W},height={H} ! "
                         f"x264enc tune=zerolatency speed-preset=ultrafast threads=1 bitrate={kbps} key-int-max=15 ! "
                         f"video/x-h264,pixel-aspect-ratio=1/1 ! "
                         f"h264parse config-interval=1 ! "
@@ -285,7 +303,7 @@ class HailoPipelineWorker:
                 # Multiple AI streams from same source — build shared source + tee with multiple branches
                 tee_name = f"shared_tee_{input_key.replace('-', '_')}"
                 # Source → videoconvert → tee
-                source_str = f"{source_bin} ! videoconvert ! tee name={tee_name}"
+                source_str = f"{source_bin} ! videoconvert qos=false ! tee name={tee_name}"
                 branches = []
                 
                 for i, cam_stream in group:
@@ -293,11 +311,21 @@ class HailoPipelineWorker:
                     so = getattr(cam_stream, 'so_path', '')
                     has_ai = getattr(cam_stream, 'has_ai_node', False)
                     stream_id = getattr(cam_stream, 'stream_id', f"cam_{i}")
+                    cam_id = getattr(cam_stream, 'camera_id', f"cam_{i}")
+                    
+                    if i == 0 and video_src_type == "rtsp":
+                        branches.append(
+                            f"{tee_name}. ! queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 ! videoscale qos=false ! video/x-raw,width={W},height={H} ! "
+                            f"x264enc tune=zerolatency speed-preset=ultrafast threads=1 bitrate={kbps} key-int-max=15 ! "
+                            f"video/x-h264,pixel-aspect-ratio=1/1 ! h264parse config-interval=1 ! "
+                            f"rtspclientsink location=rtsp://127.0.0.1:8554/shared_{cam_id} protocols=tcp latency=0"
+                        )
+                    
                     
                     if has_ai:
                         if not os.path.exists(hef):
                             logger.error(f"HEF file not found: {hef}. Falling back to default.")
-                            hef = "/home/pi/iriv-vision-studio/backend/models/yolov8s.hef"
+                            hef = "/home/pi/pido-ai/backend/models/yolov8s.hef"
                             so = "/usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/libyolo_hailortpp_post.so"
                     
                     if has_ai:
@@ -308,37 +336,35 @@ class HailoPipelineWorker:
                         
                         backend_res = getattr(cam_stream, 'backend_resolution', 'auto')
                         if getattr(cam_stream, 'bbox_draw_mode', 'frontend') == 'backend':
-                            overlay_str = f"hailooverlay line-thickness={getattr(cam_stream, 'bbox_line_thickness', 2)} font-thickness={getattr(cam_stream, 'bbox_font_thickness', 1)} ! "
+                            overlay_str = f"hailooverlay line-thickness={getattr(cam_stream, 'bbox_line_thickness', 2)} font-thickness={getattr(cam_stream, 'bbox_font_thickness', 1)} qos=false ! "
                             if backend_res != 'auto' and not self.quality_mgr.emergency_override:
                                 if backend_res == '360p':
                                     stream_W, stream_H, stream_kbps = 640, 360, 400
                                 elif backend_res == '480p':
                                     stream_W, stream_H, stream_kbps = 854, 480, 700
-                                    fps_throttle_str = "videorate drop-only=true max-rate=15 ! "
                                 elif backend_res == '720p':
                                     stream_W, stream_H, stream_kbps = 1280, 720, 2000
-                                    fps_throttle_str = "videorate drop-only=true max-rate=15 ! "
 
                         branches.append(
-                            f"{tee_name}. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! videoconvert ! videoscale ! "
+                            f"{tee_name}. ! queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 ! videoconvert qos=false ! videoscale qos=false ! "
                             f"video/x-raw,format=RGB,width=640,height=640,pixel-aspect-ratio=1/1 ! "
                             f"hailonet name=hailonet_{i} hef-path={hef} force-writable=true vdevice-group-id=1 ! "
                             f"hailofilter name=filter_{i} so-path={so} {config_path_arg} qos=false ! "
                             f"{overlay_str}"
                             f"tee name=ai_tee_{i} "
-                            f"ai_tee_{i}. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! "
+                            f"ai_tee_{i}. ! queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 ! "
                             f"videocrop top=140 bottom=140 ! "
-                            f"videoconvert ! videoscale ! video/x-raw,width={stream_W},height={stream_H} ! "
+                            f"videoconvert qos=false ! videoscale qos=false ! video/x-raw,width={stream_W},height={stream_H} ! "
                             f"{fps_throttle_str}"
                             f"x264enc tune=zerolatency speed-preset=ultrafast threads=1 bitrate={stream_kbps} key-int-max=15 ! "
                             f"video/x-h264,pixel-aspect-ratio=1/1 ! "
                             f"h264parse config-interval=1 ! "
                             f"rtspclientsink location=rtsp://127.0.0.1:8554/{self.project_id}_{stream_id} protocols=tcp latency=0 "
-                            f"ai_tee_{i}. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! fakesink name=sink_{i} sync=false"
+                            f"ai_tee_{i}. ! queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 ! fakesink name=sink_{i} sync=false"
                         )
                     else:
                         branches.append(
-                            f"{tee_name}. ! queue max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! videoconvert ! videoscale ! video/x-raw,width={W},height={H} ! "
+                            f"{tee_name}. ! queue max-size-buffers=0 max-size-bytes=0 max-size-time=0 ! videoconvert qos=false ! videoscale qos=false ! video/x-raw,width={W},height={H} ! "
                             f"x264enc tune=zerolatency speed-preset=ultrafast threads=1 bitrate={kbps} key-int-max=15 ! "
                             f"video/x-h264,pixel-aspect-ratio=1/1 ! "
                             f"h264parse config-interval=1 ! "
@@ -352,17 +378,19 @@ class HailoPipelineWorker:
             
             try:
                 pipeline = Gst.parse_launch(pipeline_str)
+                # Store loop count for non-looping files so _on_eos can replay them
+                pipeline.loop_count_remaining = getattr(group[0][1], 'loop_count', 1) if (video_src_type == "file" and not loop) else 0
                 
-                # Attach probe to extract metadata from each fakesink
+                # Attach probe to extract metadata from each filter (BEFORE overlay)
                 for i, cam_stream in group:
                     if getattr(cam_stream, 'has_ai_node', False):
-                        sink = pipeline.get_by_name(f"sink_{i}")
-                        if sink:
-                            pad = sink.get_static_pad("sink")
+                        filter_elem = pipeline.get_by_name(f"filter_{i}")
+                        if filter_elem:
+                            pad = filter_elem.get_static_pad("src")
                             probe_id = pad.add_probe(Gst.PadProbeType.BUFFER, functools.partial(self.on_buffer_probe, camera_id=cam_stream.stream_id))
                             self._probes.append((pad, probe_id))
                         else:
-                            logger.warning(f"Could not find sink_{i} to attach metadata probe.")
+                            logger.warning(f"Could not find filter_{i} to attach metadata probe.")
 
                         # Attach NPU timing probes around hailonet_{i}
                         hailonet_elem = pipeline.get_by_name(f"hailonet_{i}")
@@ -409,9 +437,49 @@ class HailoPipelineWorker:
 
     def _on_eos(self, bus, message):
         """Handle End-of-Stream — only fires for non-looping sources (looping uses ffmpeg)."""
-        logger.info("EOS reached bus — stopping pipeline")
-        if self.loop:
-            self.loop.quit()
+        pipeline = message.src
+        if hasattr(pipeline, 'loop_count_remaining') and pipeline.loop_count_remaining > 1:
+            pipeline.loop_count_remaining -= 1
+            logger.info(f"EOS reached. Restarting pipeline. {pipeline.loop_count_remaining} loops remaining.")
+            
+            def _restart():
+                # Pause pipeline to stop data flow safely
+                pipeline.set_state(Gst.State.PAUSED)
+                
+                # Perform flush seek to 0 while paused to avoid "Got data flow before segment event"
+                pipeline.seek_simple(Gst.Format.TIME, Gst.SeekFlags.FLUSH | Gst.SeekFlags.KEY_UNIT, 0)
+                
+                # Reset tracker to ensure fresh counting for the new loop
+                if self.metadata_callback:
+                    self.metadata_callback({"type": "system", "action": "reset_trackers"})
+                    
+                # Resume playback
+                pipeline.set_state(Gst.State.PLAYING)
+                
+            import threading
+            threading.Thread(target=_restart, daemon=True).start()
+            return
+
+        logger.info("EOS reached bus — sending EOS metadata and stopping pipeline in 1s")
+        
+        # Send EOS metadata to frontend so it shows "Video Ended" instead of "Stream Error"
+        if self.metadata_callback:
+            # Send EOS flag for all cameras in this worker
+            for pipeline in self.pipelines:
+                for i, group in enumerate(self.config.camera_streams):
+                    if hasattr(group, 'camera_id'):
+                        self.metadata_callback({
+                            "type": "system",
+                            "eos": True,
+                            "camera_id": group.camera_id
+                        })
+                        
+        # Delay quit to let the WebRTC buffer flush and metadata to send
+        def _delayed_quit():
+            if self.loop:
+                self.loop.quit()
+        import threading
+        threading.Timer(1.0, _delayed_quit).start()
 
     def _on_bus_error(self, bus, message):
         err, debug = message.parse_error()
@@ -487,7 +555,9 @@ class HailoPipelineWorker:
                     return True
                 cx = bbox.xmin() + (bbox.width() / 2)
                 cy = correct_y(bbox.ymin() + bbox.height() / 2)
-                return (roi_x <= cx <= roi_x + roi_w) and (roi_y <= cy <= roi_y + roi_h)
+                res = (roi_x <= cx <= roi_x + roi_w) and (roi_y <= cy <= roi_y + roi_h)
+                logger.info(f"[ROI DEBUG] roi_enabled={roi_enabled} cx={cx:.3f} cy={cy:.3f} roi=({roi_x:.3f},{roi_y:.3f},{roi_w:.3f},{roi_h:.3f}) is_in={res}")
+                return res
 
             def is_class_allowed(label):
                 if class_filter is None:
@@ -501,8 +571,10 @@ class HailoPipelineWorker:
                         label = det.get_label()
                         confidence = det.get_confidence()
                     except Exception:
+                        roi.remove_object(det)
                         continue
                     if not label:
+                        roi.remove_object(det)
                         continue
                     req_conf = class_confidences.get(label, confidence_threshold)
                     if confidence >= req_conf:
@@ -520,6 +592,12 @@ class HailoPipelineWorker:
                                         correct_y(bbox.ymax())
                                     ]
                                 })
+                            else:
+                                roi.remove_object(det)
+                        else:
+                            roi.remove_object(det)
+                    else:
+                        roi.remove_object(det)
                             
             elif ai_task == "classification":
                 classifications = roi.get_objects_typed(hailo.HAILO_CLASSIFICATION)
@@ -528,8 +606,10 @@ class HailoPipelineWorker:
                         label = cls.get_label()
                         confidence = cls.get_confidence()
                     except Exception:
+                        roi.remove_object(cls)
                         continue
                     if not label:
+                        roi.remove_object(cls)
                         continue
                     req_conf = class_confidences.get(label, confidence_threshold)
                     if confidence >= req_conf:
@@ -538,6 +618,10 @@ class HailoPipelineWorker:
                                 "label": cls.get_label(),
                                 "confidence": round(confidence, 2)
                             })
+                        else:
+                            roi.remove_object(cls)
+                    else:
+                        roi.remove_object(cls)
                             
             elif ai_task == "pose":
                 # Real HAILO_LANDMARKS extraction following official pose_estimation.py pattern.
@@ -556,11 +640,16 @@ class HailoPipelineWorker:
                     if confidence >= req_conf and label == "person":
                         bbox = det.get_bbox()
                         if not is_in_roi(bbox):
+                            roi.remove_object(det)
                             continue
                             
                         landmarks = det.get_objects_typed(hailo.HAILO_LANDMARKS)
                         if len(landmarks) == 0:
+                            roi.remove_object(det)
                             continue
+                    else:
+                        roi.remove_object(det)
+                        continue
                         points_raw = landmarks[0].get_points()
                         points = []
                         for i, pt in enumerate(points_raw):
@@ -641,12 +730,19 @@ class HailoPipelineWorker:
                     )
                 in_nid = getattr(stream_cfg, 'input_node_id', None) if 'stream_cfg' in locals() and stream_cfg else None
                 if in_nid:
+                    extra_info = {}
+                    if 'stream_cfg' in locals() and stream_cfg:
+                        real_cam_id = getattr(stream_cfg, 'camera_id', None) or getattr(stream_cfg, 'input_node_id', None)
+                        if real_cam_id:
+                            extra_info = camera_mgr.get_stream_info(real_cam_id)
+                            logger.info(f"DEBUG: real_cam_id={real_cam_id}, extra_info={extra_info}")
                     telemetry_mgr.record_gstreamer_node_metric(
                         self.project_id,
                         in_nid,
                         "inputNode",
                         fps=c_fps,
-                        latency_ms=1.5
+                        latency_ms=1.5,
+                        extra=extra_info
                     )
                 if 'stream_cfg' in locals() and stream_cfg:
                     for v_id in getattr(stream_cfg, 'dashboard_video_nodes', []):
@@ -713,10 +809,11 @@ class HailoPipelineWorker:
                 self.config.router.start()
 
             # Start adaptive quality monitor (fires _on_quality_tier_change on tier shifts)
-            self.quality_mgr.start_monitor(
-                num_streams_fn=lambda: len(getattr(self.config, 'camera_streams', [])) if self.config else 0,
-                on_tier_change=self._on_quality_tier_change,
-            )
+            # DISABLE DYNAMIC QUALITY MONITOR TO PREVENT PIPELINE RESTARTS (WHICH CAUSE DROPPED FRAMES)
+            # self.quality_mgr.start_monitor(
+            #     num_streams_fn=lambda: len(getattr(self.config, 'camera_streams', [])) if self.config else 0,
+            #     on_tier_change=self._on_quality_tier_change,
+            # )
 
     def stop(self):
         self.is_running = False
@@ -747,7 +844,17 @@ class HailoPipelineWorker:
         if hasattr(self, 'pipelines') and self.pipelines:
             for pipeline in self.pipelines:
                 try:
-                    pipeline.set_state(Gst.State.NULL)
+                    def _safe_stop(p):
+                        try:
+                            p.set_state(Gst.State.NULL)
+                        except Exception as inner_e:
+                            logger.warning(f"Thread error stopping pipeline: {inner_e}")
+                    
+                    stop_t = threading.Thread(target=_safe_stop, args=(pipeline,))
+                    stop_t.start()
+                    stop_t.join(timeout=2.0)
+                    if stop_t.is_alive():
+                        logger.warning("Pipeline set_state(NULL) timed out. It might be deadlocked!")
                 except Exception as e:
                     logger.warning(f"Error stopping pipeline: {e}")
             self.pipelines = []

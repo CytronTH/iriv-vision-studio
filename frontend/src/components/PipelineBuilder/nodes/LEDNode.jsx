@@ -5,6 +5,7 @@ import NodeMenu from './NodeMenu';
 import usePipelineStore from '../../../store/usePipelineStore';
 
 export default function LEDNode({ id, data }) {
+  const isCompact = data?.viewMode === 'compact';
   const globalUpdateNodeData = usePipelineStore((state) => state.updateNodeData);
   const updateNodeData = data?.onUpdate || globalUpdateNodeData;
 
@@ -17,7 +18,7 @@ export default function LEDNode({ id, data }) {
   };
 
   return (
-    <div className="bg-gray-900 border-2 border-yellow-500 rounded-xl p-4 shadow-xl shadow-yellow-900/20 w-64">
+    <div className={`bg-gray-900 border-2 border-yellow-500 rounded-xl p-4 shadow-xl shadow-yellow-900/20 ${isCompact ? 'w-48' : 'w-64'}`}>
       <Handle type="target" position={Position.Left} className="w-3 h-3 bg-yellow-500 border-2 border-gray-900" />
       
       <div className="flex items-center justify-between mb-3 border-b border-gray-800 pb-2">
@@ -30,7 +31,7 @@ export default function LEDNode({ id, data }) {
             <p className="text-xs text-yellow-500 font-mono">PWM Output (Max 2A)</p>
           </div>
         </div>
-        <NodeMenu id={id} />
+        {!isCompact && <NodeMenu id={id} />}
       </div>
       
       <div className="space-y-3">

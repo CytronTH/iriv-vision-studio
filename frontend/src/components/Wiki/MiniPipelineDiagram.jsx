@@ -162,7 +162,7 @@ const MiniPipelineDiagram = forwardRef(({ nodeType, supportedInputs = [], suppor
   );
 
   return (
-    <div style={{ width: '100%', height: '600px' }} className="rounded-xl overflow-hidden border border-gray-800 bg-gray-950/80 shadow-inner relative">
+    <div style={{ width: '100%', height: '600px' }} className="rounded-xl overflow-hidden border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950/80 shadow-inner relative">
       <ReactFlow 
         nodes={wrappedNodes} 
         edges={edges} 
@@ -176,11 +176,11 @@ const MiniPipelineDiagram = forwardRef(({ nodeType, supportedInputs = [], suppor
         proOptions={{ hideAttribution: true }}
       >
         <Background color="#374151" gap={16} />
-        <Controls className="bg-gray-800 border-gray-700 fill-gray-300" />
+        <Controls className="bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 fill-gray-300" />
       </ReactFlow>
       
       {/* Legend / Tip */}
-      <div className="absolute bottom-3 left-3 bg-gray-900/80 border border-gray-700 px-3 py-1.5 rounded-lg text-xs text-gray-400 backdrop-blur pointer-events-none">
+      <div className="absolute bottom-3 left-3 bg-gray-50 dark:bg-gray-900/80 border border-gray-300 dark:border-gray-700 px-3 py-1.5 rounded-lg text-xs text-gray-600 dark:text-gray-400 backdrop-blur pointer-events-none">
         ลากเส้นเชื่อม หรือกดลบโหนดได้ (ยกเว้นโหนดหลัก)
       </div>
     </div>

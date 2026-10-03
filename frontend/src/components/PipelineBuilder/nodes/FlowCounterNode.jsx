@@ -6,6 +6,7 @@ import usePipelineStore from '../../../store/usePipelineStore';
 import ROIEditorModal from './ROIEditorModal';
 
 export default function FlowCounterNode({ id, data }) {
+  const isCompact = data?.viewMode === 'compact';
   const updateNodeData = usePipelineStore(s => s.updateNodeData);
   const nodes = usePipelineStore(s => s.nodes);
   const edges = usePipelineStore(s => s.edges);
@@ -101,7 +102,7 @@ export default function FlowCounterNode({ id, data }) {
   };
 
   return (
-    <div className="bg-gray-900 border-2 border-teal-500 rounded-xl shadow-lg shadow-teal-900/20 w-72 text-white flex flex-col">
+    <div className={`bg-gray-900 border-2 border-teal-500 rounded-xl shadow-lg shadow-teal-900/20 ${isCompact ? 'w-48' : 'w-72'} text-white flex flex-col`}>
       <div className="bg-teal-500/20 p-3 flex items-center justify-between border-b border-teal-800/50">
         <div className="flex items-center gap-2.5">
           <div className="bg-teal-600 p-1.5 rounded-lg text-white">
@@ -112,10 +113,10 @@ export default function FlowCounterNode({ id, data }) {
             <div className="text-[10px] text-teal-300/80">Anti-Duplicate Class Counter</div>
           </div>
         </div>
-        <NodeMenu id={id} />
+        {!isCompact && <NodeMenu id={id} />}
       </div>
 
-      <div className="p-3.5 flex flex-col gap-2.5">
+      <div className={`p-3.5 flex flex-col gap-2.5 ${isCompact ? 'hidden' : ''}`}>
         {/* Node Label */}
         <label className="text-xs text-gray-400 flex flex-col gap-1">
           Node Label

@@ -8,6 +8,7 @@ ROUTER_NODE_TYPES = {
     "logicNode",
     "counterNode",
     "flowCounterNode",
+    "targetTrackerNode",
     "rateLimitNode",
     "functionNode",
     "actionNode",
@@ -31,7 +32,6 @@ STREAM_NODE_TYPES = {
     "dashboardVideoNode",
 }
 
-# Dynamic parameters in aiNode that can be updated on-the-fly without rebuilding GStreamer/Hailo
 AI_DYNAMIC_PARAMS = {
     "confidenceThreshold",
     "classConfidences",
@@ -39,9 +39,6 @@ AI_DYNAMIC_PARAMS = {
     "roiEnabled",
     "showRoi",
     "classFilter",
-    "bboxDrawMode",
-    "bboxLineThickness",
-    "bboxFontThickness",
     "backendResolution",
 }
 
@@ -76,7 +73,10 @@ def _clean_node_data(data: Dict[str, Any]) -> Dict[str, Any]:
     """Strip out transient UI keys like position, selection, etc. to compare pure data."""
     if not isinstance(data, dict):
         return {}
-    ignore_keys = {"selected", "dragging", "position", "positionAbsolute", "width", "height"}
+    ignore_keys = {
+        "selected", "dragging", "position", "positionAbsolute",
+        "width", "height", "positions", "viewMode", "isDirty", "isInvalid", "isPaused"
+    }
     return {k: v for k, v in data.items() if k not in ignore_keys}
 
 def _edge_key(edge: Dict[str, Any]) -> Tuple[str, str, str, str]:

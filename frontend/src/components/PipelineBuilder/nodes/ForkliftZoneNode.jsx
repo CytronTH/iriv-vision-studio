@@ -23,6 +23,7 @@ const TYPE_COLORS = {
 };
 
 export default function ForkliftZoneNode({ id, data }) {
+  const isCompact = data?.viewMode === 'compact';
   const updateNodeData = usePipelineStore((s) => s.updateNodeData);
   const nodes = usePipelineStore((s) => s.nodes);
   const edges = usePipelineStore((s) => s.edges);
@@ -151,10 +152,10 @@ export default function ForkliftZoneNode({ id, data }) {
             <div className="text-[10px] text-rose-400/80 font-mono">Intersection & Danger Zones</div>
           </div>
         </div>
-        <NodeMenu id={id} />
+        {!isCompact && <NodeMenu id={id} />}
       </div>
 
-      <div className="p-3.5 flex flex-col gap-3">
+      <div className={`p-3.5 flex flex-col gap-3 ${isCompact ? 'hidden' : ''}`}>
         {/* Real-Time Status Banner */}
         {isCritical ? (
           <div className="bg-red-950/90 border-2 border-red-500 rounded-lg p-2.5 flex items-center justify-between text-xs text-red-100 animate-pulse shadow-lg shadow-red-950/60">

@@ -20,7 +20,7 @@ PIN_MAP = {
 class GPIOManager:
     def __init__(self):
         self.devices = {}
-        logger.info("Initializing GPIO Manager for IRIV EdgeAI CM5...")
+        logger.info("Initializing GPIO Manager for PiDo EdgeAI CM5...")
 
     def setup_input(self, name, pin, bounce_time=0.1):
         if name not in self.devices:

@@ -4,7 +4,7 @@ import usePipelineStore from '../../store/usePipelineStore';
 
 const getNodeBadgeColors = (type) => {
   switch(type) {
-    case 'inputNode': return 'bg-slate-900/40 text-slate-300 border-slate-700/50';
+    case 'inputNode': return 'bg-gray-50 dark:bg-slate-900/40 text-slate-300 border-slate-700/50';
     case 'aiNode': return 'bg-purple-900/40 text-purple-300 border-purple-700/50';
     case 'logicNode': return 'bg-orange-900/40 text-orange-400 border-orange-700/50';
     case 'counterNode': return 'bg-emerald-900/40 text-emerald-400 border-emerald-700/50';
@@ -15,7 +15,7 @@ const getNodeBadgeColors = (type) => {
     case 'functionNode': return 'bg-pink-900/40 text-pink-400 border-pink-700/50';
     case 'actionNode': return 'bg-indigo-900/40 text-indigo-400 border-indigo-700/50';
     case 'snapshotNode': return 'bg-cyan-900/40 text-cyan-400 border-cyan-700/50';
-    default: return 'bg-gray-900/40 text-gray-300 border-gray-700/50';
+    default: return 'bg-gray-50 dark:bg-gray-900/40 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-700/50';
   }
 };
 
@@ -154,17 +154,17 @@ export default function DebugPanel({ isOpen, onClose }) {
   };
 
   return (
-    <aside className={`bg-gray-900 border-l border-gray-800 flex flex-col h-full transition-all duration-300 ease-in-out shrink-0 overflow-hidden ${isOpen ? 'w-full md:w-[340px]' : 'w-0 border-l-0'}`}>
+    <aside className={`bg-gray-50 dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 flex flex-col h-full transition-all duration-300 ease-in-out shrink-0 overflow-hidden ${isOpen ? 'w-full md:w-[340px]' : 'w-0 border-l-0'}`}>
       {/* Header */}
-      <div className="flex items-center justify-between p-2.5 border-b border-gray-800 bg-gray-950/50 shrink-0">
-        <div className="flex items-center gap-2 text-gray-200">
+      <div className="flex items-center justify-between p-2.5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950/50 shrink-0">
+        <div className="flex items-center gap-2 text-gray-800 dark:text-gray-200">
           <Terminal size={16} className="text-purple-400" />
           <span className="font-semibold text-[13px] tracking-wide">Debug Panel</span>
         </div>
         <div className="flex items-center gap-1">
           <button 
             onClick={handleClear}
-            className="p-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-rose-400 transition-colors"
+            className="p-1 rounded bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:text-rose-400 transition-colors"
             title="Clear Debug History"
           >
             <Trash2 size={14} />
@@ -172,7 +172,7 @@ export default function DebugPanel({ isOpen, onClose }) {
           {onClose && (
             <button 
               onClick={onClose}
-              className="p-1 rounded bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors md:hidden"
+              className="p-1 rounded bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:text-white transition-colors md:hidden"
             >
               <X size={14} />
             </button>
@@ -197,24 +197,24 @@ export default function DebugPanel({ isOpen, onClose }) {
             return (
               <div 
                 key={msg.msgId} 
-                className="bg-gray-950 border border-gray-800 rounded-md overflow-hidden shadow-sm hover:border-blue-500/50 transition-colors group flex flex-col shrink-0"
+                className="bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-md overflow-hidden shadow-sm hover:border-blue-500/50 transition-colors group flex flex-col shrink-0"
                 onMouseEnter={() => handleMouseEnter(msg.nodeId)}
                 onMouseLeave={handleMouseLeave}
               >
                 <div 
-                  className="bg-gray-800/40 hover:bg-gray-700/50 px-2 py-1.5 border-b border-gray-800/80 flex items-center justify-between cursor-pointer transition-colors"
+                  className="bg-gray-100 dark:bg-gray-800/40 hover:bg-gray-200 dark:bg-gray-700/50 px-2 py-1.5 border-b border-gray-200 dark:border-gray-800/80 flex items-center justify-between cursor-pointer transition-colors"
                   onClick={() => toggleExpand(msg.msgId)}
                 >
                   <div className="flex items-center gap-1.5 min-w-0">
-                    {isExpanded ? <ChevronUp size={13} className="text-gray-400 shrink-0" /> : <ChevronDown size={13} className="text-gray-400 shrink-0" />}
-                    <span className="text-[10px] font-mono text-gray-400 truncate">
+                    {isExpanded ? <ChevronUp size={13} className="text-gray-600 dark:text-gray-400 shrink-0" /> : <ChevronDown size={13} className="text-gray-600 dark:text-gray-400 shrink-0" />}
+                    <span className="text-[10px] font-mono text-gray-600 dark:text-gray-400 truncate">
                       {msg.timestamp}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       onClick={(e) => handleCopy(e, msg)}
-                      className="text-gray-500 hover:text-gray-300 transition-colors p-0.5 rounded flex items-center justify-center w-4 h-4"
+                      className="text-gray-500 hover:text-gray-700 dark:text-gray-300 transition-colors p-0.5 rounded flex items-center justify-center w-4 h-4"
                       title="Copy payload"
                     >
                       {copiedId === msg.msgId ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}

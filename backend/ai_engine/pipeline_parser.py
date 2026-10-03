@@ -5,7 +5,7 @@ from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
-from ai_engine.message_router import MessageRouter, LogicNode, RateLimitNode, FunctionNode, ActionNode, HardwareOutputNode, DashboardOutputNode, CounterNode, FlowCounterNode, SnapshotNode
+from ai_engine.message_router import MessageRouter, LogicNode, RateLimitNode, FunctionNode, ActionNode, HardwareOutputNode, DashboardOutputNode, CounterNode, FlowCounterNode, UnitThroughputNode, TargetTrackerNode, SnapshotNode, DatabaseWriterNode, CollectionWriterNode
 
 class CameraStreamConfig:
     def __init__(self, stream_id: str):
@@ -22,6 +22,7 @@ class CameraStreamConfig:
         self.input_node_id = None
         self.ai_node_id = None
         self.loop = True
+        self.loop_count = 1
         self.speed = 1.0
         
         self.bbox_draw_mode = "frontend"
@@ -118,6 +119,13 @@ class PipelineParser:
                 router.add_node(nid, CounterNode(nid, ndata, router))
             elif ntype == "flowCounterNode":
                 router.add_node(nid, FlowCounterNode(nid, ndata, router))
+            elif ntype == "unitThroughputNode":
+                router.add_node(nid, UnitThroughputNode(nid, ndata, router))
+            elif ntype == "targetTrackerNode":
+                router.add_node(nid, TargetTrackerNode(nid, ndata, router))
+                config.dashboard_nodes.append({
+                    "id": f"dashboard.{nid}.value", "name": ndata.get("label", "Target Tracker"), "dataType": "target_tracker", "widgetType": "targetTracker", "nodeId": nid
+                })
             elif ntype == "rateLimitNode":
                 router.add_node(nid, RateLimitNode(nid, ndata, router))
             elif ntype == "functionNode":
@@ -139,23 +147,24 @@ class PipelineParser:
             elif ntype == "dashboardMetricNode":
                 router.add_node(nid, DashboardOutputNode(nid, ndata, router))
                 config.dashboard_nodes.append({
-                    "id": f"dashboard.{nid}.value", "name": ndata.get("label", "Metric"), "dataType": "number"
+                    "id": f"dashboard.{nid}.value", "name": ndata.get("label", "Metric"), "dataType": "number", "widgetType": "metric"
                 })
+            elif ntype == "databaseWriterNode":
+                router.add_node(nid, DatabaseWriterNode(nid, ndata, router))
+            elif ntype == "collectionWriterNode":
+                router.add_node(nid, CollectionWriterNode(nid, ndata, router))
             elif ntype == "snapshotNode":
                 router.add_node(nid, SnapshotNode(nid, ndata, router))
                 config.dashboard_nodes.append({
-                    "id": f"dashboard.{nid}.value", "name": ndata.get("label", "Text"), "dataType": "text"
+                    "id": f"dashboard.{nid}.value", "name": ndata.get("label", "Text"), "dataType": "text", "widgetType": "imageGallery"
                 })
             elif ntype == "dashboardTextNode":
                 router.add_node(nid, DashboardOutputNode(nid, ndata, router))
                 config.dashboard_nodes.append({
-                    "id": f"dashboard.{nid}.value", "name": ndata.get("label", "Text"), "dataType": "text"
+                    "id": f"dashboard.{nid}.value", "name": ndata.get("label", "Text"), "dataType": "text", "widgetType": "text"
                 })
             elif ntype == "dashboardChartNode":
                 router.add_node(nid, DashboardOutputNode(nid, ndata, router))
-                config.dashboard_nodes.append({
-                    "id": f"dashboard.{nid}.history", "name": ndata.get("label", "Chart"), "dataType": "array_number"
-                })
             elif ntype == "shelfSlotMonitorNode":
                 from ai_engine.shelf_slot_monitor import ShelfSlotMonitorNode
                 router.add_node(nid, ShelfSlotMonitorNode(nid, ndata, router))
@@ -165,13 +174,43 @@ class PipelineParser:
             elif ntype == "dashboardLogNode":
                 router.add_node(nid, DashboardOutputNode(nid, ndata, router))
                 config.dashboard_nodes.append({
-                    "id": f"dashboard.{nid}.history", "name": ndata.get("label", "Log"), "dataType": "array_text"
+                    "id": f"dashboard.{nid}.history", "name": ndata.get("label", "Log"), "dataType": "array_text", "widgetType": "textFeed"
                 })
         for edge in edges:
             src = edge.get("source")
             tgt = edge.get("target")
             src_handle = edge.get("sourceHandle")
             router.add_edge(src, tgt, source_handle=src_handle)
+
+        parents = {n["id"]: [] for n in nodes}
+        for edge in edges:
+            src = edge.get("source")
+            tgt = edge.get("target")
+            if src in parents and tgt in parents:
+                parents[tgt].append(src)
+                
+        for node in nodes:
+            nid = node["id"]
+            ntype = node.get("type", "")
+            ndata = node.get("data", {})
+            
+            if ntype == "dashboardChartNode":
+                parent_ids = parents.get(nid, [])
+                db_writer_id = None
+                for pid in parent_ids:
+                    pnode = next((n for n in nodes if n["id"] == pid), None)
+                    if pnode and pnode.get("type") == "databaseWriterNode":
+                        db_writer_id = pid
+                        break
+                        
+                source_id = f"dashboard.{db_writer_id}.history" if db_writer_id else f"dashboard.{nid}.history"
+                
+                config.dashboard_nodes.append({
+                    "id": source_id, 
+                    "name": ndata.get("label", "Chart"), 
+                    "dataType": "array_number", 
+                    "widgetType": "chart"
+                })
 
         hailo_post_process_dir = "/usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes"
         models_dir = self.base_dir / "models"
@@ -198,7 +237,7 @@ class PipelineParser:
                 else:
                     mock_video_url = node_data.get("mockVideoUrl", "/videos/default.mp4")
                     
-                abs_path = f"/home/pi/iriv-vision-studio/frontend/public{mock_video_url}"
+                abs_path = f"/home/pi/pido-ai/frontend/public{mock_video_url}"
                 camera = {
                     "id": entity_id,
                     "name": f"Wiki Video ({entity_id})",
@@ -217,6 +256,10 @@ class PipelineParser:
             src_path = camera.get("path", "/dev/video0") if camera else "/dev/video0"
             src_loop = node_data.get("loop", True)
             try:
+                src_loop_count = int(node_data.get("loop_count", 1))
+            except:
+                src_loop_count = 1
+            try:
                 src_speed = float(node_data.get("speed", 1.0))
             except:
                 src_speed = 1.0
@@ -231,6 +274,7 @@ class PipelineParser:
                 stream_config.video_source_type = src_type
                 stream_config.video_source = src_path
                 stream_config.loop = src_loop
+                stream_config.loop_count = src_loop_count
                 stream_config.speed = src_speed
                 
                 # BFS for dashboard nodes
@@ -242,12 +286,13 @@ class PipelineParser:
                     visited.add(curr_id)
                     curr_node = next((n for n in nodes if n["id"] == curr_id), None)
                     if curr_node and curr_node.get("type") == "dashboardVideoNode":
-                        vid_id = f"stream.rtsp.{curr_id}"
+                        custom_path = curr_node.get("data", {}).get("dataPath")
+                        vid_id = custom_path.strip() if custom_path and custom_path.strip() else f"stream.rtsp.{curr_id}"
                         stream_config.dashboard_video_nodes.append(vid_id)
                         config.dashboard_nodes.append({
                             "id": vid_id, "name": curr_node.get("data", {}).get("label", "Video"), 
                             "dataType": "video", "stream_id": stream_config.stream_id, "has_ai": False,
-                            "camera_id": stream_config.camera_id
+                            "camera_id": stream_config.camera_id, "widgetType": "video"
                         })
                     queue_bfs.extend(adj.get(curr_id, []))
                 
@@ -264,6 +309,7 @@ class PipelineParser:
                     stream_config.video_source_type = src_type
                     stream_config.video_source = src_path
                     stream_config.loop = src_loop
+                    stream_config.loop_count = src_loop_count
                     stream_config.speed = src_speed
                     stream_config.has_ai_node = True
                     stream_config.input_node_id = input_node["id"]
@@ -309,14 +355,42 @@ class PipelineParser:
                         visited.add(curr_id)
                         curr_node = next((n for n in nodes if n["id"] == curr_id), None)
                         if curr_node and curr_node.get("type") == "dashboardVideoNode":
-                            vid_id = f"stream.rtsp.{curr_id}" if len(ai_node_ids) == 1 else f"stream.rtsp.{curr_id}_{ai_idx}"
+                            custom_path = curr_node.get("data", {}).get("dataPath")
+                            if custom_path and custom_path.strip():
+                                vid_id = custom_path.strip()
+                            else:
+                                vid_id = f"stream.rtsp.{curr_id}" if len(ai_node_ids) == 1 else f"stream.rtsp.{curr_id}_{ai_idx}"
+                            
                             stream_config.dashboard_video_nodes.append(vid_id)
                             config.dashboard_nodes.append({
                                 "id": vid_id, "name": curr_node.get("data", {}).get("label", "Video"), 
                                 "dataType": "video", "stream_id": stream_config.stream_id, "has_ai": True,
-                                "camera_id": stream_config.camera_id
+                                "camera_id": stream_config.camera_id, "widgetType": "video"
                             })
                         queue_bfs.extend(adj.get(curr_id, []))
+                        
+                    # Also check for debug nodes directly connected to input node (Raw Stream)
+                    # We only need to do this once per input node, so we do it on ai_idx == 0
+                    if ai_idx == 0:
+                        visited_in = set([input_node["id"]])
+                        queue_in = list(adj.get(input_node["id"], []))
+                        while queue_in:
+                            curr_id = queue_in.pop(0)
+                            if curr_id in visited_in: continue
+                            visited_in.add(curr_id)
+                            curr_node = next((n for n in nodes if n["id"] == curr_id), None)
+                            if curr_node and curr_node.get("type") == "dashboardVideoNode":
+                                custom_path = curr_node.get("data", {}).get("dataPath")
+                                vid_id = custom_path.strip() if custom_path and custom_path.strip() else f"stream.rtsp.{curr_id}"
+                                stream_config.dashboard_video_nodes.append(vid_id)
+                                config.dashboard_nodes.append({
+                                    "id": vid_id, "name": curr_node.get("data", {}).get("label", "Raw Video"), 
+                                    "dataType": "video", "stream_id": stream_config.stream_id, "has_ai": False,
+                                    "camera_id": stream_config.camera_id, "widgetType": "video"
+                                })
+                            # Don't traverse downstream of AI nodes in this raw-stream BFS
+                            if curr_node and curr_node.get("type") != "aiNode":
+                                queue_in.extend(adj.get(curr_id, []))
                     
                     config.camera_streams.append(stream_config)
 

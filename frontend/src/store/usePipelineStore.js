@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { applyNodeChanges, applyEdgeChanges, addEdge } from '@xyflow/react';
+import dagre from 'dagre';
 
 const initialNodes = [
   { id: 'start', type: 'inputNode', position: { x: 50, y: 150 }, data: { label: 'Camera Input' } },
@@ -8,7 +9,7 @@ const initialNodes = [
 
 const cleanNodeData = (data) => {
   if (!data || typeof data !== 'object') return {};
-  const { selected, dragging, position, positionAbsolute, width, height, isPaused, ...rest } = data;
+  const { selected, dragging, position, positionAbsolute, width, height, isPaused, positions, viewMode, isDirty, isInvalid, ...rest } = data;
   return rest;
 };
 
@@ -40,7 +41,7 @@ const areDataEqual = (d1, d2) => {
 
 const getDirtyNodeIds = (currentNodes, currentEdges, deployedNodes, deployedEdges) => {
   if (!deployedNodes || deployedNodes.length === 0) {
-    return [];
+    return currentNodes.filter(n => !n.data?.isTutorialMock).map(n => n.id);
   }
   
   const deployedMap = new Map(deployedNodes.map(n => [n.id, n]));
@@ -54,18 +55,16 @@ const getDirtyNodeIds = (currentNodes, currentEdges, deployedNodes, deployedEdge
   // If edges were added or removed, mark connected nodes as dirty
   currentEdges.forEach(e => {
     if (!deployedEdgeKeys.has(edgeKey(e))) {
-      dirtyIds.add(e.source);
-      dirtyIds.add(e.target);
+      dirtyIds.add(e.target); // Only mark target as dirty for new incoming data
     }
   });
   deployedEdges.forEach(e => {
     if (!currentEdgeKeys.has(edgeKey(e))) {
-      dirtyIds.add(e.source);
-      dirtyIds.add(e.target);
+      dirtyIds.add(e.target); // Only mark target as dirty for lost incoming data
     }
   });
 
-  // Check nodes
+  // Check nodes (additions and modifications)
   currentNodes.forEach(node => {
     if (node.data?.isTutorialMock) return;
     const depNode = deployedMap.get(node.id);
@@ -76,7 +75,27 @@ const getDirtyNodeIds = (currentNodes, currentEdges, deployedNodes, deployedEdge
     }
   });
 
+  // Check for deleted nodes
+  deployedNodes.forEach(node => {
+    if (!currentNodes.find(n => n.id === node.id)) {
+      dirtyIds.add(node.id);
+    }
+  });
+
   return Array.from(dirtyIds);
+};
+
+let autoSaveTimer = null;
+let autoSaveStatusTimer = null;
+
+const getInitialViewMode = () => {
+  if (typeof window !== 'undefined') {
+    try {
+      const saved = localStorage.getItem('pipelineViewMode');
+      if (saved === 'inline' || saved === 'compact') return saved;
+    } catch (e) {}
+  }
+  return 'compact';
 };
 
 const usePipelineStore = create((set, get) => ({
@@ -86,20 +105,213 @@ const usePipelineStore = create((set, get) => ({
       lastDeployedEdges: [],
       dirtyNodeIds: [],
       deployMode: 'modified_nodes', // 'modified_nodes' | 'modified_flows' | 'full'
+      pipelineViewMode: getInitialViewMode(), // 'inline' or 'compact'
+      autoSaveStatus: 'idle', // 'idle' | 'saving' | 'saved'
       debugData: {},
       projectId: null,
       highlightedNodeIds: [],
       telemetryData: null,
       showMetricsOverlay: true,
       advancedDebugMode: false,
+      activeSidebarNodeId: null,
       
+      setActiveSidebarNodeId: (id) => set({ activeSidebarNodeId: id }),
+      openNodeSettings: (id) => set({ activeSidebarNodeId: id }),
+      closeNodeSettings: () => set({ activeSidebarNodeId: null }),
       setDeployMode: (mode) => set({ deployMode: mode }),
+      setPipelineViewMode: (mode) => {
+        const state = get();
+        if (state.pipelineViewMode === mode) return;
+        
+        if (typeof window !== 'undefined') {
+          try {
+            localStorage.setItem('pipelineViewMode', mode);
+          } catch (e) {}
+        }
+
+        const currentMode = state.pipelineViewMode;
+        const updatedNodes = state.nodes.map(node => {
+          // 1. Save current position for the current mode
+          const currentModePositions = {
+            ...(node.data?.positions || {}),
+            [currentMode]: { ...node.position }
+          };
+          
+          // 2. Retrieve position for the new mode if it exists, otherwise keep current
+          const targetPosition = currentModePositions[mode] 
+            ? { ...currentModePositions[mode] } 
+            : { ...node.position };
+
+          currentModePositions[mode] = { ...targetPosition };
+
+          return {
+            ...node,
+            position: targetPosition,
+            data: {
+              ...node.data,
+              positions: currentModePositions
+            }
+          };
+        });
+
+        set({ 
+          pipelineViewMode: mode,
+          nodes: updatedNodes 
+        });
+
+        get().autoSavePositions();
+      },
+
+      syncCurrentPositions: () => {
+        const mode = get().pipelineViewMode;
+        const currentNodes = get().nodes;
+        let hasChanges = false;
+
+        const updatedNodes = currentNodes.map(node => {
+          const currentPos = node.position;
+          const savedPos = node.data?.positions?.[mode];
+          if (!savedPos || savedPos.x !== currentPos.x || savedPos.y !== currentPos.y) {
+            hasChanges = true;
+            return {
+              ...node,
+              data: {
+                ...node.data,
+                positions: {
+                  ...(node.data?.positions || {}),
+                  [mode]: { ...currentPos }
+                }
+              }
+            };
+          }
+          return node;
+        });
+
+        if (hasChanges) {
+          set({ nodes: updatedNodes });
+          get().autoSavePositions();
+        }
+      },
+
+      autoSavePositions: () => {
+        const projectId = get().projectId;
+        if (!projectId) return;
+
+        if (autoSaveTimer) {
+          clearTimeout(autoSaveTimer);
+        }
+
+        set({ autoSaveStatus: 'saving' });
+
+        autoSaveTimer = setTimeout(async () => {
+          const state = get();
+          const nodes = state.nodes.filter(n => !n.data?.isTutorialMock);
+          if (nodes.length === 0) {
+            set({ autoSaveStatus: 'idle' });
+            return;
+          }
+
+          const currentMode = state.pipelineViewMode;
+          const payloadNodes = nodes.map(n => ({
+            id: n.id,
+            position: n.position,
+            data: {
+              label: n.data?.label,
+              positions: {
+                ...(n.data?.positions || {}),
+                [currentMode]: { ...n.position }
+              }
+            }
+          }));
+
+          try {
+            const res = await fetch(`/api/projects/${projectId}/pipeline-positions`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ nodes: payloadNodes })
+            });
+            if (res.ok) {
+              set({ autoSaveStatus: 'saved' });
+              if (autoSaveStatusTimer) clearTimeout(autoSaveStatusTimer);
+              autoSaveStatusTimer = setTimeout(() => {
+                set({ autoSaveStatus: 'idle' });
+              }, 2500);
+            } else {
+              set({ autoSaveStatus: 'idle' });
+            }
+          } catch (err) {
+            console.warn('Auto-save pipeline positions failed:', err);
+            set({ autoSaveStatus: 'idle' });
+          }
+        }, 400);
+      },
       setHighlightedNodeIds: (ids) => set({ highlightedNodeIds: ids }),
       setProjectId: (id) => set({ projectId: id }),
       setTelemetryData: (data) => set({ telemetryData: data }),
       setShowMetricsOverlay: (show) => set({ showMetricsOverlay: show }),
       toggleMetricsOverlay: () => set((state) => ({ showMetricsOverlay: !state.showMetricsOverlay })),
       toggleAdvancedDebugMode: () => set((state) => ({ advancedDebugMode: !state.advancedDebugMode })),
+      
+      beautifyPipeline: () => {
+        const state = get();
+        const mainNodes = state.nodes.filter(n => !n.data?.isTutorialMock);
+        const mainEdges = state.edges.filter(e => !e.data?.isTutorialMock);
+        if (mainNodes.length === 0) return;
+        
+        const dagreGraph = new dagre.graphlib.Graph();
+        dagreGraph.setDefaultEdgeLabel(() => ({}));
+        // Use ranksep and nodesep to control spacing
+        dagreGraph.setGraph({ rankdir: 'LR', ranksep: 120, nodesep: 100 });
+        
+        const mode = state.pipelineViewMode;
+        
+        mainNodes.forEach((node) => {
+          const width = node.measured?.width ?? (mode === 'inline' ? 280 : 250);
+          const height = node.measured?.height ?? (mode === 'inline' ? 250 : 100);
+          dagreGraph.setNode(node.id, { width, height });
+        });
+        
+        mainEdges.forEach((edge) => {
+          dagreGraph.setEdge(edge.source, edge.target);
+        });
+        
+        dagre.layout(dagreGraph);
+        
+        const newNodes = state.nodes.map((node) => {
+          if (node.data?.isTutorialMock) return node;
+          
+          const nodeWithPosition = dagreGraph.node(node.id);
+          if (!nodeWithPosition) return node;
+          
+          const width = node.measured?.width ?? (mode === 'inline' ? 280 : 250);
+          const height = node.measured?.height ?? (mode === 'inline' ? 250 : 100);
+          
+          // dagre returns center point, react flow wants top-left
+          const targetPosition = {
+            x: nodeWithPosition.x - width / 2,
+            y: nodeWithPosition.y - height / 2
+          };
+          
+          return {
+            ...node,
+            position: targetPosition,
+            data: {
+              ...node.data,
+              positions: {
+                ...(node.data?.positions || {}),
+                [mode]: { ...targetPosition }
+              }
+            }
+          };
+        });
+        
+        const dirtyIds = getDirtyNodeIds(newNodes, state.edges, state.lastDeployedNodes, state.lastDeployedEdges);
+        
+        set({
+          nodes: newNodes,
+          dirtyNodeIds: dirtyIds
+        });
+        get().autoSavePositions();
+      },
       
       setDebugData: (nodeId, data) => {
         set((state) => ({
@@ -132,6 +344,25 @@ const usePipelineStore = create((set, get) => ({
       },
 
       setPipeline: (nodes, edges) => {
+        const currentMode = get().pipelineViewMode;
+        const processedNodes = nodes.map(node => {
+          const pos = node.position || { x: 50, y: 150 };
+          const existingPositions = node.data?.positions || {};
+          const currentModePos = existingPositions[currentMode] || pos;
+          return {
+            ...node,
+            position: { ...currentModePos },
+            data: {
+              ...node.data,
+              positions: {
+                inline: existingPositions.inline || { ...pos },
+                compact: existingPositions.compact || { ...pos },
+                ...existingPositions,
+                [currentMode]: { ...currentModePos }
+              }
+            }
+          };
+        });
         const processedEdges = edges.map(edge => ({
           ...edge,
           type: 'buttonEdge',
@@ -139,9 +370,9 @@ const usePipelineStore = create((set, get) => ({
           style: { stroke: '#3b82f6', strokeWidth: 2 }
         }));
         set({
-          nodes,
+          nodes: processedNodes,
           edges: processedEdges,
-          lastDeployedNodes: JSON.parse(JSON.stringify(nodes)),
+          lastDeployedNodes: JSON.parse(JSON.stringify(processedNodes)),
           lastDeployedEdges: JSON.parse(JSON.stringify(processedEdges)),
           dirtyNodeIds: []
         });
@@ -213,6 +444,39 @@ const usePipelineStore = create((set, get) => ({
         }
         const newNodes = applyNodeChanges(changes, get().nodes);
         const dirtyIds = getDirtyNodeIds(newNodes, currentEdges, get().lastDeployedNodes, get().lastDeployedEdges);
+        
+        // Check if any position change has completed (drag released or keyboard nudged)
+        const hasFinishedPositionChange = changes.some(c => c.type === 'position' && c.dragging !== true);
+
+        if (hasFinishedPositionChange) {
+          const mode = get().pipelineViewMode;
+          const syncedNodes = newNodes.map(node => {
+            const currentPos = node.position;
+            const savedPos = node.data?.positions?.[mode];
+            if (!savedPos || savedPos.x !== currentPos.x || savedPos.y !== currentPos.y) {
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  positions: {
+                    ...(node.data?.positions || {}),
+                    [mode]: { ...currentPos }
+                  }
+                }
+              };
+            }
+            return node;
+          });
+
+          set({
+            nodes: syncedNodes,
+            edges: currentEdges,
+            dirtyNodeIds: dirtyIds,
+          });
+          get().autoSavePositions();
+          return;
+        }
+
         set({
           nodes: newNodes,
           edges: currentEdges,
@@ -239,12 +503,28 @@ const usePipelineStore = create((set, get) => ({
       },
       
       addNode: (node) => {
-        const newNodes = [...get().nodes, node];
+        const currentMode = get().pipelineViewMode;
+        const initialPos = node.position || { x: 100, y: 100 };
+        const nodeWithPositions = {
+          ...node,
+          position: { ...initialPos },
+          data: {
+            ...node.data,
+            positions: {
+              inline: { ...initialPos },
+              compact: { ...initialPos },
+              ...(node.data?.positions || {}),
+              [currentMode]: { ...initialPos }
+            }
+          }
+        };
+        const newNodes = [...get().nodes, nodeWithPositions];
         const dirtyIds = getDirtyNodeIds(newNodes, get().edges, get().lastDeployedNodes, get().lastDeployedEdges);
         set({
           nodes: newNodes,
           dirtyNodeIds: dirtyIds,
         });
+        get().autoSavePositions();
       },
       
       deleteNode: (id) => {
@@ -293,6 +573,9 @@ const usePipelineStore = create((set, get) => ({
           nodes: newNodes,
           dirtyNodeIds: dirtyIds,
         });
+        
+        // Auto-save just in case we changed non-dirty layout/UI fields like label
+        get().autoSavePositions();
       },
     })
 );

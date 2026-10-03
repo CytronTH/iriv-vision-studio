@@ -82,7 +82,7 @@ export default function ProjectList({ onOpenProject }) {
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center h-[50vh] text-gray-400">
+      <div className="flex flex-col items-center justify-center h-[50vh] text-gray-600 dark:text-gray-400">
         <Activity className="animate-spin mb-4" size={32} />
         <p>Loading projects...</p>
       </div>
@@ -149,7 +149,7 @@ export default function ProjectList({ onOpenProject }) {
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full sm:w-auto">
           <button 
             onClick={() => setIsImportModalOpen(true)}
-            className="bg-gray-800 hover:bg-gray-700 text-gray-200 hover:text-white border border-gray-700 hover:border-gray-600 px-4 sm:px-5 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 whitespace-nowrap text-sm sm:text-base"
+            className="bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:bg-gray-700 text-gray-800 dark:text-gray-200 hover:text-white border border-gray-300 dark:border-gray-700 hover:border-gray-300 dark:border-gray-600 px-4 sm:px-5 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all shadow-md active:scale-95 whitespace-nowrap text-sm sm:text-base"
           >
             <Upload size={18} className="text-blue-400" />
             Import Project
@@ -166,7 +166,7 @@ export default function ProjectList({ onOpenProject }) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-6">
         {projects.map(project => (
-          <div key={project.id} className="bg-gray-900/80 border border-gray-800 hover:border-blue-900/50 rounded-2xl p-4 sm:p-6 transition-all group flex flex-col shadow-lg relative overflow-hidden backdrop-blur-sm">
+          <div key={project.id} className="bg-gray-50 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-800 hover:border-blue-900/50 rounded-2xl p-4 sm:p-6 transition-all group flex flex-col shadow-lg relative overflow-hidden backdrop-blur-sm">
             
             {/* Background Glow */}
             <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/5 rounded-full blur-3xl -mr-16 -mt-16 pointer-events-none group-hover:bg-blue-600/10 transition-colors"></div>
@@ -184,12 +184,12 @@ export default function ProjectList({ onOpenProject }) {
                       <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
                       Running
                     </span>
-                    <span className="text-[10px] text-gray-400 mt-1 font-mono">
+                    <span className="text-[10px] text-gray-600 dark:text-gray-400 mt-1 font-mono">
                       {formatUptime(projectStatuses[project.id]?.uptime)}
                     </span>
                   </div>
                 ) : (
-                  <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-400 bg-gray-800 px-2 py-1 rounded-md border border-gray-700">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-600 dark:text-gray-400 bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700">
                     <span className="w-1.5 h-1.5 rounded-full bg-gray-500"></span>
                     Stopped
                   </span>
@@ -200,7 +200,7 @@ export default function ProjectList({ onOpenProject }) {
               <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
                 <button 
                   onClick={() => setExportTargetProject(project)}
-                  className="text-gray-400 hover:text-blue-400 transition-colors p-2 bg-gray-800 hover:bg-gray-750 rounded-lg active:scale-95"
+                  className="text-gray-600 dark:text-gray-400 hover:text-blue-400 transition-colors p-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-750 rounded-lg active:scale-95"
                   title="Export / Backup Project"
                 >
                   <Download size={16} />
@@ -208,7 +208,7 @@ export default function ProjectList({ onOpenProject }) {
                 {editingId !== project.id && (
                   <button 
                     onClick={() => startEditing(project)}
-                    className="text-gray-400 hover:text-blue-400 transition-colors p-2 bg-gray-800 rounded-lg active:scale-95"
+                    className="text-gray-600 dark:text-gray-400 hover:text-blue-400 transition-colors p-2 bg-gray-100 dark:bg-gray-800 rounded-lg active:scale-95"
                     title="Edit Details"
                   >
                     <Edit2 size={16} />
@@ -216,7 +216,7 @@ export default function ProjectList({ onOpenProject }) {
                 )}
                 <button 
                   onClick={() => deleteProject(project.id)}
-                  className="text-gray-400 hover:text-red-500 transition-colors p-2 bg-gray-800 rounded-lg active:scale-95"
+                  className="text-gray-600 dark:text-gray-400 hover:text-red-500 transition-colors p-2 bg-gray-100 dark:bg-gray-800 rounded-lg active:scale-95"
                   title="Delete Project"
                 >
                   <Trash2 size={16} />
@@ -231,14 +231,14 @@ export default function ProjectList({ onOpenProject }) {
                     type="text"
                     value={editForm.name}
                     onChange={(e) => setEditForm({...editForm, name: e.target.value})}
-                    className="w-full bg-gray-950 border border-blue-500 rounded-lg px-3 py-2 text-white font-bold outline-none"
+                    className="w-full bg-white dark:bg-gray-950 border border-blue-500 rounded-lg px-3 py-2 text-white font-bold outline-none"
                     placeholder="Project Name"
                     autoFocus
                   />
                   <textarea
                     value={editForm.description}
                     onChange={(e) => setEditForm({...editForm, description: e.target.value})}
-                    className="w-full bg-gray-950 border border-gray-700 focus:border-blue-500 rounded-lg px-3 py-2 text-gray-300 text-sm outline-none resize-none h-20"
+                    className="w-full bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 focus:border-blue-500 rounded-lg px-3 py-2 text-gray-700 dark:text-gray-300 text-sm outline-none resize-none h-20"
                     placeholder="Project Description"
                   />
                   <div className="flex justify-end">
@@ -255,12 +255,12 @@ export default function ProjectList({ onOpenProject }) {
                   <h3 className="text-lg sm:text-xl font-bold mb-1.5 sm:mb-2 text-white group-hover:text-blue-400 transition-colors cursor-pointer" onClick={() => onOpenProject(project)}>
                     {project.name}
                   </h3>
-                  <p className="text-gray-400 text-xs sm:text-sm mb-4 sm:mb-6 line-clamp-2">{project.description}</p>
+                  <p className="text-gray-600 dark:text-gray-400 text-xs sm:text-sm mb-4 sm:mb-6 line-clamp-2">{project.description}</p>
                 </>
               )}
             </div>
             
-            <div className="flex items-center justify-between pt-4 sm:pt-5 border-t border-gray-800/50 mt-auto relative z-10 gap-2">
+            <div className="flex items-center justify-between pt-4 sm:pt-5 border-t border-gray-200 dark:border-gray-800/50 mt-auto relative z-10 gap-2">
               <div className="flex items-center gap-2">
                 {projectStatuses[project.id]?.status === 'running' ? (
                   <button 
@@ -295,11 +295,11 @@ export default function ProjectList({ onOpenProject }) {
         ))}
 
         {projects.length === 0 && (
-          <div className="col-span-full py-20 text-center border-2 border-dashed border-gray-800 rounded-2xl bg-gray-900/30">
-            <div className="bg-gray-800/50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+          <div className="col-span-full py-20 text-center border-2 border-dashed border-gray-200 dark:border-gray-800 rounded-2xl bg-gray-50 dark:bg-gray-900/30">
+            <div className="bg-gray-100 dark:bg-gray-800/50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
               <Folder size={32} className="text-gray-500" />
             </div>
-            <h3 className="text-2xl font-bold text-gray-300 mb-2">No Projects Yet</h3>
+            <h3 className="text-2xl font-bold text-gray-700 dark:text-gray-300 mb-2">No Projects Yet</h3>
             <p className="text-gray-500 mb-8 max-w-md mx-auto">
               Create your first project to start building AI vision pipelines and analyzing video streams.
             </p>

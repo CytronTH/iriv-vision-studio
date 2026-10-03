@@ -3,7 +3,7 @@ import time
 import queue
 import threading
 from typing import Dict, Any, List
-from ai_engine.telemetry_db import telemetry_db
+
 
 logger = logging.getLogger(__name__)
 
@@ -64,8 +64,14 @@ class LogicNode(PipelineNode):
             .replace("||", " or ")
             .replace("!", " not "))
         
-        self.debounce_ms = data.get("debounceMs", 0) / 1000.0
+        self.debounce_ms = float(data.get("debounceMs", 0)) / 1000.0
+        self.output_mode = data.get("outputMode", "on_change")  # "on_change", "rising_edge", "continuous"
+        self.cooldown_ms = float(data.get("cooldownMs", 0)) / 1000.0
+        
         self.first_true = None
+        self.last_final_val = False
+        self.last_emit_time = 0.0
+        self.last_ws_val = False
 
     def process(self, msg: dict):
         payload = msg.get("payload", [])
@@ -129,10 +135,29 @@ class LogicNode(PipelineNode):
             self.first_true = None
             final_val = False
 
-        msg["payload"] = final_val
-        
-        # Send state for UI
-        if self.router.metadata_callback:
+        # 1. Evaluate trigger condition based on output_mode
+        should_emit = False
+        if self.output_mode == "continuous":
+            should_emit = True
+        elif self.output_mode == "rising_edge":
+            # Only trigger on transition False -> True
+            if final_val and not self.last_final_val:
+                should_emit = True
+        else:
+            # Default: "on_change" - trigger when state flips
+            if final_val != self.last_final_val:
+                should_emit = True
+
+        # 2. Check cooldown suppression if triggered
+        if should_emit:
+            if self.cooldown_ms > 0 and (current_time - self.last_emit_time < self.cooldown_ms):
+                should_emit = False
+            else:
+                self.last_emit_time = current_time
+
+        # 3. Deduplicate WebSocket updates: only notify UI when state changes
+        if self.router.metadata_callback and (final_val != self.last_ws_val):
+            self.last_ws_val = final_val
             self.router.metadata_callback({
                 "type": "logic_state",
                 "node_id": self.node_id,
@@ -141,6 +166,13 @@ class LogicNode(PipelineNode):
                 "msg": msg
             })
 
+        self.last_final_val = final_val
+
+        # 4. Drop message if trigger condition is not satisfied (prevents flooding)
+        if not should_emit:
+            return None
+
+        msg["payload"] = final_val
         return msg
 
 class CounterNode(PipelineNode):
@@ -149,6 +181,7 @@ class CounterNode(PipelineNode):
         self.count = 0
         self.last_payload = False
         self.edge_type = data.get("edgeType", "rising")
+        self.auto_log = data.get("autoLog", True)
 
     def process(self, msg: dict):
         current_payload = bool(msg.get("payload"))
@@ -169,7 +202,7 @@ class CounterNode(PipelineNode):
         if self.router.metadata_callback:
             self.router.metadata_callback({
                 "type": "dashboard_update",
-                "node_id": f"dashboard.{self.node_id}.value",
+                "node_id": self.node_id,
                 "value": self.count,
                 "camera_id": msg.get("camera_id", msg.get("metadata", {}).get("camera_id")),
                 "msg": msg
@@ -177,11 +210,7 @@ class CounterNode(PipelineNode):
             
             ts = msg.get("metadata", {}).get("timestamp", time.time())
             
-            # Optimize TSDB insertions: only insert if value changed
-            if getattr(self, '_last_telemetry_count', None) != self.count:
-                telemetry_db.insert_history(self.node_id, ts, self.count)
-                self._last_telemetry_count = self.count
-            
+            # No longer logging to TSDB directly; use DatabaseWriterNode instead.
             self.router.metadata_callback({
                 "type": "counter_update",
                 "node_id": self.node_id,
@@ -191,6 +220,17 @@ class CounterNode(PipelineNode):
             })
             
         return msg
+
+    def reset_counts(self):
+        self.count = 0
+        self.last_payload = False
+        self._last_telemetry_count = 0
+        if self.router.metadata_callback:
+            self.router.metadata_callback({
+                "type": "counter_update",
+                "node_id": self.node_id,
+                "value": 0
+            })
 
 class FlowCounterNode(PipelineNode):
     def __init__(self, node_id, data, router):
@@ -204,17 +244,12 @@ class FlowCounterNode(PipelineNode):
         self.class_filter = data.get("classFilter")
         
         self.cumulative_totals = {}
-        self.interval_deltas = {}
         self.total_count = 0
         
         self.tracker = CentroidTracker(
             max_disappeared=int(data.get("maxDisappeared", 20)),
             max_distance=float(data.get("maxDistance", 0.15))
         )
-        
-        self.flush_interval_sec = float(data.get("flushIntervalSec", 60.0))
-        self.last_flush_time = time.time()
-        self.auto_log = data.get("autoLog", True)
 
     def process(self, msg: dict):
         payload = msg.get("payload", {})
@@ -227,12 +262,19 @@ class FlowCounterNode(PipelineNode):
 
         if self.class_filter and len(self.class_filter) > 0:
             filtered_detections = [d for d in detections if d.get("label") in self.class_filter]
+            
+            # Clean up cumulative counts if class filter changed (e.g. via hot-reload)
+            keys_to_remove = [k for k in self.cumulative_totals.keys() if k not in self.class_filter]
+            for k in keys_to_remove:
+                self.total_count -= self.cumulative_totals[k]
+                del self.cumulative_totals[k]
         else:
             filtered_detections = detections
 
         active_tracks = self.tracker.update(filtered_detections)
 
         newly_counted = 0
+        triggering_objects = []
         camera_id = msg.get("camera_id") or msg.get("metadata", {}).get("camera_id") or "default"
 
         for track in active_tracks:
@@ -254,9 +296,33 @@ class FlowCounterNode(PipelineNode):
                 track.counted = True
                 lbl = track.label or "unknown"
                 self.cumulative_totals[lbl] = self.cumulative_totals.get(lbl, 0) + 1
-                self.interval_deltas[lbl] = self.interval_deltas.get(lbl, 0) + 1
                 self.total_count += 1
                 newly_counted += 1
+                
+                # Append to triggering objects for snapshot drawing
+                triggering_objects.append({
+                    "label": lbl,
+                    "confidence": getattr(track, 'confidence', 1.0),
+                    "bbox": getattr(track, 'bbox', [])
+                })
+
+        # --- MONITORING LOGIC FOR LOOP COUNTS ---
+        current_loop = msg.get("metadata", {}).get("current_loop")
+        if current_loop is not None:
+            last_loop = getattr(self, '_monitor_last_loop', None)
+            if last_loop is not None and current_loop > last_loop:
+                # Loop transitioned! e.g. from 1 to 2
+                expected_count = last_loop * 4
+                if self.total_count != expected_count:
+                    import logging
+                    log = logging.getLogger(__name__)
+                    log.error(f"[MONITOR] ABNORMAL COUNT! Loop {last_loop} ended with {self.total_count} counts. Expected {expected_count}!")
+                else:
+                    import logging
+                    log = logging.getLogger(__name__)
+                    log.info(f"[MONITOR] Loop {last_loop} ended perfectly with {self.total_count} counts.")
+            self._monitor_last_loop = current_loop
+        # ----------------------------------------
 
         now = time.time()
         should_broadcast = (newly_counted > 0) or (now - getattr(self, '_last_broadcast_time', 0) >= 0.5)
@@ -266,14 +332,14 @@ class FlowCounterNode(PipelineNode):
             payload_data = {
                 "counts": dict(self.cumulative_totals),
                 "total": self.total_count,
-                "newly_counted": newly_counted
+                "newly_counted": newly_counted,
+                "triggering_objects": triggering_objects,
+                "flow_mode": self.mode,
+                "flow_line": self.line if self.mode == "line" else None,
+                "flow_roi": self.roi if self.mode == "roi" else None
             }
             ts = msg.get("metadata", {}).get("timestamp", now)
-            
-            if getattr(self, '_last_telemetry_total', None) != self.total_count:
-                telemetry_db.insert_history(self.node_id, ts, payload_data)
-                self._last_telemetry_total = self.total_count
-
+            # No longer logging to TSDB directly; use DatabaseWriterNode instead.
             self.router.metadata_callback({
                 "type": "flow_counter_update",
                 "node_id": self.node_id,
@@ -283,41 +349,19 @@ class FlowCounterNode(PipelineNode):
                 "camera_id": camera_id,
                 "msg": msg
             })
-
-        if self.auto_log and (now - self.last_flush_time >= self.flush_interval_sec):
-            self.flush_to_db(camera_id)
-            self.last_flush_time = now
-
         msg["payload"] = {
             "counts": dict(self.cumulative_totals),
             "total": self.total_count,
-            "newly_counted": newly_counted
+            "newly_counted": newly_counted,
+            "triggering_objects": triggering_objects,
+            "flow_mode": self.mode,
+            "flow_line": self.line if self.mode == "line" else None,
+            "flow_roi": self.roi if self.mode == "roi" else None
         }
         return msg
 
-    def flush_to_db(self, camera_id: str):
-        try:
-            import sys
-            from pathlib import Path
-            backend_dir = Path("/home/pi/iriv-vision-studio/backend")
-            if str(backend_dir) not in sys.path:
-                sys.path.insert(0, str(backend_dir))
-            from db.database import db
-
-            db.log_class_count(
-                project_id=self.router.project_id,
-                camera_id=camera_id,
-                node_id=self.node_id,
-                class_counts=dict(self.interval_deltas),
-                cumulative_totals=dict(self.cumulative_totals)
-            )
-            self.interval_deltas.clear()
-        except Exception as e:
-            logger.error(f"FlowCounterNode {self.node_id} flush error: {e}")
-
     def reset_counts(self):
         self.cumulative_totals.clear()
-        self.interval_deltas.clear()
         self.total_count = 0
         if self.router.metadata_callback:
             self.router.metadata_callback({
@@ -325,6 +369,252 @@ class FlowCounterNode(PipelineNode):
                 "node_id": self.node_id,
                 "counts": {},
                 "total": 0
+            })
+
+class TargetTrackerNode(PipelineNode):
+    def __init__(self, node_id, data, router):
+        super().__init__(node_id, data, router, node_type="targetTrackerNode")
+        import time
+        self.target = int(data.get("targetCount", 100))
+        self.edge_type = data.get("edgeType", "rising")
+        
+        self.actual = 0
+        self.last_payload = False
+        self.start_time = None
+        self.is_complete = False
+        self.current_rate_per_minute = 0.0
+        self.eta_seconds = None
+        self._last_update_ts = time.time()
+
+    def process(self, msg: dict):
+        import time
+        now = time.time()
+        
+        current_payload = bool(msg.get("payload"))
+        
+        trigger = False
+        if self.edge_type == "falling":
+            if not current_payload and self.last_payload:
+                trigger = True
+        else:
+            if current_payload and not self.last_payload:
+                trigger = True
+                
+        self.last_payload = current_payload
+        
+        updated = False
+        if trigger and not self.is_complete:
+            if self.actual == 0:
+                self.start_time = now
+                
+            self.actual += 1
+            updated = True
+            
+            if self.actual >= self.target:
+                self.is_complete = True
+                
+        # To keep UI fresh even without trigger
+        if self.actual > 0 and self.start_time is not None and not self.is_complete:
+            elapsed = now - self.start_time
+            if elapsed > 0:
+                # Recalculate rate ONLY every 1.0s to prevent rapid flickering on the dashboard
+                if now - getattr(self, '_last_rate_calc_ts', 0) > 1.0:
+                    rate_per_sec = self.actual / elapsed
+                    self.current_rate_per_minute = rate_per_sec * 60.0
+                    if rate_per_sec > 0:
+                        remaining = self.target - self.actual
+                        self.eta_seconds = remaining / rate_per_sec
+                    else:
+                        self.eta_seconds = None
+                    self._last_rate_calc_ts = now
+            if now - getattr(self, '_last_update_ts', 0) > 1.0:
+                updated = True
+        elif self.is_complete:
+            self.eta_seconds = 0
+            
+        progress = (self.actual / self.target) * 100.0 if self.target > 0 else 100.0
+        if progress > 100.0:
+            progress = 100.0
+            
+        # Emit telemetry
+        if self.router.metadata_callback and (updated or trigger):
+            self._last_update_ts = now
+            self.router.metadata_callback({
+                "type": "target_tracker_update",
+                "node_id": self.node_id,
+                "target": self.target,
+                "actual": self.actual,
+                "progress_percent": progress,
+                "current_rate_per_minute": self.current_rate_per_minute,
+                "eta_seconds": self.eta_seconds,
+                "is_complete": self.is_complete
+            })
+            
+        msg["payload"] = self.is_complete
+        return msg
+
+    def reset_counts(self):
+        self.actual = 0
+        self.last_payload = False
+        self.start_time = None
+        self.is_complete = False
+        self.current_rate_per_minute = 0.0
+        self.eta_seconds = None
+        
+        if self.router.metadata_callback:
+            self.router.metadata_callback({
+                "type": "target_tracker_update",
+                "node_id": self.node_id,
+                "target": self.target,
+                "actual": self.actual,
+                "progress_percent": 0.0,
+                "current_rate_per_minute": 0.0,
+                "eta_seconds": None,
+                "is_complete": False
+            })
+
+class UnitThroughputNode(PipelineNode):
+    def __init__(self, node_id, data, router):
+        super().__init__(node_id, data, router, node_type="unitThroughputNode")
+        from ai_engine.centroid_tracker import CentroidTracker
+
+        self.start_trigger = data.get("startTrigger", "first_object")
+        self.pause_trigger = data.get("pauseTrigger", "timeout")
+        self.pause_timeout_seconds = float(data.get("pauseTimeoutSeconds", 60.0))
+        self.rate_unit = data.get("rateUnit", "minute")
+        self.decimal_places = int(data.get("decimalPlaces", 2))
+        
+        self.tracker = CentroidTracker(
+            max_disappeared=20,
+            max_distance=0.15
+        )
+        
+        self.is_running = False
+        self.start_time = None
+        self.current_count = 0
+        self.last_object_time = None
+        self.throughput = 0.0
+        
+        # Used for manual API toggling
+        self.manual_state = False
+
+    def reset_counts(self):
+        self.is_running = False
+        self.start_time = None
+        self.current_count = 0
+        self.last_object_time = None
+        self.throughput = 0.0
+        self.manual_state = False
+        self.tracker = __import__('ai_engine.centroid_tracker', fromlist=['CentroidTracker']).CentroidTracker(max_disappeared=20, max_distance=0.15)
+        
+        self._emit_telemetry()
+
+    def set_manual_state(self, state: bool):
+        import time
+        self.manual_state = state
+        self.is_running = state
+        if state and self.start_time is None:
+            self.start_time = time.time()
+        self._emit_telemetry()
+
+    def process(self, msg: dict):
+        import time
+        now = time.time()
+        
+        payload = msg.get("payload", {})
+        if isinstance(payload, dict) and "detections" in payload:
+            detections = payload.get("detections", [])
+        elif isinstance(payload, list):
+            detections = payload
+        else:
+            detections = []
+            
+        active_tracks = self.tracker.update(detections)
+        
+        newly_counted = 0
+        
+        for track in active_tracks:
+            if not getattr(track, 'throughput_counted', False):
+                track.throughput_counted = True
+                newly_counted += 1
+                self.last_object_time = now
+
+        # Evaluate Start Trigger
+        if not self.is_running:
+            if self.start_trigger == "first_object":
+                if newly_counted > 0:
+                    self.is_running = True
+                    self.start_time = now
+            elif self.start_trigger == "manual":
+                if self.manual_state:
+                    self.is_running = True
+                    if self.start_time is None:
+                        self.start_time = now
+            
+        # Evaluate Pause Trigger
+        if self.is_running:
+            if self.pause_trigger == "timeout":
+                if self.last_object_time and (now - self.last_object_time) > self.pause_timeout_seconds:
+                    self.is_running = False
+            elif self.pause_trigger == "manual":
+                if not self.manual_state:
+                    self.is_running = False
+
+        # Update Counts
+        if self.is_running and newly_counted > 0:
+            self.current_count += newly_counted
+            
+        # Calculate Throughput
+        if self.is_running and self.start_time:
+            elapsed = now - self.start_time
+            if elapsed > 0:
+                if now - getattr(self, '_last_rate_calc_ts', 0) > 1.0:
+                    rate_per_sec = self.current_count / elapsed
+                    if self.rate_unit == "minute":
+                        self.throughput = round(rate_per_sec * 60, self.decimal_places)
+                    elif self.rate_unit == "hour":
+                        self.throughput = round(rate_per_sec * 3600, self.decimal_places)
+                    else:
+                        self.throughput = round(rate_per_sec, self.decimal_places)
+                    self._last_rate_calc_ts = now
+            
+        # Emit telemetry throttled (e.g. 0.5s) to avoid UI blurring and excessive React re-renders
+        should_broadcast = False
+        if getattr(self, '_last_is_running', None) != self.is_running:
+            should_broadcast = True
+        elif newly_counted > 0:
+            should_broadcast = True
+        elif now - getattr(self, '_last_broadcast_time', 0) >= 0.5:
+            should_broadcast = True
+            
+        if should_broadcast:
+            self._last_broadcast_time = now
+            self._last_is_running = self.is_running
+            self._emit_telemetry(msg)
+        
+        msg["payload"] = {
+            "current_unit": self.current_count,
+            "throughput": self.throughput,
+            "is_running": self.is_running,
+            "rate_unit": self.rate_unit
+        }
+        
+        return msg
+
+    def _emit_telemetry(self, msg=None):
+        if self.router.metadata_callback:
+            camera_id = msg.get("camera_id") if msg else "default"
+            if not camera_id and msg:
+                camera_id = msg.get("metadata", {}).get("camera_id", "default")
+                
+            self.router.metadata_callback({
+                "type": "unit_throughput_update",
+                "node_id": self.node_id,
+                "current_unit": self.current_count,
+                "throughput": self.throughput,
+                "is_running": self.is_running,
+                "camera_id": camera_id,
+                "msg": msg
             })
 
 class FunctionNode(PipelineNode):
@@ -416,6 +706,7 @@ class DashboardOutputNode(PipelineNode):
             self.last_sent_time = current_time
             self.last_val = val
             
+            # No longer logging to TSDB directly; use DatabaseWriterNode instead.
             self.router.metadata_callback({
                 "type": "dashboard_update",
                 "node_id": self.node_id,
@@ -433,7 +724,16 @@ class HardwareOutputNode(PipelineNode):
         self._last_is_active = None
         
     def process(self, msg: dict):
-        val = bool(msg.get("payload"))
+        payload = msg.get("payload")
+        if isinstance(payload, dict) and "newly_counted" in payload:
+            val = payload["newly_counted"] > 0
+        elif isinstance(payload, dict) and "detections" in payload:
+            val = len(payload["detections"]) > 0
+        elif isinstance(payload, list):
+            val = len(payload) > 0
+        else:
+            val = bool(payload)
+            
         trigger_on = str(self.data.get("triggerOn", "true")).lower() == "true"
         is_active = (val == trigger_on)
         
@@ -463,45 +763,193 @@ class SnapshotNode(PipelineNode):
         self.label = data.get("label", "Snapshot")
         self.last_payload = False
         self._proc = None
+        self.zero_latency = data.get("zeroLatency", False)
+        
+        # Zero-latency state
+        self.cap_running = False
+        self.cap_thread = None
+        self.latest_frame = None
+        self.frame_buffer = [] # (timestamp, frame)
 
+    def _capture_loop(self, rtsp_url):
+        import cv2, time
+        cap = cv2.VideoCapture(rtsp_url)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        
+        while self.cap_running:
+            ret, frame = cap.read()
+            if ret:
+                self.latest_frame = frame
+                self.frame_buffer.append((time.time(), frame))
+                if len(self.frame_buffer) > 30: # keep approx 1 sec at 30fps
+                    self.frame_buffer.pop(0)
+            else:
+                time.sleep(0.01)
+                
+        cap.release()
+
+    def cleanup(self):
+        if self.cap_running:
+            self.cap_running = False
+            if self.cap_thread:
+                self.cap_thread.join(timeout=1.0)
+                
     def process(self, msg: dict):
-        current_payload = bool(msg.get("payload"))
-        if current_payload and not self.last_payload:
-            camera_id = msg.get("camera_id", msg.get("metadata", {}).get("camera_id"))
+        payload = msg.get("payload")
+        if isinstance(payload, dict) and "newly_counted" in payload:
+            current_payload = payload["newly_counted"] > 0
+        elif isinstance(payload, dict) and "detections" in payload:
+            current_payload = len(payload["detections"]) > 0
+        elif isinstance(payload, list):
+            current_payload = len(payload) > 0
+        else:
+            current_payload = bool(payload)
+        
+        
+        camera_id = msg.get("camera_id", msg.get("metadata", {}).get("camera_id"))
+        rtsp_url = f"rtsp://127.0.0.1:8554/{self.router.project_id}_{camera_id}" if camera_id else None
+        
+        # Lazy start zero-latency thread
+        if self.zero_latency and rtsp_url and not self.cap_running:
+            self.cap_running = True
+            import threading
+            self.cap_thread = threading.Thread(target=self._capture_loop, args=(rtsp_url,), daemon=True)
+            self.cap_thread.start()
+
+        trigger_edge = self.data.get("triggerEdge", "rising")
+        is_triggered = False
+        if trigger_edge == "rising":
+            is_triggered = current_payload and not self.last_payload
+        elif trigger_edge == "falling":
+            is_triggered = not current_payload and self.last_payload
+
+        if is_triggered:
             if camera_id:
                 import subprocess
                 from pathlib import Path
                 import time
                 
-                snapshots_dir = Path("/home/pi/iriv-vision-studio/snapshots")
+                snapshots_dir = Path("/home/pi/pido-ai/snapshots")
                 snapshots_dir.mkdir(parents=True, exist_ok=True)
                 
                 timestamp = int(time.time() * 1000)
                 filename = f"{camera_id}_{timestamp}.jpg"
                 filepath = snapshots_dir / filename
                 
-                rtsp_url = f"rtsp://127.0.0.1:8554/{self.router.project_id}_{camera_id}"
-                
                 try:
-                    # Reap any finished snapshot process
-                    if self._proc and self._proc.poll() is None:
-                        pass # Previous snapshot still grabbing frame, don't spam
+                    # Extract detections from context
+                    search_payload = msg.get("payload", {})
+                    if not isinstance(search_payload, dict):
+                        context = msg.get("context", {})
+                        for v in context.values():
+                            if isinstance(v, dict):
+                                search_payload = v
+                                break
+                    
+                    detections = search_payload.get("triggering_objects")
+                    if detections is None:
+                        detections = search_payload.get("detections", [])
+
+                    def _capture_and_draw(url, path, dets, proj_id, lbl, latest_frame=None):
+                        import subprocess, cv2
+                        if latest_frame is not None:
+                            img = latest_frame.copy()
+                            cv2.imwrite(str(path), img) # Save raw frame first
+                        else:
+                            proc = subprocess.Popen([
+                                "ffmpeg", "-y", "-rtsp_transport", "tcp", "-i", url, 
+                                "-vframes", "1", "-q:v", "2", str(path)
+                            ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                            try:
+                                from ai_engine.telemetry_manager import telemetry_mgr
+                                telemetry_mgr.register_process(proj_id, f"ffmpeg snapshot ({lbl})", proc.pid)
+                            except Exception:
+                                pass
+                            proc.wait()
+                        
+                        # Draw bbox and flow lines
+                        should_draw_bbox = dets and self.data.get("drawBbox", True) is not False
+                        should_draw_lines = search_payload.get("flow_mode") is not None
+                        
+                        if (should_draw_bbox or should_draw_lines) and path.exists():
+                            try:
+                                img = cv2.imread(str(path))
+                                if img is not None:
+                                    H, W, _ = img.shape
+                                    
+                                    if should_draw_bbox:
+                                        for det in dets:
+                                            box = det.get("bbox", [])
+                                            if len(box) == 4:
+                                                x1 = int(box[0] * W)
+                                                y1 = int(box[1] * H)
+                                                x2 = int(box[2] * W)
+                                                y2 = int(box[3] * H)
+                                                cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                                                cv2.putText(img, f"{det.get('label', '')} {det.get('confidence', 0):.2f}", (x1, max(y1 - 5, 15)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                                        
+                                    if should_draw_lines:
+                                        # Draw the Flow Counter Line/Zone if available
+                                        flow_mode = search_payload.get("flow_mode")
+                                        if flow_mode == "line" and search_payload.get("flow_line"):
+                                            lx1, ly1, lx2, ly2 = search_payload.get("flow_line")
+                                            cv2.line(img, (int(lx1 * W), int(ly1 * H)), (int(lx2 * W), int(ly2 * H)), (0, 0, 255), 2)
+                                        elif flow_mode == "roi" and search_payload.get("flow_roi"):
+                                            roi = search_payload.get("flow_roi")
+                                            rx, ry, rw, rh = roi["x"], roi["y"], roi["w"], roi["h"]
+                                            cv2.rectangle(img, (int(rx * W), int(ry * H)), (int((rx+rw) * W), int((ry+rh) * H)), (0, 0, 255), 2)
+                                            
+                                    cv2.imwrite(str(path), img)
+                            except Exception as e:
+                                import logging
+                                logging.getLogger("ai_engine").error(f"Draw bbox error: {e}")
+
+                    if self.zero_latency and self.latest_frame is not None:
+                        # Synchronize RTSP latency with JSON speed
+                        sync_delay_ms = int(self.data.get("syncDelay", 250))
+                        
+                        import threading
+                        def delayed_capture():
+                            if sync_delay_ms > 0:
+                                time.sleep(sync_delay_ms / 1000.0) # Wait for video frame to catch up
+                                target_frame = self.latest_frame
+                            elif sync_delay_ms < 0:
+                                # Time machine: look back into frame buffer
+                                target_time = time.time() + (sync_delay_ms / 1000.0)
+                                best_frame = self.latest_frame
+                                min_diff = float('inf')
+                                for ts, frm in self.frame_buffer:
+                                    diff = abs(ts - target_time)
+                                    if diff < min_diff:
+                                        min_diff = diff
+                                        best_frame = frm
+                                target_frame = best_frame
+                            else:
+                                target_frame = self.latest_frame
+                                
+                            _capture_and_draw(rtsp_url, filepath, detections, self.router.project_id, self.label, target_frame)
+                        
+                        t = threading.Thread(target=delayed_capture, daemon=True)
+                        t.start()
                     else:
-                        self._proc = subprocess.Popen([
-                            "ffmpeg", "-y", "-rtsp_transport", "tcp", "-i", rtsp_url, 
-                            "-vframes", "1", "-q:v", "2", str(filepath)
-                        ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        try:
-                            from ai_engine.telemetry_manager import telemetry_mgr
-                            telemetry_mgr.register_process(self.router.project_id, f"ffmpeg snapshot ({self.label})", self._proc.pid)
-                        except Exception:
-                            pass
+                        # Asynchronous ffmpeg snapshot
+                        import threading
+                        if not hasattr(self, '_threads'):
+                            self._threads = []
+                        self._threads = [t for t in self._threads if t.is_alive()]
+                        
+                        if len(self._threads) < 5:
+                            t = threading.Thread(target=_capture_and_draw, args=(rtsp_url, filepath, detections, self.router.project_id, self.label))
+                            t.daemon = True
+                            t.start()
+                            self._threads.append(t)
+
                     
                     # Log to DB
                     import sys
                     import os
                     # add backend dir to sys.path if needed
-                    backend_dir = Path("/home/pi/iriv-vision-studio/backend")
+                    backend_dir = Path("/home/pi/pido-ai/backend")
                     if str(backend_dir) not in sys.path:
                         sys.path.insert(0, str(backend_dir))
                     from db.database import db
@@ -519,11 +967,263 @@ class SnapshotNode(PipelineNode):
                         camera_id=camera_id,
                         snapshot_path=str(filepath)
                     )
+                    msg["snapshot_path"] = f"/api/snapshots/{filepath.name}"
                 except Exception as e:
                     import logging
                     logging.getLogger("ai_engine").error(f"Snapshot error: {e}")
                     
         self.last_payload = current_payload
+        return msg
+
+class DatabaseWriterNode(PipelineNode):
+    def __init__(self, node_id, data, router):
+        super().__init__(node_id, data, router, node_type="databaseWriterNode")
+        self.label = data.get("label", "Database Writer")
+        self.variable_name = data.get("variableName", "metric")
+        self.property_path = data.get("propertyPath", "")
+        self.write_strategy = data.get("writeStrategy", "on_change")
+        self.deadband = float(data.get("deadband", 0))
+        self.heartbeat_interval = float(data.get("heartbeatInterval", 60))
+        self.window_size = float(data.get("windowSize", 5))
+        self.aggregation_method = data.get("aggregationMethod", "average")
+        
+        self.last_written_value = None
+        self.last_written_time = 0
+        self.aggregation_buffer = []
+        self.window_start_time = 0
+        self.last_payload = None
+
+    def process(self, msg: dict):
+        current_payload = msg.get("payload")
+        
+        # If property_path is specified, extract the value using robust path parsing
+        if self.property_path:
+            import re
+            clean_path = re.sub(r'\[(\d+)\]', r'.\1', self.property_path)
+            keys = clean_path.split('.')
+            if keys and keys[0] == "msg":
+                keys = keys[1:]
+            
+            target = msg
+            for k in keys:
+                if isinstance(target, dict) and k in target:
+                    target = target[k]
+                elif isinstance(target, list):
+                    if k == "length":
+                        target = len(target)
+                    elif k.isdigit() and int(k) < len(target):
+                        target = target[int(k)]
+                    else:
+                        target = None
+                        break
+                else:
+                    target = None
+                    break
+                    
+            if target is not None:
+                current_payload = target
+        
+        # Determine if payload is numeric
+        val = 0.0
+        try:
+            if isinstance(current_payload, (int, float)):
+                val = float(current_payload)
+            elif isinstance(current_payload, bool):
+                val = 1.0 if current_payload else 0.0
+            elif isinstance(current_payload, str):
+                val = float(current_payload)
+            elif isinstance(current_payload, dict):
+                # If dict (and no valid property path used), try to find 'total', else fallback to 1.0
+                if "total" in current_payload:
+                    val = float(current_payload["total"])
+                else:
+                    val = 1.0 if current_payload else 0.0
+            elif isinstance(current_payload, list):
+                val = float(len(current_payload))
+            else:
+                return msg
+        except ValueError:
+            return msg
+
+        import time
+        now = time.time()
+        
+        should_write = False
+        write_value = val
+
+        if self.write_strategy == "raw":
+            should_write = True
+            
+        elif self.write_strategy == "aggregation":
+            if not self.window_start_time:
+                self.window_start_time = now
+                
+            self.aggregation_buffer.append(val)
+            
+            if now - self.window_start_time >= self.window_size:
+                should_write = True
+                if self.aggregation_buffer:
+                    if self.aggregation_method == "average":
+                        write_value = sum(self.aggregation_buffer) / len(self.aggregation_buffer)
+                    elif self.aggregation_method == "max":
+                        write_value = max(self.aggregation_buffer)
+                    elif self.aggregation_method == "min":
+                        write_value = min(self.aggregation_buffer)
+                    elif self.aggregation_method == "latest":
+                        write_value = self.aggregation_buffer[-1]
+                self.aggregation_buffer = []
+                self.window_start_time = now
+                
+        else: # on_change (default)
+            if self.last_written_value is None:
+                should_write = True
+            else:
+                # Deadband check (must be greater than deadband)
+                if abs(val - self.last_written_value) > self.deadband:
+                    should_write = True
+                # Heartbeat check
+                elif self.heartbeat_interval > 0 and (now - self.last_written_time) >= self.heartbeat_interval:
+                    should_write = True
+
+        if should_write:
+            try:
+                import sys
+                from db.database import db
+                
+                db.log_custom_metric(
+                    project_id=self.router.project_id,
+                    node_id=self.node_id,
+                    variable_name=self.variable_name,
+                    value=write_value
+                )
+            except Exception as e:
+                import logging
+                logging.getLogger("ai_engine").error(f"DatabaseWriterNode error: {e}")
+            
+            self.last_written_value = write_value
+            self.last_written_time = now
+            self.last_payload = write_value
+            
+        # Emit real-time value for dashboard, but throttle to prevent React state thrashing
+        import time
+        now = time.time()
+        should_broadcast_dash = False
+        last_dash_val = getattr(self, '_last_dash_val', None)
+        last_dash_time = getattr(self, '_last_dash_time', 0)
+        
+        if last_dash_val is None:
+            should_broadcast_dash = True
+        elif isinstance(self.last_written_value, float):
+            # Floats (like throughput rates) jitter continuously. Strictly time-throttle them.
+            if now - last_dash_time >= 0.5:
+                should_broadcast_dash = True
+        else:
+            # Ints/Bools (like counters) should update immediately on change for responsiveness
+            if self.last_written_value != last_dash_val:
+                should_broadcast_dash = True
+            elif now - last_dash_time >= 1.0: # periodic heartbeat
+                should_broadcast_dash = True
+            
+        if should_broadcast_dash and self.router.metadata_callback and self.last_written_value is not None:
+            self._last_dash_time = now
+            self._last_dash_val = self.last_written_value
+            self.router.metadata_callback({
+                "type": "dashboard_update",
+                "node_id": self.node_id,
+                "value": self.last_written_value,
+                "variable_name": self.variable_name
+            })
+            
+        return msg
+
+class CollectionWriterNode(PipelineNode):
+    def __init__(self, node_id, data, router):
+        super().__init__(node_id, data, router, node_type="collectionWriterNode")
+        self.collection_id = data.get("collectionId")
+        self.field_mappings = data.get("fieldMappings", {}) # { "column_key": "propertyPath" }
+
+    def process(self, msg: dict):
+        if not self.collection_id:
+            return msg
+            
+        current_payload = msg.get("payload", {})
+        
+        # If the incoming payload is explicitly a boolean False (e.g. from a LogicNode falling edge),
+        # we skip writing to avoid creating empty/null records.
+        if isinstance(current_payload, bool) and not current_payload:
+            return msg
+            
+        snapshot_path = msg.get("snapshot_path")
+        
+        # Try to find a rich dictionary payload if the current one is boolean (e.g. from LogicNode)
+        search_payload = current_payload
+        if not isinstance(search_payload, dict):
+            context = msg.get("context", {})
+            for v in context.values():
+                if isinstance(v, dict):
+                    search_payload = v
+                    break
+
+        # Build record data
+        record_data = {}
+        for col_key, prop_path in self.field_mappings.items():
+            if prop_path == "__snapshot__":
+                record_data[col_key] = snapshot_path.replace("/api/files/snapshots/", "/api/snapshots/") if snapshot_path else None
+            elif prop_path == "__timestamp__":
+                record_data[col_key] = msg.get("timestamp")
+            elif prop_path == "__raw_payload__":
+                record_data[col_key] = str(current_payload)
+            elif prop_path in ["score", "label"]:
+                # Special handling for AI detections
+                val = None
+                if isinstance(search_payload, dict) and "detections" in search_payload and len(search_payload["detections"]) > 0:
+                    det = search_payload["detections"][0]
+                    if prop_path == "score":
+                        val = det.get("confidence")
+                    elif prop_path == "label":
+                        val = det.get("label")
+                record_data[col_key] = val
+            elif prop_path == "total":
+                if isinstance(search_payload, dict):
+                    record_data[col_key] = search_payload.get("total")
+                else:
+                    record_data[col_key] = None
+            else:
+                # Extract from payload
+                keys = prop_path.split('.')
+                target = search_payload
+                for k in keys:
+                    if isinstance(target, dict) and k in target:
+                        target = target[k]
+                    else:
+                        target = None
+                        break
+                record_data[col_key] = target
+        
+        # Save to DB
+        try:
+            import json
+            import sys
+            from pathlib import Path
+            backend_dir = Path("/home/pi/pido-ai/backend")
+            if str(backend_dir) not in sys.path:
+                sys.path.insert(0, str(backend_dir))
+            from db.database import db
+            from db.models import CollectionRecord
+            from sqlmodel import Session
+            
+            new_record = CollectionRecord(
+                collection_id=self.collection_id,
+                project_id=self.router.project_id,
+                data_json=json.dumps(record_data)
+            )
+            with Session(db.engine_telemetry) as session:
+                session.add(new_record)
+                session.commit()
+        except Exception as e:
+            import logging
+            logging.getLogger("ai_engine").error(f"CollectionWriterNode error: {e}")
+            
         return msg
 
 class MessageRouter:
@@ -532,7 +1232,7 @@ class MessageRouter:
         self.metadata_callback = metadata_callback
         self.project_id = project_id       
         self.edges = {}       
-        self.msg_queue = queue.Queue(maxsize=30)
+        self.msg_queue = queue.Queue(maxsize=1000)
         self.running = False
         self.thread = None
         self._lock = threading.RLock()
@@ -586,6 +1286,12 @@ class MessageRouter:
                     # Preserve RateLimitNode last_sent_time
                     if hasattr(old_node, 'last_sent_time') and hasattr(new_node, 'last_sent_time'):
                         new_node.last_sent_time = old_node.last_sent_time
+                    # Preserve LogicNode state
+                    if hasattr(old_node, 'last_final_val') and hasattr(new_node, 'last_final_val'):
+                        new_node.last_final_val = old_node.last_final_val
+                        new_node.last_emit_time = getattr(old_node, 'last_emit_time', 0.0)
+                        new_node.last_ws_val = getattr(old_node, 'last_ws_val', None)
+                        new_node.first_true = getattr(old_node, 'first_true', None)
 
             # Update nodes' router reference
             for node in new_nodes.values():
@@ -602,7 +1308,7 @@ class MessageRouter:
             # ensuring that the queue doesn't backlog and cause severe delays (realtime logic).
             self.msg_queue.put_nowait((source_id, msg))
         except queue.Full:
-            pass
+            logger.warning(f"MessageRouter queue full! Dropping message from {source_id}")
 
     def start(self):
         if not self.running:
@@ -612,6 +1318,16 @@ class MessageRouter:
 
     def stop(self):
         self.running = False
+        
+        # Cleanup nodes (e.g. stop zero-latency threads)
+        if hasattr(self, 'nodes'):
+            for node in self.nodes.values():
+                if hasattr(node, 'cleanup'):
+                    try:
+                        node.cleanup()
+                    except Exception as e:
+                        logger.error(f"Error cleaning up node {node.node_id}: {e}")
+                        
         if self.thread:
             self.msg_queue.put((None, None))
             self.thread.join(timeout=2)
@@ -623,6 +1339,15 @@ class MessageRouter:
             try:
                 source_id, msg = self.msg_queue.get(timeout=0.5)
                 if source_id is None:
+                    continue
+                
+                # Handle system commands
+                if msg.get("action") == "reset_trackers" and msg.get("type") == "system":
+                    with self._lock:
+                        for node in self.nodes.values():
+                            if hasattr(node, 'tracker') and hasattr(node.tracker, 'objects'):
+                                node.tracker.objects.clear()
+                                node.tracker.next_track_id = 1
                     continue
                 
                 # IDEA 1: Ensure context exists and save initial payload from source

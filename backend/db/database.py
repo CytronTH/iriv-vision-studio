@@ -1,3 +1,4 @@
+from datetime import timezone
 import json
 import logging
 from pathlib import Path
@@ -24,18 +25,26 @@ class DatabaseManager:
         self.db_path = db_path
         sqlite_url = f"sqlite:///{self.db_path}"
         
+        self.db_path_telemetry = str(base_dir / "telemetry_logs.sqlite")
+        sqlite_url_telemetry = f"sqlite:///{self.db_path_telemetry}"
+        
         connect_args = {"check_same_thread": False}
         self.engine = create_engine(sqlite_url, connect_args=connect_args)
+        self.engine_telemetry = create_engine(sqlite_url_telemetry, connect_args=connect_args)
         
         # Configure SQLite Pragmas for performance and concurrency resilience
-        @event.listens_for(self.engine, "connect")
-        def set_sqlite_pragma(dbapi_connection, connection_record):
-            cursor = dbapi_connection.cursor()
-            cursor.execute("PRAGMA journal_mode=WAL;")
-            cursor.execute("PRAGMA synchronous=NORMAL;")
-            cursor.execute("PRAGMA busy_timeout=5000;")
-            cursor.execute("PRAGMA foreign_keys=ON;")
-            cursor.close()
+        def setup_pragmas(engine):
+            @event.listens_for(engine, "connect")
+            def set_sqlite_pragma(dbapi_connection, connection_record):
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL;")
+                cursor.execute("PRAGMA synchronous=NORMAL;")
+                cursor.execute("PRAGMA busy_timeout=5000;")
+                cursor.execute("PRAGMA foreign_keys=ON;")
+                cursor.close()
+                
+        setup_pragmas(self.engine)
+        setup_pragmas(self.engine_telemetry)
         
         self._init_db()
         self._reconcile_existing_models()
@@ -50,6 +59,7 @@ class DatabaseManager:
         try:
             # Create all tables (safe to call multiple times)
             SQLModel.metadata.create_all(self.engine)
+            SQLModel.metadata.create_all(self.engine_telemetry)
             
             # Ensure indexes are explicitly created for existing tables
             indexes = [
@@ -60,16 +70,19 @@ class DatabaseManager:
                 "CREATE INDEX IF NOT EXISTS idx_event_logs_type_time ON event_logs(event_type, timestamp DESC);",
                 "CREATE INDEX IF NOT EXISTS idx_event_logs_cam_time ON event_logs(camera_id, timestamp DESC);",
                 "CREATE INDEX IF NOT EXISTS idx_event_logs_node_time ON event_logs(node_id, timestamp DESC);",
+                "CREATE INDEX IF NOT EXISTS idx_event_logs_proj_time ON event_logs(project_id, timestamp DESC);",
                 "CREATE INDEX IF NOT EXISTS idx_system_metrics_timestamp ON system_metrics(timestamp DESC);",
-                "CREATE INDEX IF NOT EXISTS idx_class_count_time ON class_count_summary(timestamp DESC);",
-                "CREATE INDEX IF NOT EXISTS idx_class_count_proj_time ON class_count_summary(project_id, timestamp DESC);",
-                "CREATE INDEX IF NOT EXISTS idx_class_count_class ON class_count_summary(class_name, timestamp DESC);",
+                "CREATE INDEX IF NOT EXISTS idx_custom_metric_time ON custom_metric_log(timestamp DESC);",
+                "CREATE INDEX IF NOT EXISTS idx_custom_metric_proj_time ON custom_metric_log(project_id, timestamp DESC);",
+                "CREATE INDEX IF NOT EXISTS idx_custom_metric_full ON custom_metric_log(project_id, node_id, variable_name, timestamp DESC);",
+                "CREATE INDEX IF NOT EXISTS idx_custom_metric_var ON custom_metric_log(variable_name, timestamp DESC);",
             ]
-            with self.engine.connect() as conn:
+            with self.engine_telemetry.connect() as conn:
                 for idx_sql in indexes:
                     conn.execute(text(idx_sql))
                 conn.commit()
                 
+            with self.engine.connect() as conn:
                 # Schema migrations for newly added columns
                 try:
                     conn.execute(text("ALTER TABLE camera ADD COLUMN is_enabled BOOLEAN DEFAULT 1;"))
@@ -91,6 +104,23 @@ class DatabaseManager:
                     except Exception:
                         pass
                 
+            from db.auth import get_password_hash
+            from sqlmodel import Session, select
+            from db.models import User
+            
+            with Session(self.engine) as session:
+                admin_user = session.exec(select(User).where(User.username == "admin")).first()
+                if not admin_user:
+                    admin_user = User(
+                        username="admin",
+                        hashed_password=get_password_hash("admin"),
+                        role="admin",
+                        is_active=True
+                    )
+                    session.add(admin_user)
+                    session.commit()
+                    logger.info("Created default admin user (admin/admin).")
+
             logger.info(f"Database initialized successfully with indexes at {self.db_path}")
         except Exception as e:
             logger.error(f"Failed to initialize database: {e}")
@@ -153,10 +183,24 @@ class DatabaseManager:
             
     def _background_writer(self):
         """Background thread for high-frequency logs using batch commits to minimize disk I/O."""
-        batch_size = 50
-        batch_timeout = 0.5  # seconds
+        batch_size = 500
+        batch_timeout = 5.0  # seconds (increased to save SD card wear)
+        last_rollup_check = time.time()
         
         while self.running:
+            # Check for cleanup every hour (3600 seconds)
+            if not hasattr(self, 'last_cleanup_check'):
+                self.last_cleanup_check = time.time()
+                
+            if time.time() - self.last_cleanup_check > 3600:
+                self.run_data_retention_cleanup()
+                self.last_cleanup_check = time.time()
+                
+            # Check for rollup every 5 minutes
+            if time.time() - last_rollup_check > 300:
+                self.run_hourly_rollup()
+                last_rollup_check = time.time()
+                
             entries = []
             start_time = time.time()
             
@@ -176,7 +220,7 @@ class DatabaseManager:
             if not entries:
                 continue
                 
-            with Session(self.engine) as session:
+            with Session(self.engine_telemetry) as session:
                 try:
                     for log_entry in entries:
                         if log_entry['table'] == 'event_logs':
@@ -196,17 +240,16 @@ class DatabaseManager:
                                 temp_c=log_entry.get('temp_c')
                             )
                             session.add(metric)
-                        elif log_entry['table'] == 'class_count_summary':
-                            summary = ClassCountSummary(
-                                timestamp=log_entry.get('timestamp') or datetime.utcnow(),
-                                project_id=log_entry.get('project_id', 'default'),
-                                camera_id=log_entry.get('camera_id'),
-                                node_id=log_entry.get('node_id'),
-                                class_name=log_entry.get('class_name'),
-                                count=log_entry.get('count', 0),
-                                cumulative_total=log_entry.get('cumulative_total', 0)
+                        elif log_entry['table'] == 'custom_metric_log':
+                            from db.models import CustomMetricLog
+                            metric = CustomMetricLog(
+                                timestamp=log_entry.get('data', {}).get('timestamp') or datetime.now(timezone.utc),
+                                project_id=log_entry.get('data', {}).get('project_id', 'default'),
+                                node_id=log_entry.get('data', {}).get('node_id', 'unknown'),
+                                variable_name=log_entry.get('data', {}).get('variable_name'),
+                                value=log_entry.get('data', {}).get('value', 0.0)
                             )
-                            session.add(summary)
+                            session.add(metric)
                     session.commit()
                 except Exception as e:
                     session.rollback()
@@ -239,10 +282,134 @@ class DatabaseManager:
             })
         except Full:
             logger.warning("Database log_queue is full (max 10000). Dropping metric to prevent memory exhaustion.")
+            
+
+    def get_metric_history(self, node_id: str, limit: int = 300, timeframe_min: int = None, aggregate_min: int = None):
+        from sqlmodel import Session, select
+        from .models import CustomMetricLog
+        from datetime import datetime, timezone
+        import time
+
+        try:
+            with Session(self.engine_telemetry) as session:
+                stmt = select(CustomMetricLog).where(CustomMetricLog.node_id == node_id).order_by(CustomMetricLog.timestamp.desc())
+                if timeframe_min:
+                    min_ts = datetime.fromtimestamp(time.time() - (timeframe_min * 60), timezone.utc)
+                    stmt = stmt.where(CustomMetricLog.timestamp >= min_ts)
+                    stmt = stmt.limit(50000)
+                else:
+                    stmt = stmt.limit(limit)
+                
+                rows = session.exec(stmt).all()
+                
+                history = []
+                for row in reversed(rows):
+                    ts = row.timestamp.timestamp()
+                    dt_str = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
+                    history.append({
+                        "time": dt_str,
+                        "timestamp_unix": ts,
+                        "value": row.value,
+                        "variable_name": row.variable_name
+                    })
+                
+                if aggregate_min and len(history) > 0:
+                    aggr_history = []
+                    current_bucket = None
+                    bucket_vals = []
+                    bucket_ts = 0
+                    
+                    for item in history:
+                        bucket = int(item["timestamp_unix"] / (aggregate_min * 60))
+                        if current_bucket is None:
+                            current_bucket = bucket
+                        
+                        if bucket == current_bucket:
+                            bucket_vals.append(item["value"])
+                            bucket_ts = item["timestamp_unix"]
+                        else:
+                            max_val = max(bucket_vals) if bucket_vals else 0
+                            dt_str = datetime.fromtimestamp(bucket_ts).strftime("%H:%M")
+                            aggr_history.append({
+                                "time": dt_str,
+                                "timestamp_unix": bucket_ts,
+                                "value": max_val
+                            })
+                            current_bucket = bucket
+                            bucket_vals = [item["value"]]
+                            bucket_ts = item["timestamp_unix"]
+                    
+                    if bucket_vals:
+                        max_val = max(bucket_vals)
+                        dt_str = datetime.fromtimestamp(bucket_ts).strftime("%H:%M")
+                        aggr_history.append({
+                            "time": dt_str,
+                            "timestamp_unix": bucket_ts,
+                            "value": max_val
+                        })
+                    
+                    return aggr_history
+
+                return history
+        except Exception as e:
+            logger.error(f"Failed to fetch metric history for {node_id}: {e}")
+            return []
+
+    def run_hourly_rollup(self):
+        """Aggregates custom metrics into hourly buckets."""
+        try:
+            with Session(self.engine_telemetry) as session:
+                # Custom Metric Rollup
+                pass
+        except Exception as e:
+            logger.error(f"Error running hourly rollup: {e}")
+            
+    def run_data_retention_cleanup(self):
+        """Deletes raw data older than the retention period (default 7 days) to prevent disk bloat."""
+        from sqlmodel import Session, text
+        from datetime import datetime, timedelta, timezone
+        import os
+        
+        retention_days = 7
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=retention_days)
+        cutoff_str = cutoff_date.strftime("%Y-%m-%d %H:%M:%S")
+        
+        try:
+            with Session(self.engine_telemetry) as session:
+                # 1. Find and delete physical snapshot files
+                # Using text() since we are running raw SQL execution
+                old_events = session.execute(
+                    text(f"SELECT snapshot_path FROM event_logs WHERE timestamp < '{cutoff_str}' AND snapshot_path IS NOT NULL")
+                ).fetchall()
+                
+                deleted_files_count = 0
+                for row in old_events:
+                    snap_path = row[0]
+                    if snap_path and os.path.exists(snap_path):
+                        try:
+                            os.remove(snap_path)
+                            deleted_files_count += 1
+                        except Exception as e:
+                            logger.error(f"Failed to delete old snapshot file {snap_path}: {e}")
+
+                # 2. Clean up CustomMetricLog
+                res1 = session.execute(text(f"DELETE FROM custom_metric_log WHERE timestamp < '{cutoff_str}'"))
+                # 3. Clean up EventLog
+                res2 = session.execute(text(f"DELETE FROM event_logs WHERE timestamp < '{cutoff_str}'"))
+                # 4. Clean up SystemMetric
+                res3 = session.execute(text(f"DELETE FROM system_metrics WHERE timestamp < '{cutoff_str}'"))
+                
+                session.commit()
+                
+                deleted_total = res1.rowcount + res2.rowcount + res3.rowcount
+                if deleted_total > 0 or deleted_files_count > 0:
+                    logger.info(f"Data retention cleanup completed. Deleted {deleted_total} old rows and {deleted_files_count} snapshot files.")
+        except Exception as e:
+            logger.error(f"Error running data retention cleanup: {e}")
         
     def get_logs(self, limit: int = 100, node_id: str = None, event_type: str = None, camera_id: str = None, page: int = 1, project_id: str = None):
         """Helper to get raw dict logs for backwards compatibility, with pagination and filters."""
-        with Session(self.engine) as session:
+        with Session(self.engine_telemetry) as session:
             statement = select(EventLog)
             count_statement = select(func.count(EventLog.id))
             
@@ -279,7 +446,7 @@ class DatabaseManager:
                 out.append(d)
             return {"data": out, "total": total, "page": page, "limit": limit}
 
-    def purge_old_logs(self, days: int = 30, max_records: int = 50000, delete_files: bool = True) -> Dict[str, Any]:
+    def purge_old_logs(self, days: int = 30, max_records: int = 500000, delete_files: bool = True, project_id: str = None) -> Dict[str, Any]:
         """
         Cleans up old logs and optional snapshot image files to prevent disk bloat.
         1. Removes logs older than `days`.
@@ -290,14 +457,21 @@ class DatabaseManager:
         deleted_files = 0
         errors = []
 
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
         
-        with Session(self.engine) as session:
+        with Session(self.engine_telemetry) as session:
             try:
-                total_count = session.exec(select(func.count(EventLog.id))).one()
+                base_query = select(EventLog)
+                count_query = select(func.count(EventLog.id))
+                old_logs_stmt = select(EventLog.id, EventLog.snapshot_path).where(EventLog.timestamp < cutoff_date)
+                
+                if project_id:
+                    count_query = count_query.where(EventLog.project_id == project_id)
+                    old_logs_stmt = old_logs_stmt.where(EventLog.project_id == project_id)
+                
+                total_count = session.exec(count_query).one()
                 
                 # Query IDs to delete by age
-                old_logs_stmt = select(EventLog.id, EventLog.snapshot_path).where(EventLog.timestamp < cutoff_date)
                 old_logs = session.exec(old_logs_stmt).all()
                 
                 ids_to_delete = {log_id for log_id, _ in old_logs}
@@ -310,9 +484,11 @@ class DatabaseManager:
                     excess_stmt = (
                         select(EventLog.id, EventLog.snapshot_path)
                         .where(EventLog.id.not_in(ids_to_delete) if ids_to_delete else True)
-                        .order_by(EventLog.timestamp.asc())
-                        .limit(overflow)
                     )
+                    if project_id:
+                        excess_stmt = excess_stmt.where(EventLog.project_id == project_id)
+                    
+                    excess_stmt = excess_stmt.order_by(EventLog.timestamp.asc()).limit(overflow)
                     excess_logs = session.exec(excess_stmt).all()
                     for eid, snap in excess_logs:
                         ids_to_delete.add(eid)
@@ -361,26 +537,51 @@ class DatabaseManager:
             stats["db_file_size_bytes"] = db_file.stat().st_size if db_file.exists() else 0
             stats["db_file_size_mb"] = round(stats["db_file_size_bytes"] / (1024 * 1024), 2)
             
+            tel_file = Path(self.db_path_telemetry)
+            stats["telemetry_file_size_bytes"] = tel_file.stat().st_size if tel_file.exists() else 0
+            stats["telemetry_file_size_mb"] = round(stats["telemetry_file_size_bytes"] / (1024 * 1024), 2)
+            
             wal_file = Path(f"{self.db_path}-wal")
-            stats["wal_file_size_bytes"] = wal_file.stat().st_size if wal_file.exists() else 0
-            stats["wal_file_size_mb"] = round(stats["wal_file_size_bytes"] / (1024 * 1024), 2)
+            tel_wal_file = Path(f"{self.db_path_telemetry}-wal")
+            wal_size = (wal_file.stat().st_size if wal_file.exists() else 0) + (tel_wal_file.stat().st_size if tel_wal_file.exists() else 0)
+            stats["wal_file_size_bytes"] = wal_size
+            stats["wal_file_size_mb"] = round(wal_size / (1024 * 1024), 2)
+            
+            # Disk Usage
+            import shutil
+            total, used, free = shutil.disk_usage("/")
+            stats["disk_total_gb"] = round(total / (1024**3), 2)
+            stats["disk_used_gb"] = round(used / (1024**3), 2)
+            stats["disk_free_gb"] = round(free / (1024**3), 2)
+            stats["disk_usage_percent"] = round((used / total) * 100, 1) if total > 0 else 0
+            
+            # Queue Health
+            stats["log_queue_size"] = self.log_queue.qsize()
+            stats["log_queue_max"] = self.log_queue.maxsize
 
-            with Session(self.engine) as session:
+            with Session(self.engine_telemetry) as session:
                 if project_id:
                     stats["total_event_logs"] = session.exec(select(func.count(EventLog.id)).where(EventLog.project_id == project_id)).one()
+                    stats["total_metrics"] = session.exec(select(func.count(SystemMetric.id)).where(SystemMetric.project_id == project_id)).one()
+                    stats["total_class_counts"] = session.exec(select(func.count(ClassCountSummary.id)).where(ClassCountSummary.project_id == project_id)).one()
+                    stats["total_hourly_rollups"] = session.exec(select(func.count(ClassCountHourly.id)).where(ClassCountHourly.project_id == project_id)).one()
                 else:
                     stats["total_event_logs"] = session.exec(select(func.count(EventLog.id))).one()
+                    stats["total_metrics"] = session.exec(select(func.count(SystemMetric.id))).one()
+                    stats["total_class_counts"] = session.exec(select(func.count(ClassCountSummary.id))).one()
+                    stats["total_hourly_rollups"] = session.exec(select(func.count(ClassCountHourly.id))).one()
+                    
+            with Session(self.engine) as session:
+                if not project_id:
                     stats["total_projects"] = session.exec(select(func.count(Project.id))).one()
                     stats["total_cameras"] = session.exec(select(func.count(Camera.id))).one()
                     stats["total_models"] = session.exec(select(func.count(AIModel.id))).one()
-                    stats["total_metrics"] = session.exec(select(func.count(SystemMetric.id))).one()
-                    stats["total_class_counts"] = session.exec(select(func.count(ClassCountSummary.id))).one()
                 
             snap_count = 0
             snap_size = 0
             
             if project_id:
-                with Session(self.engine) as session:
+                with Session(self.engine_telemetry) as session:
                     snapshot_paths = session.exec(select(EventLog.snapshot_path).where(EventLog.project_id == project_id, EventLog.snapshot_path != None)).all()
                     for p in snapshot_paths:
                         f = Path(p)
@@ -388,7 +589,7 @@ class DatabaseManager:
                             snap_count += 1
                             snap_size += f.stat().st_size
             else:
-                snapshot_dir = Path("/home/pi/iriv-vision-studio/snapshots")
+                snapshot_dir = Path("/home/pi/pido-ai/snapshots")
                 if snapshot_dir.exists() and snapshot_dir.is_dir():
                     for f in snapshot_dir.iterdir():
                         if f.is_file():
@@ -405,120 +606,52 @@ class DatabaseManager:
             
         return stats
 
-    def log_class_count(self, project_id: str, camera_id: str, node_id: str, class_counts: dict, cumulative_totals: dict, timestamp: datetime = None):
-        if timestamp is None:
-            timestamp = datetime.utcnow().replace(second=0, microsecond=0)
-        for cls, count in class_counts.items():
-            if count > 0 or cumulative_totals.get(cls, 0) > 0:
+    def log_custom_metric(self, project_id: str, node_id: str, variable_name: str, value: float):
+        """Asynchronously log a custom numeric metric to SQLite."""
+        try:
+            self.log_queue.put_nowait({
+                'table': 'custom_metric_log',
+                'data': {
+                    'timestamp': datetime.now(timezone.utc),
+                    'project_id': project_id,
+                    'node_id': node_id,
+                    'variable_name': variable_name,
+                    'value': float(value)
+                }
+            })
+        except Full:
+            logger.warning("Database log_queue full, dropping custom metric log")
+    def clear_project_logs(self, project_id: str) -> Dict[str, Any]:
+        """Deletes all event logs, metrics, and associated snapshot files for a specific project."""
+        deleted_rows = 0
+        deleted_files = 0
+        
+        with Session(self.engine_telemetry) as session:
+            # 1. Get snapshot paths first
+            statement = select(EventLog.snapshot_path).where(EventLog.project_id == project_id).where(EventLog.snapshot_path != None)
+            snapshot_paths = session.exec(statement).all()
+            
+            # 2. Count rows to be deleted
+            count_statement = select(func.count(EventLog.id)).where(EventLog.project_id == project_id)
+            deleted_rows = session.exec(count_statement).one()
+            
+            # 3. Delete the actual rows in the DB
+            session.exec(delete(EventLog).where(EventLog.project_id == project_id))
+            session.exec(delete(CustomMetricLog).where(CustomMetricLog.project_id == project_id))
+            
+            session.commit()
+            
+            # 4. Delete files on disk
+            for spath in snapshot_paths:
                 try:
-                    self.log_queue.put_nowait({
-                        'table': 'class_count_summary',
-                        'timestamp': timestamp,
-                        'project_id': project_id,
-                        'camera_id': camera_id,
-                        'node_id': node_id,
-                        'class_name': cls,
-                        'count': count,
-                        'cumulative_total': cumulative_totals.get(cls, 0)
-                    })
-                except Full:
-                    logger.warning("Database log_queue full, dropping class count log")
-
-    def get_class_count_history(self, project_id: str = "default", camera_id: str = None, start_time: str = None, end_time: str = None, interval: str = "hour") -> dict:
-        """
-        Query time-aggregated class counts for charts.
-        interval can be: 'minute' (1-min), 'hour' (hourly), 'day' (daily).
-        """
-        fmt = '%Y-%m-%d %H:00:00'
-        if interval == 'minute':
-            fmt = '%Y-%m-%d %H:%M:00'
-        elif interval == 'day':
-            fmt = '%Y-%m-%d'
-
-        with Session(self.engine) as session:
-            filters = ["project_id = :project_id"]
-            params = {"project_id": project_id}
-
-            if camera_id:
-                filters.append("camera_id = :camera_id")
-                params["camera_id"] = camera_id
-
-            if start_time:
-                filters.append("timestamp >= :start_time")
-                params["start_time"] = start_time
-
-            if end_time:
-                filters.append("timestamp <= :end_time")
-                params["end_time"] = end_time
-
-            where_clause = " AND ".join(filters)
-            sql = f"""
-                SELECT 
-                    strftime('{fmt}', timestamp) AS time_bucket,
-                    class_name,
-                    SUM(count) AS count_sum,
-                    MAX(cumulative_total) AS max_total
-                FROM class_count_summary
-                WHERE {where_clause}
-                GROUP BY time_bucket, class_name
-                ORDER BY time_bucket ASC
-            """
-            rows = session.exec(text(sql), params=params).all()
-
-            buckets = {}
-            all_classes = set()
-            for time_bucket, class_name, count_sum, max_total in rows:
-                if time_bucket not in buckets:
-                    buckets[time_bucket] = {"time": time_bucket, "total": 0}
-                buckets[time_bucket][class_name] = count_sum or 0
-                buckets[time_bucket]["total"] += (count_sum or 0)
-                all_classes.add(class_name)
-
-            data = list(buckets.values())
-            for item in data:
-                for cls in all_classes:
-                    if cls not in item:
-                        item[cls] = 0
-
-            return {
-                "classes": sorted(list(all_classes)),
-                "data": data,
-                "interval": interval
-            }
-
-    def export_class_count_csv(self, project_id: str = "default", camera_id: str = None, start_time: str = None, end_time: str = None) -> str:
-        """Generates CSV string of class count logs."""
-        import io
-        import csv
-
-        with Session(self.engine) as session:
-            statement = select(ClassCountSummary).where(ClassCountSummary.project_id == project_id)
-            if camera_id:
-                statement = statement.where(ClassCountSummary.camera_id == camera_id)
-            if start_time:
-                statement = statement.where(ClassCountSummary.timestamp >= start_time)
-            if end_time:
-                statement = statement.where(ClassCountSummary.timestamp <= end_time)
-
-            statement = statement.order_by(ClassCountSummary.timestamp.desc())
-            records = session.exec(statement).all()
-
-            output = io.StringIO()
-            writer = csv.writer(output)
-            writer.writerow(["Timestamp", "Project ID", "Camera ID", "Node ID", "Class Name", "Count in Interval", "Cumulative Total"])
-
-            for r in records:
-                writer.writerow([
-                    r.timestamp.strftime("%Y-%m-%d %H:%M:%S") if r.timestamp else "",
-                    r.project_id or "",
-                    r.camera_id or "",
-                    r.node_id or "",
-                    r.class_name or "",
-                    r.count,
-                    r.cumulative_total
-                ])
-
-            return output.getvalue()
+                    p = Path(spath)
+                    if p.exists() and p.is_file():
+                        p.unlink()
+                        deleted_files += 1
+                except Exception as e:
+                    logger.error(f"Failed to delete snapshot file {spath}: {e}")
+                    
+        return {"status": "success", "deleted_rows": deleted_rows, "deleted_files": deleted_files}
 
     def stop(self):
         self.running = False
@@ -527,3 +660,8 @@ class DatabaseManager:
 
 # Global instance
 db = DatabaseManager()
+
+def get_db():
+    from sqlmodel import Session
+    with Session(db.engine) as session:
+        yield session

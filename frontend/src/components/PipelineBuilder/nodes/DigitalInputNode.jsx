@@ -4,8 +4,9 @@ import { ToggleLeft } from 'lucide-react';
 import NodeMenu from './NodeMenu';
 
 export default function DigitalInputNode({ id, data }) {
+  const isCompact = data?.viewMode === 'compact';
   return (
-    <div className="bg-gray-900 border-2 border-cyan-500 rounded-xl p-4 shadow-xl shadow-cyan-900/20 w-64">
+    <div className={`bg-gray-900 border-2 border-cyan-500 rounded-xl p-4 shadow-xl shadow-cyan-900/20 ${isCompact ? 'w-48' : 'w-64'}`}>
       <div className="flex items-center justify-between mb-3 border-b border-gray-800 pb-2">
         <div className="flex items-center gap-3">
           <div className="bg-cyan-500/20 p-2 rounded-lg">
@@ -16,7 +17,7 @@ export default function DigitalInputNode({ id, data }) {
             <p className="text-xs text-cyan-500 font-mono">Isolated DI (Max 50V)</p>
           </div>
         </div>
-        <NodeMenu id={id} />
+        {!isCompact && <NodeMenu id={id} />}
       </div>
       
       <div className="space-y-2">

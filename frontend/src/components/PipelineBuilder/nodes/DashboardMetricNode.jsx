@@ -5,6 +5,7 @@ import NodeMenu from './NodeMenu';
 import usePipelineStore from '../../../store/usePipelineStore';
 
 export default function DashboardMetricNode({ id, data }) {
+  const isCompact = data?.viewMode === 'compact';
   const globalUpdateNodeData = usePipelineStore((state) => state.updateNodeData);
   const updateNodeData = data?.onUpdate || globalUpdateNodeData;
   const edges = usePipelineStore((state) => state.edges);
@@ -130,7 +131,7 @@ export default function DashboardMetricNode({ id, data }) {
   };
 
   return (
-    <div className="bg-gray-900 border-2 border-pink-600 rounded-xl shadow-lg shadow-pink-900/20 w-64 text-white overflow-hidden">
+    <div className={`bg-gray-900 border-2 border-pink-600 rounded-xl shadow-lg shadow-pink-900/20 ${isCompact ? 'w-48' : 'w-64'} text-white overflow-hidden`}>
       <div className="bg-pink-600/20 p-3 flex items-center justify-between border-b border-pink-900/50">
         <div className="flex items-center gap-3">
           <div className="bg-pink-600 p-1.5 rounded-lg">
@@ -138,10 +139,10 @@ export default function DashboardMetricNode({ id, data }) {
           </div>
           <div className="font-semibold text-sm">Dashboard Metric</div>
         </div>
-        <NodeMenu id={id} />
+        {!isCompact && <NodeMenu id={id} />}
       </div>
       
-      <div className="p-4 flex flex-col gap-3">
+      <div className={`p-4 flex flex-col gap-3 ${isCompact ? 'hidden' : ''}`}>
         <label className="text-xs text-gray-400 flex flex-col gap-1">
           Output Label (For Dashboard)
           <input 

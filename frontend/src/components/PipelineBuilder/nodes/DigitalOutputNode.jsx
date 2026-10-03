@@ -5,10 +5,11 @@ import { ToggleRight } from 'lucide-react';
 import NodeMenu from './NodeMenu';
 
 export default function DigitalOutputNode({ id, data }) {
+  const isCompact = data?.viewMode === 'compact';
   const globalUpdateNodeData = usePipelineStore((state) => state.updateNodeData);
   const updateNodeData = data?.onUpdate || globalUpdateNodeData;
   return (
-    <div className="bg-gray-900 border-2 border-orange-500 rounded-xl p-4 shadow-xl shadow-orange-900/20 w-64">
+    <div className={`bg-gray-900 border-2 border-orange-500 rounded-xl p-4 shadow-xl shadow-orange-900/20 ${isCompact ? 'w-48' : 'w-64'}`}>
       <Handle type="target" position={Position.Left} className="w-3 h-3 bg-orange-500 border-2 border-gray-900" />
       
       <div className="flex items-center justify-between mb-3 border-b border-gray-800 pb-2">
@@ -21,7 +22,7 @@ export default function DigitalOutputNode({ id, data }) {
             <p className="text-xs text-orange-500 font-mono">Isolated DO (Max 50V)</p>
           </div>
         </div>
-        <NodeMenu id={id} />
+        {!isCompact && <NodeMenu id={id} />}
       </div>
       
       <div className="space-y-3">

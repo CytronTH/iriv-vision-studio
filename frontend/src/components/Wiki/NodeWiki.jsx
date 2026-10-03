@@ -134,8 +134,8 @@ export default function NodeWiki({ initialNode }) {
       case 'dashboardMetricNode': return <span className="text-pink-400 font-bold px-1">🔢</span>;
       case 'dashboardTextNode': return <span className="text-pink-400 font-bold px-1">📝</span>;
       case 'dashboardLogNode': return <span className="text-indigo-400 font-bold px-1">📋</span>;
-      case 'debugNode': return <span className="text-gray-300 font-bold px-1">🐛</span>;
-      default: return <Info size={18} className="text-gray-400" />;
+      case 'debugNode': return <span className="text-gray-700 dark:text-gray-300 font-bold px-1">🐛</span>;
+      default: return <Info size={18} className="text-gray-600 dark:text-gray-400" />;
     }
   };
 
@@ -143,7 +143,7 @@ export default function NodeWiki({ initialNode }) {
 
   const renderSidebarContent = (isMobile = false) => (
     <>
-      <div className="p-4 sm:p-6 border-b border-gray-800 shrink-0 sticky top-0 bg-gray-900/95 backdrop-blur z-10 flex items-center justify-between">
+      <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-800 shrink-0 sticky top-0 bg-gray-50 dark:bg-white/95 dark:bg-gray-900/95 backdrop-blur z-10 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="bg-blue-600/20 p-2 rounded-lg border border-blue-500/30">
             <BookOpen className="text-blue-400" size={22} />
@@ -156,7 +156,7 @@ export default function NodeWiki({ initialNode }) {
         {isMobile && (
           <button 
             onClick={() => setIsMobileWikiSidebarOpen(false)}
-            className="p-1.5 rounded-lg bg-gray-800 text-gray-400 hover:text-white border border-gray-700 active:scale-95"
+            className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-white border border-gray-300 dark:border-gray-700 active:scale-95"
           >
             <X size={16} />
           </button>
@@ -187,7 +187,7 @@ export default function NodeWiki({ initialNode }) {
                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left w-full active:scale-[0.98] ${
                          isSelected 
                            ? 'bg-blue-600/20 text-white border border-blue-500/30 shadow-inner font-semibold' 
-                           : 'text-gray-400 hover:text-white hover:bg-gray-800/60 border border-transparent'
+                           : 'text-gray-600 dark:text-gray-400 hover:text-white hover:bg-gray-100 dark:bg-gray-800/60 border border-transparent'
                        }`}
                      >
                        <div className={`shrink-0 flex items-center justify-center w-6 h-6 rounded ${isSelected ? 'bg-black/20' : ''}`}>
@@ -206,9 +206,9 @@ export default function NodeWiki({ initialNode }) {
   );
 
   return (
-    <div className="flex h-full bg-gray-950 text-white font-sans overflow-hidden relative">
+    <div className="flex h-full bg-white dark:bg-gray-950 text-white font-sans overflow-hidden relative">
       {/* Desktop Sidebar Navigation */}
-      <aside className="hidden md:flex w-72 bg-gray-900 border-r border-gray-800 flex-col h-full overflow-y-auto shrink-0">
+      <aside className="hidden md:flex w-72 bg-gray-50 dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex-col h-full overflow-y-auto shrink-0">
         {renderSidebarContent(false)}
       </aside>
 
@@ -219,7 +219,7 @@ export default function NodeWiki({ initialNode }) {
           onClick={() => setIsMobileWikiSidebarOpen(false)}
         >
           <div 
-            className="absolute left-0 top-0 bottom-0 w-72 max-w-[85vw] bg-gray-900 shadow-2xl flex flex-col animate-in slide-in-from-left duration-200"
+            className="absolute left-0 top-0 bottom-0 w-72 max-w-[85vw] bg-gray-50 dark:bg-gray-900 shadow-2xl flex flex-col animate-in slide-in-from-left duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {renderSidebarContent(true)}
@@ -230,10 +230,10 @@ export default function NodeWiki({ initialNode }) {
       {/* Main Content Area */}
       <main className="flex-1 overflow-y-auto relative bg-gradient-to-br from-gray-950 to-gray-900 flex flex-col">
         {/* Mobile Header Bar */}
-        <div className="md:hidden flex items-center justify-between p-3 border-b border-gray-800 bg-gray-900/90 backdrop-blur shrink-0 sticky top-0 z-20">
+        <div className="md:hidden flex items-center justify-between p-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-white/90 dark:bg-gray-900/90 backdrop-blur shrink-0 sticky top-0 z-20">
           <div className="flex items-center gap-2 min-w-0">
             <BookOpen className="text-blue-400 shrink-0" size={18} />
-            <span className="text-xs sm:text-sm font-bold text-gray-200 truncate">{data?.title || 'Node Wiki'}</span>
+            <span className="text-xs sm:text-sm font-bold text-gray-800 dark:text-gray-200 truncate">{data?.title || 'Node Wiki'}</span>
           </div>
           <button
             onClick={() => setIsMobileWikiSidebarOpen(true)}
@@ -251,13 +251,13 @@ export default function NodeWiki({ initialNode }) {
           <div className="max-w-7xl mx-auto p-4 sm:p-6 md:p-8 pb-24 w-full">
             
             {/* Header */}
-            <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-5 mb-6 sm:mb-10 pb-6 sm:pb-8 border-b border-gray-800">
-              <div className="bg-gray-800 p-3 sm:p-4 rounded-2xl border border-gray-700 shadow-xl flex items-center justify-center h-16 w-16 sm:h-20 sm:w-20 shrink-0">
+            <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-4 sm:gap-5 mb-6 sm:mb-10 pb-6 sm:pb-8 border-b border-gray-200 dark:border-gray-800">
+              <div className="bg-gray-100 dark:bg-gray-800 p-3 sm:p-4 rounded-2xl border border-gray-300 dark:border-gray-700 shadow-xl flex items-center justify-center h-16 w-16 sm:h-20 sm:w-20 shrink-0">
                 {getIcon(selectedNode)}
               </div>
               <div className="min-w-0">
                 <h2 className="text-2xl sm:text-3xl font-bold text-white mb-2 sm:mb-3 tracking-tight">{data.title}</h2>
-                <p className="text-gray-400 text-sm sm:text-base md:text-lg leading-relaxed max-w-2xl">{data.description}</p>
+                <p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base md:text-lg leading-relaxed max-w-2xl">{data.description}</p>
               </div>
             </div>
 
@@ -266,11 +266,11 @@ export default function NodeWiki({ initialNode }) {
               
               {/* Explanation Section (New Layout) */}
               {data.explanation && (
-                <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 shadow-sm">
-                  <h3 className="text-lg font-semibold text-gray-200 mb-4 flex items-center gap-2">
+                <section className="bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm">
+                  <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2">
                     <Info size={18} className="text-blue-400"/> หลักการทำงาน
                   </h3>
-                  <p className="text-gray-300 leading-relaxed text-sm md:text-base">
+                  <p className="text-gray-700 dark:text-gray-300 leading-relaxed text-sm md:text-base">
                     {data.explanation}
                   </p>
                 </section>
@@ -278,17 +278,17 @@ export default function NodeWiki({ initialNode }) {
 
               {/* Input Section (Legacy Layout) */}
               {data.input && (
-                <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md hover:border-gray-700 transition-all duration-300">
+                <section className="bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md hover:border-gray-300 dark:border-gray-700 transition-all duration-300">
                   <div className="flex items-center gap-3 mb-3 sm:mb-4">
                     <div className="bg-green-900/30 p-2 rounded-lg text-green-400">
                       <LogIn size={20} />
                     </div>
-                    <h3 className="text-lg sm:text-xl font-semibold text-gray-200">1. ข้อมูลขาเข้า (Input)</h3>
+                    <h3 className="text-lg sm:text-xl font-semibold text-gray-800 dark:text-gray-200">1. ข้อมูลขาเข้า (Input)</h3>
                   </div>
                   <div className="pl-0 sm:pl-11 space-y-3 sm:space-y-4">
-                    <p className="text-gray-300 leading-relaxed text-xs sm:text-sm md:text-base">{data.input.desc}</p>
-                    <div className="bg-black/40 border border-gray-800 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-gray-400 border-l-4 border-l-green-500 font-mono shadow-inner overflow-x-auto">
-                      <span className="font-semibold text-gray-300">ตัวอย่าง: </span>{data.input.example}
+                    <p className="text-gray-700 dark:text-gray-300 leading-relaxed text-xs sm:text-sm md:text-base">{data.input.desc}</p>
+                    <div className="bg-black/40 border border-gray-200 dark:border-gray-800 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-gray-600 dark:text-gray-400 border-l-4 border-l-green-500 font-mono shadow-inner overflow-x-auto">
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">ตัวอย่าง: </span>{data.input.example}
                     </div>
                   </div>
                 </section>
@@ -296,17 +296,17 @@ export default function NodeWiki({ initialNode }) {
 
               {/* Process Section */}
               {data.process && (
-                <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md hover:border-gray-700 transition-all duration-300">
+                <section className="bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md hover:border-gray-300 dark:border-gray-700 transition-all duration-300">
                   <div className="flex items-center gap-3 mb-3 sm:mb-4">
                     <div className="bg-blue-900/30 p-2 rounded-lg text-blue-400">
                       <Cpu size={20} />
                     </div>
-                    <h3 className="text-lg sm:text-xl font-semibold text-gray-200">2. การประมวลผล (Process)</h3>
+                    <h3 className="text-lg sm:text-xl font-semibold text-gray-800 dark:text-gray-200">2. การประมวลผล (Process)</h3>
                   </div>
                   <div className="pl-0 sm:pl-11 space-y-3 sm:space-y-4">
-                    <p className="text-gray-300 leading-relaxed text-xs sm:text-sm md:text-base">{data.process.desc}</p>
-                    <div className="bg-black/40 border border-gray-800 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-gray-400 border-l-4 border-l-blue-500 font-mono shadow-inner overflow-x-auto">
-                      <span className="font-semibold text-gray-300">ตัวอย่าง: </span>{data.process.example}
+                    <p className="text-gray-700 dark:text-gray-300 leading-relaxed text-xs sm:text-sm md:text-base">{data.process.desc}</p>
+                    <div className="bg-black/40 border border-gray-200 dark:border-gray-800 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-gray-600 dark:text-gray-400 border-l-4 border-l-blue-500 font-mono shadow-inner overflow-x-auto">
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">ตัวอย่าง: </span>{data.process.example}
                     </div>
                   </div>
                 </section>
@@ -314,17 +314,17 @@ export default function NodeWiki({ initialNode }) {
 
               {/* Output Section */}
               {data.output && (
-                <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md hover:border-gray-700 transition-all duration-300">
+                <section className="bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded-2xl p-4 sm:p-6 shadow-sm hover:shadow-md hover:border-gray-300 dark:border-gray-700 transition-all duration-300">
                   <div className="flex items-center gap-3 mb-3 sm:mb-4">
                     <div className="bg-orange-900/30 p-2 rounded-lg text-orange-400">
                       <LogOut size={20} />
                     </div>
-                    <h3 className="text-lg sm:text-xl font-semibold text-gray-200">3. ข้อมูลขาออก (Output)</h3>
+                    <h3 className="text-lg sm:text-xl font-semibold text-gray-800 dark:text-gray-200">3. ข้อมูลขาออก (Output)</h3>
                   </div>
                   <div className="pl-0 sm:pl-11 space-y-3 sm:space-y-4">
-                    <p className="text-gray-300 leading-relaxed text-xs sm:text-sm md:text-base">{data.output.desc}</p>
-                    <div className="bg-black/40 border border-gray-800 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-gray-400 border-l-4 border-l-orange-500 font-mono shadow-inner overflow-x-auto">
-                      <span className="font-semibold text-gray-300">ตัวอย่าง: </span>{data.output.example}
+                    <p className="text-gray-700 dark:text-gray-300 leading-relaxed text-xs sm:text-sm md:text-base">{data.output.desc}</p>
+                    <div className="bg-black/40 border border-gray-200 dark:border-gray-800 rounded-lg p-3 sm:p-4 text-xs sm:text-sm text-gray-600 dark:text-gray-400 border-l-4 border-l-orange-500 font-mono shadow-inner overflow-x-auto">
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">ตัวอย่าง: </span>{data.output.example}
                     </div>
                   </div>
                 </section>
@@ -333,14 +333,14 @@ export default function NodeWiki({ initialNode }) {
 
               {/* Compatibility Section (Mini Pipeline Diagram) */}
               {(data.supportedInputs?.length > 0 || data.supportedOutputs?.length > 0) && (
-                <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 shadow-sm mt-8">
+                <section className="bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm mt-8">
                   <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-                    <h3 className="text-lg font-semibold text-gray-200 flex items-center gap-2">
-                      <Activity size={18} className="text-gray-400"/> ตัวอย่างการเชื่อมต่อ (Auto-Generated Pipeline)
+                    <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
+                      <Activity size={18} className="text-gray-600 dark:text-gray-400"/> ตัวอย่างการเชื่อมต่อ (Auto-Generated Pipeline)
                     </h3>
                     <div className="flex gap-2">
                        {isDeploying ? (
-                         <div className="px-4 py-2 bg-gray-800 text-gray-400 rounded-lg text-sm font-bold flex items-center gap-2 border border-gray-700">
+                         <div className="px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded-lg text-sm font-bold flex items-center gap-2 border border-gray-300 dark:border-gray-700">
                            <Activity size={16} className="animate-spin" /> Deploying...
                          </div>
                        ) : isSandboxRunning ? (
@@ -365,14 +365,14 @@ export default function NodeWiki({ initialNode }) {
                         </div>
                         {/* Mock Settings Panel */}
                         {data.mockSettings && (
-                          <div className="w-full xl:w-72 shrink-0 bg-gray-900 border border-gray-800 rounded-xl p-4 flex flex-col">
-                             <h4 className="text-sm font-semibold text-gray-200 mb-4 border-b border-gray-800 pb-3 flex items-center gap-2">
-                               <Settings2 size={16} className="text-gray-400"/> การตั้งค่าโหนด
+                          <div className="w-full xl:w-72 shrink-0 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 flex flex-col">
+                             <h4 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-4 border-b border-gray-200 dark:border-gray-800 pb-3 flex items-center gap-2">
+                               <Settings2 size={16} className="text-gray-600 dark:text-gray-400"/> การตั้งค่าโหนด
                              </h4>
                              <div className="space-y-2 mb-4 flex-1">
                                {data.mockSettings.options.map(opt => (
-                                 <button key={opt.id} className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-700 bg-gray-800 hover:bg-gray-700 text-sm text-left text-gray-300 transition-colors shadow-sm">
-                                   <div className="bg-gray-900 p-2 rounded text-gray-400">
+                                 <button key={opt.id} className="w-full flex items-center gap-3 p-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:bg-gray-700 text-sm text-left text-gray-700 dark:text-gray-300 transition-colors shadow-sm">
+                                   <div className="bg-gray-50 dark:bg-gray-900 p-2 rounded text-gray-600 dark:text-gray-400">
                                      {opt.icon === 'video' ? <Video size={16}/> : opt.icon === 'cctv' ? <Cctv size={16}/> : <Camera size={16}/>}
                                    </div>
                                    {opt.label}
@@ -407,19 +407,19 @@ export default function NodeWiki({ initialNode }) {
 
               {/* Use Cases Section */}
               {nodeUseCases[selectedNode] && nodeUseCases[selectedNode].length > 0 && (
-                <section className="bg-gray-900/60 border border-gray-800 rounded-2xl p-6 shadow-sm mt-8">
-                  <h3 className="text-lg font-semibold text-gray-200 mb-6 flex items-center gap-2">
+                <section className="bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded-2xl p-6 shadow-sm mt-8">
+                  <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-6 flex items-center gap-2">
                     <BookOpen size={18} className="text-blue-400"/> ตัวอย่างการใช้งานจริง (Use Cases)
                   </h3>
                   
                   <div className="grid grid-cols-1 gap-6">
                     {nodeUseCases[selectedNode].map((uc, idx) => (
-                      <div key={idx} className="bg-gray-800/50 border border-gray-700 rounded-xl p-5 flex flex-col md:flex-row gap-5 items-start">
+                      <div key={idx} className="bg-gray-100 dark:bg-gray-800/50 border border-gray-300 dark:border-gray-700 rounded-xl p-5 flex flex-col md:flex-row gap-5 items-start">
                         <div className="flex-1">
-                          <h4 className="text-md font-bold text-gray-200 mb-2">{uc.title}</h4>
-                          <p className="text-sm text-gray-400 leading-relaxed">{uc.description}</p>
+                          <h4 className="text-md font-bold text-gray-800 dark:text-gray-200 mb-2">{uc.title}</h4>
+                          <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">{uc.description}</p>
                         </div>
-                        <div className="w-full md:w-64 h-36 bg-gray-950 rounded-lg border border-gray-800 flex items-center justify-center shrink-0 overflow-hidden relative group">
+                        <div className="w-full md:w-64 h-36 bg-white dark:bg-gray-950 rounded-lg border border-gray-200 dark:border-gray-800 flex items-center justify-center shrink-0 overflow-hidden relative group">
                           {uc.videoUrl && uc.videoUrl !== 'REQUEST_VIDEO_URL' ? (
                             <video src={uc.videoUrl} autoPlay loop muted playsInline className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
                           ) : (

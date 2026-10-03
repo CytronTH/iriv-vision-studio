@@ -1,3 +1,4 @@
+from datetime import timezone
 import os
 import io
 import re
@@ -25,7 +26,7 @@ router = APIRouter(prefix="/api/projects/backup", tags=["Project Backup & Migrat
 BASE_DIR = Path(__file__).resolve().parent.parent
 MODELS_DIR = BASE_DIR / "models"
 VIDEOS_DIR = BASE_DIR / "videos"
-SNAPSHOT_DIR = Path("/home/pi/iriv-backups/projects")
+SNAPSHOT_DIR = Path("/home/pi/pido-ai-backups/projects")
 SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
 
 
@@ -77,7 +78,7 @@ def get_referenced_entities(pipeline_dict: dict) -> Tuple[set, set, set]:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. EXPORT SINGLE PROJECT (.irivproj or .json)
+# 1. EXPORT SINGLE PROJECT (.pidoproj or .json)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/export/{project_id}")
@@ -85,10 +86,10 @@ async def export_project(
     project_id: str,
     bundle_type: str = Query("full", description="'full' (with AI models) or 'config_only'"),
     include_videos: bool = Query(True, description="Whether to bundle sample video files if referenced"),
-    format: str = Query("zip", description="'zip' (.irivproj) or 'json'")
+    format: str = Query("zip", description="'zip' (.pidoproj) or 'json'")
 ):
     """
-    Exports a project as a deployable .irivproj package (ZIP) or standalone JSON.
+    Exports a project as a deployable .pidoproj package (ZIP) or standalone JSON.
     Full bundle includes .hef models and post-processing files so it can be deployed
     on another board immediately.
     """
@@ -146,15 +147,15 @@ async def export_project(
                 idict["created_at"] = idict["created_at"].isoformat()
             integrations_list.append(idict)
 
-    timestamp_str = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     clean_name = sanitize_filename(project.name)
 
     # ── Config-Only JSON Export ──
     if format == "json" and bundle_type == "config_only":
         export_payload = {
-            "format": "irivproj_json",
+            "format": "pidoproj_json",
             "version": "1.0",
-            "exported_at": datetime.utcnow().isoformat(),
+            "exported_at": datetime.now(timezone.utc).isoformat(),
             "project": {
                 "id": project.id,
                 "name": project.name,
@@ -175,8 +176,8 @@ async def export_project(
         filename = f"{clean_name}_config_{timestamp_str}.json"
         return FileResponse(temp_file.name, filename=filename, media_type="application/json")
 
-    # ── Full / Standard .irivproj (ZIP) Export ──
-    temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".irivproj")
+    # ── Full / Standard .pidoproj (ZIP) Export ──
+    temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".pidoproj")
     temp_zip.close()
 
     models_manifest = []
@@ -257,9 +258,9 @@ async def export_project(
 
         # 5. Manifest file
         manifest = {
-            "format": "irivproj",
+            "format": "pidoproj",
             "version": "1.0",
-            "exported_at": datetime.utcnow().isoformat(),
+            "exported_at": datetime.now(timezone.utc).isoformat(),
             "project_id": project.id,
             "project_name": project.name,
             "description": project.description,
@@ -273,7 +274,7 @@ async def export_project(
         }
         zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False, default=str))
 
-    filename = f"{clean_name}_{bundle_type}_{timestamp_str}.irivproj"
+    filename = f"{clean_name}_{bundle_type}_{timestamp_str}.pidoproj"
     return FileResponse(
         temp_zip.name,
         filename=filename,
@@ -289,7 +290,7 @@ async def export_project(
 @router.post("/inspect")
 async def inspect_backup_file(package_file: UploadFile = File(...)):
     """
-    Inspects an uploaded .irivproj or .json backup package without saving.
+    Inspects an uploaded .pidoproj or .json backup package without saving.
     Returns preview summary: project details, models, size, conflict check on this board.
     """
     try:
@@ -323,11 +324,11 @@ async def inspect_backup_file(package_file: UploadFile = File(...)):
                 file_size=len(content)
             )
 
-        # Handle ZIP (.irivproj) format
+        # Handle ZIP (.pidoproj) format
         try:
             zf = zipfile.ZipFile(io.BytesIO(content))
         except Exception as e:
-            return {"status": "error", "message": f"Invalid .irivproj or ZIP package: {e}"}
+            return {"status": "error", "message": f"Invalid .pidoproj or ZIP package: {e}"}
 
         namelist = zf.namelist()
         manifest_data = {}
@@ -472,7 +473,7 @@ async def import_project(
     auto_start: Any = Form(False)
 ):
     """
-    Imports and deploys a project into IRIV Vision Studio:
+    Imports and deploys a project into PiDo.AI:
     1. Extracts models (.hef) to backend/models/ safely (preventing zip slip).
     2. Registers AIModel, Camera, and Integration entities in DB.
     3. Saves Project in DB.
@@ -500,7 +501,7 @@ async def import_project(
             project_data = data.get("project", {})
             entities_data = data.get("entities", {})
 
-        # ── Branch B: .irivproj (ZIP) ──
+        # ── Branch B: .pidoproj (ZIP) ──
         else:
             try:
                 zf = zipfile.ZipFile(io.BytesIO(content))
@@ -663,7 +664,7 @@ async def import_project(
             pipe_json = json.dumps(project_data.get("pipeline", {"nodes": [], "edges": []}))
             dash_json = json.dumps(project_data.get("dashboard_layout", {}))
             ds_json = json.dumps(project_data.get("exposed_data_sources", []))
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
 
             target_proj = session.exec(select(Project).where(Project.id == final_id)).first()
             if target_proj:
@@ -672,7 +673,7 @@ async def import_project(
                 target_proj.pipeline_json = pipe_json
                 target_proj.dashboard_layout_json = dash_json
                 target_proj.exposed_data_sources_json = ds_json
-                target_proj.is_running = False
+
                 target_proj.updated_at = now
                 session.add(target_proj)
             else:
@@ -683,7 +684,7 @@ async def import_project(
                     pipeline_json=pipe_json,
                     dashboard_layout_json=dash_json,
                     exposed_data_sources_json=ds_json,
-                    is_running=False,
+
                     created_at=now,
                     updated_at=now
                 ))
@@ -773,13 +774,13 @@ async def export_all_projects(include_models: bool = Query(False, description="B
     temp_zip = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
     temp_zip.close()
 
-    timestamp_str = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
     with zipfile.ZipFile(temp_zip.name, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         manifest = {
-            "format": "iriv_all_projects",
+            "format": "pido_all_projects",
             "version": "1.0",
-            "exported_at": datetime.utcnow().isoformat(),
+            "exported_at": datetime.now(timezone.utc).isoformat(),
             "projects_count": len(projects_list),
             "include_models": include_models
         }
@@ -797,7 +798,7 @@ async def export_all_projects(include_models: bool = Query(False, description="B
                 if hef_fname and (MODELS_DIR / hef_fname).exists():
                     zf.write(MODELS_DIR / hef_fname, arcname=f"models/{hef_fname}")
 
-    filename = f"iriv_all_projects_{timestamp_str}.zip"
+    filename = f"pido_all_projects_{timestamp_str}.zip"
     return FileResponse(
         temp_zip.name,
         filename=filename,
@@ -807,7 +808,7 @@ async def export_all_projects(include_models: bool = Query(False, description="B
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 5. LOCAL SNAPSHOTS & RECOVERY (/home/pi/iriv-backups/projects/)
+# 5. LOCAL SNAPSHOTS & RECOVERY (/home/pi/pido-ai-backups/projects/)
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.get("/snapshots")
@@ -815,7 +816,7 @@ async def list_local_snapshots():
     """Lists local project snapshots on the board."""
     snapshots = []
     if SNAPSHOT_DIR.exists():
-        for f in sorted(SNAPSHOT_DIR.glob("*.irivsnap"), key=os.path.getmtime, reverse=True):
+        for f in sorted(SNAPSHOT_DIR.glob("*.pidosnap"), key=os.path.getmtime, reverse=True):
             stat = f.stat()
             # Read header
             proj_count = 0
@@ -841,9 +842,9 @@ async def list_local_snapshots():
 async def create_local_snapshot(name: Optional[str] = Form(None)):
     """Creates an instant local snapshot of all projects and entities on the board."""
     try:
-        timestamp_str = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp_str = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         clean_tag = sanitize_filename(name) if name else "manual"
-        snapshot_filename = f"snapshot_{clean_tag}_{timestamp_str}.irivsnap"
+        snapshot_filename = f"snapshot_{clean_tag}_{timestamp_str}.pidosnap"
         target_path = SNAPSHOT_DIR / snapshot_filename
 
         with Session(db.engine) as session:
@@ -859,10 +860,10 @@ async def create_local_snapshot(name: Optional[str] = Form(None)):
 
         with zipfile.ZipFile(target_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             manifest = {
-                "format": "iriv_local_snapshot",
+                "format": "pido_local_snapshot",
                 "version": "1.0",
                 "tag": name or "manual",
-                "created_at": datetime.utcnow().isoformat(),
+                "created_at": datetime.now(timezone.utc).isoformat(),
                 "projects_count": len(projects_list)
             }
             zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
@@ -874,7 +875,7 @@ async def create_local_snapshot(name: Optional[str] = Form(None)):
             }, default=str, indent=2))
 
         # Rotate: keep last 10 snapshots
-        all_snaps = sorted(SNAPSHOT_DIR.glob("*.irivsnap"), key=os.path.getmtime)
+        all_snaps = sorted(SNAPSHOT_DIR.glob("*.pidosnap"), key=os.path.getmtime)
         while len(all_snaps) > 10:
             oldest = all_snaps.pop(0)
             try: oldest.unlink()
@@ -915,7 +916,7 @@ async def restore_local_snapshot(filename: str):
                     existing.pipeline_json = p.get("pipeline_json", existing.pipeline_json)
                     existing.dashboard_layout_json = p.get("dashboard_layout_json", existing.dashboard_layout_json)
                     existing.exposed_data_sources_json = p.get("exposed_data_sources_json", existing.exposed_data_sources_json)
-                    existing.updated_at = datetime.utcnow()
+                    existing.updated_at = datetime.now(timezone.utc)
                     session.add(existing)
                 else:
                     session.add(Project(
@@ -925,9 +926,9 @@ async def restore_local_snapshot(filename: str):
                         pipeline_json=p.get("pipeline_json", "{}"),
                         dashboard_layout_json=p.get("dashboard_layout_json", "{}"),
                         exposed_data_sources_json=p.get("exposed_data_sources_json", "[]"),
-                        is_running=False,
-                        created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow()
+
+                        created_at=datetime.now(timezone.utc),
+                        updated_at=datetime.now(timezone.utc)
                     ))
             session.commit()
 

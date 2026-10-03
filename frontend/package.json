@@ -11,12 +11,14 @@
   },
   "dependencies": {
     "@xyflow/react": "^12.11.3",
+    "dagre": "^0.8.5",
     "lodash": "^4.18.1",
     "lucide-react": "^1.31.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-grid-layout": "^2.2.4",
     "react-resizable": "^4.0.2",
+    "react-router-dom": "^7.18.4",
     "recharts": "^3.10.1",
     "zustand": "^5.0.15"
   },

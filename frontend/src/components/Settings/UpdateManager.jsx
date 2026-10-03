@@ -244,7 +244,7 @@ export default function UpdateManager() {
                 IRIV Vision Studio
               </span>
             </h3>
-            <p className="text-sm text-gray-400 mt-0.5">
+            <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
               Keep your Edge AI platform up-to-date with seamless 1-click OTA or offline air-gapped packages.
             </p>
           </div>
@@ -263,8 +263,8 @@ export default function UpdateManager() {
       {/* Grid: Current Version & System Info */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* Card 1: Installed Version */}
-        <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-4 flex flex-col justify-between shadow-sm">
-          <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+        <div className="bg-gray-50 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-800 rounded-xl p-4 flex flex-col justify-between shadow-sm">
+          <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 mb-2">
             <span className="font-medium flex items-center gap-1.5">
               <History size={14} className="text-blue-400" />
               Installed Version
@@ -278,20 +278,20 @@ export default function UpdateManager() {
               {versionLoading ? 'Loading...' : versionInfo?.version || 'v1.0.0'}
             </div>
             <div className="text-xs text-gray-500 mt-1 flex items-center gap-2">
-              <span>Commit: <span className="font-mono text-gray-400">{versionInfo?.commit || '—'}</span></span>
+              <span>Commit: <span className="font-mono text-gray-600 dark:text-gray-400">{versionInfo?.commit || '—'}</span></span>
               <span>•</span>
               <span>{versionInfo?.commit_date || 'Recent'}</span>
             </div>
           </div>
-          <div className="text-[11px] text-gray-400 pt-3 mt-2 border-t border-gray-800/80 flex items-center gap-1">
+          <div className="text-[11px] text-gray-600 dark:text-gray-400 pt-3 mt-2 border-t border-gray-200 dark:border-gray-800/80 flex items-center gap-1">
             <GitBranch size={12} className="text-gray-500" />
-            Branch: <span className="text-gray-300 font-medium">{versionInfo?.branch || 'main'}</span>
+            Branch: <span className="text-gray-700 dark:text-gray-300 font-medium">{versionInfo?.branch || 'main'}</span>
           </div>
         </div>
 
         {/* Card 2: Device Hardware & OS */}
-        <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-4 flex flex-col justify-between shadow-sm">
-          <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+        <div className="bg-gray-50 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-800 rounded-xl p-4 flex flex-col justify-between shadow-sm">
+          <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 mb-2">
             <span className="font-medium flex items-center gap-1.5">
               <Cpu size={14} className="text-purple-400" />
               Host Device
@@ -301,22 +301,22 @@ export default function UpdateManager() {
             </span>
           </div>
           <div className="my-1">
-            <div className="text-sm font-semibold text-gray-200 line-clamp-1">
+            <div className="text-sm font-semibold text-gray-800 dark:text-gray-200 line-clamp-1">
               {versionInfo?.platform ? versionInfo.platform.split('-')[0] : 'Linux OS'}
             </div>
-            <div className="text-xs text-gray-400 mt-1">
+            <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
               Python runtime: <span className="font-mono text-purple-300">{versionInfo?.python_version || '3.11'}</span>
             </div>
           </div>
-          <div className="text-[11px] text-gray-400 pt-3 mt-2 border-t border-gray-800/80 flex items-center gap-1">
+          <div className="text-[11px] text-gray-600 dark:text-gray-400 pt-3 mt-2 border-t border-gray-200 dark:border-gray-800/80 flex items-center gap-1">
             <HardDrive size={12} className="text-gray-500" />
             Hailo-8L AI Accelerator Ready
           </div>
         </div>
 
         {/* Card 3: Backup & Safety Guarantee */}
-        <div className="bg-gray-900/80 border border-gray-800 rounded-xl p-4 flex flex-col justify-between shadow-sm">
-          <div className="flex items-center justify-between text-xs text-gray-400 mb-2">
+        <div className="bg-gray-50 dark:bg-gray-900/80 border border-gray-200 dark:border-gray-800 rounded-xl p-4 flex flex-col justify-between shadow-sm">
+          <div className="flex items-center justify-between text-xs text-gray-600 dark:text-gray-400 mb-2">
             <span className="font-medium flex items-center gap-1.5">
               <ShieldCheck size={14} className="text-emerald-400" />
               Fail-Safe Protection
@@ -330,11 +330,11 @@ export default function UpdateManager() {
               <CheckCircle2 size={16} />
               Database & Models Safeguarded
             </div>
-            <p className="text-xs text-gray-400 mt-1">
-              Previous configurations are backed up to <code className="text-gray-300 bg-gray-800 px-1 rounded">/home/pi/iriv-backups/</code> before update.
+            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+              Previous configurations are backed up to <code className="text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 px-1 rounded">/home/pi/iriv-backups/</code> before update.
             </p>
           </div>
-          <div className="text-[11px] text-emerald-400/80 pt-3 mt-2 border-t border-gray-800/80 flex items-center gap-1">
+          <div className="text-[11px] text-emerald-400/80 pt-3 mt-2 border-t border-gray-200 dark:border-gray-800/80 flex items-center gap-1">
             <RotateCcw size={12} />
             Auto-rollback enabled on failure
           </div>
@@ -364,15 +364,15 @@ export default function UpdateManager() {
                   <span className="text-xs font-bold uppercase tracking-wider text-blue-400 bg-blue-500/10 px-2.5 py-0.5 rounded-full border border-blue-500/20">
                     New Update Available
                   </span>
-                  <span className="text-sm font-semibold text-gray-300 font-mono">
+                  <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 font-mono">
                     {updateInfo.commits_behind} commit(s) ahead
                   </span>
                 </div>
                 <h4 className="text-xl font-bold text-white mt-1">
                   IRIV Vision Studio {updateInfo.latest_version || 'Latest'}
                 </h4>
-                <p className="text-xs sm:text-sm text-gray-300 mt-1">
-                  Ready to upgrade from <span className="font-mono text-gray-400">{updateInfo.current_version}</span> to latest remote code.
+                <p className="text-xs sm:text-sm text-gray-700 dark:text-gray-300 mt-1">
+                  Ready to upgrade from <span className="font-mono text-gray-600 dark:text-gray-400">{updateInfo.current_version}</span> to latest remote code.
                 </p>
               </div>
             </div>
@@ -395,7 +395,7 @@ export default function UpdateManager() {
               </div>
               <div className="space-y-1.5 max-h-48 overflow-y-auto pr-2 scrollbar-thin">
                 {updateInfo.changelog.map((c, idx) => (
-                  <div key={idx} className="text-xs text-gray-300 flex items-start gap-2">
+                  <div key={idx} className="text-xs text-gray-700 dark:text-gray-300 flex items-start gap-2">
                     <span className="font-mono text-blue-400 shrink-0 bg-blue-950/80 px-1.5 py-0.5 rounded border border-blue-800/50">
                       {c.hash}
                     </span>
@@ -409,15 +409,15 @@ export default function UpdateManager() {
       )}
 
       {updateInfo && !updateInfo.has_update && !updateInfo.offline && (
-        <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-5 flex items-center justify-between gap-4">
+        <div className="bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded-xl p-5 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-emerald-500/10 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20">
               <Check size={20} />
             </div>
             <div>
               <h4 className="text-sm font-semibold text-white">IRIV Vision Studio is Up to Date</h4>
-              <p className="text-xs text-gray-400 mt-0.5">
-                Your system is running the latest commits on branch <span className="font-mono text-gray-300">{updateInfo.branch || 'main'}</span>.
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                Your system is running the latest commits on branch <span className="font-mono text-gray-700 dark:text-gray-300">{updateInfo.branch || 'main'}</span>.
               </p>
             </div>
           </div>
@@ -425,7 +425,7 @@ export default function UpdateManager() {
           <button
             onClick={handleApplyUpdate}
             disabled={updating}
-            className="text-xs text-gray-400 hover:text-white px-3 py-1.5 rounded-lg border border-gray-700 hover:bg-gray-800 transition-colors shrink-0"
+            className="text-xs text-gray-600 dark:text-gray-400 hover:text-white px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:bg-gray-800 transition-colors shrink-0"
           >
             Force Reinstall / Re-sync
           </button>
@@ -434,7 +434,7 @@ export default function UpdateManager() {
 
       {/* Progress & Live Console (Visible when updating or requested) */}
       {(updating || (updateStatus && updateStatus.status !== 'idle')) && (
-        <div className="bg-gray-900 border border-blue-500/40 rounded-2xl p-5 shadow-xl">
+        <div className="bg-gray-50 dark:bg-gray-900 border border-blue-500/40 rounded-2xl p-5 shadow-xl">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2.5">
               <Loader2 size={18} className="animate-spin text-blue-400" />
@@ -448,7 +448,7 @@ export default function UpdateManager() {
 
             <button
               onClick={() => setShowLogDrawer(!showLogDrawer)}
-              className="text-xs text-gray-400 hover:text-gray-200 flex items-center gap-1 transition-colors"
+              className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:text-gray-200 flex items-center gap-1 transition-colors"
             >
               <Terminal size={14} />
               {showLogDrawer ? 'Hide Logs' : 'View Logs'}
@@ -457,26 +457,26 @@ export default function UpdateManager() {
           </div>
 
           {/* Progress Bar */}
-          <div className="w-full bg-gray-800 rounded-full h-2.5 overflow-hidden">
+          <div className="w-full bg-gray-100 dark:bg-gray-800 rounded-full h-2.5 overflow-hidden">
             <div 
               className="bg-gradient-to-r from-blue-500 to-emerald-400 h-full transition-all duration-500 ease-out"
               style={{ width: `${Math.max(5, updateStatus?.progress || 0)}%` }}
             />
           </div>
 
-          <div className="text-xs text-gray-400 mt-2 flex items-center justify-between">
+          <div className="text-xs text-gray-600 dark:text-gray-400 mt-2 flex items-center justify-between">
             <span>{updateStatus?.message || 'Processing update...'}</span>
             <span className="font-mono text-gray-500 uppercase">{updateStatus?.step || 'init'}</span>
           </div>
 
           {/* Collapsible Log Terminal */}
           {showLogDrawer && (
-            <div className="mt-4 bg-black/80 rounded-xl p-3 border border-gray-800 font-mono text-[11px] text-gray-300 max-h-52 overflow-y-auto space-y-1">
+            <div className="mt-4 bg-black/80 rounded-xl p-3 border border-gray-200 dark:border-gray-800 font-mono text-[11px] text-gray-700 dark:text-gray-300 max-h-52 overflow-y-auto space-y-1">
               {updateStatus?.logs && updateStatus.logs.length > 0 ? (
                 updateStatus.logs.map((log, i) => (
                   <div key={i} className="leading-relaxed">
                     <span className="text-gray-600 select-none mr-2">{i + 1}</span>
-                    <span className={log.includes('ERROR') ? 'text-red-400 font-semibold' : log.includes('Backup') ? 'text-emerald-400' : 'text-gray-300'}>
+                    <span className={log.includes('ERROR') ? 'text-red-400 font-semibold' : log.includes('Backup') ? 'text-emerald-400' : 'text-gray-700 dark:text-gray-300'}>
                       {log}
                     </span>
                   </div>
@@ -492,16 +492,16 @@ export default function UpdateManager() {
       {/* Reconnecting Overlay Modal */}
       {reconnecting && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-900 border border-blue-500/40 rounded-2xl p-6 sm:p-8 max-w-md w-full text-center shadow-2xl">
+          <div className="bg-gray-50 dark:bg-gray-900 border border-blue-500/40 rounded-2xl p-6 sm:p-8 max-w-md w-full text-center shadow-2xl">
             <div className="w-16 h-16 rounded-full bg-blue-500/20 border border-blue-400/40 text-blue-400 flex items-center justify-center mx-auto mb-4 animate-pulse">
               <RotateCcw size={32} className="animate-spin" />
             </div>
             <h3 className="text-xl font-bold text-white">Restarting Platform</h3>
-            <p className="text-sm text-gray-300 mt-2">
+            <p className="text-sm text-gray-700 dark:text-gray-300 mt-2">
               IRIV Vision Studio is restarting with the latest updates. Reconnecting to services automatically...
             </p>
             <div className="mt-6 flex items-center justify-center gap-2">
-              <span className="text-xs text-gray-400">Estimated reconnect:</span>
+              <span className="text-xs text-gray-600 dark:text-gray-400">Estimated reconnect:</span>
               <span className="font-mono font-bold text-blue-400 text-lg">~{Math.max(0, reconnectCountdown)}s</span>
             </div>
             <div className="mt-4 text-[11px] text-gray-500">
@@ -512,7 +512,7 @@ export default function UpdateManager() {
       )}
 
       {/* Offline / Air-Gapped Section */}
-      <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-5 sm:p-6 shadow-sm">
+      <div className="bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded-2xl p-5 sm:p-6 shadow-sm">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-9 h-9 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center border border-indigo-500/20">
             <FileArchive size={18} />
@@ -520,12 +520,12 @@ export default function UpdateManager() {
           <div>
             <h4 className="text-base font-bold text-white flex items-center gap-2">
               Air-Gapped / Offline Update
-              <span className="text-[11px] font-normal px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700">
+              <span className="text-[11px] font-normal px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-300 dark:border-gray-700">
                 Factory Environment
               </span>
             </h4>
-            <p className="text-xs text-gray-400">
-              If the device has no internet access, upload an update archive package (<code className="text-gray-300">.tar.gz</code>) directly.
+            <p className="text-xs text-gray-600 dark:text-gray-400">
+              If the device has no internet access, upload an update archive package (<code className="text-gray-700 dark:text-gray-300">.tar.gz</code>) directly.
             </p>
           </div>
         </div>
@@ -539,7 +539,7 @@ export default function UpdateManager() {
           className={`mt-4 border-2 border-dashed rounded-xl p-6 sm:p-8 flex flex-col items-center justify-center cursor-pointer transition-all ${
             dragOver 
               ? 'border-blue-500 bg-blue-500/10' 
-              : 'border-gray-700/80 hover:border-gray-600 bg-gray-950/40 hover:bg-gray-950/70'
+              : 'border-gray-300 dark:border-gray-700/80 hover:border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-950/40 hover:bg-white dark:bg-gray-950/70'
           }`}
         >
           <input
@@ -554,11 +554,11 @@ export default function UpdateManager() {
             className="hidden"
           />
 
-          <div className="w-12 h-12 rounded-full bg-gray-800 text-gray-300 flex items-center justify-center mb-3">
+          <div className="w-12 h-12 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 flex items-center justify-center mb-3">
             <UploadCloud size={24} />
           </div>
 
-          <div className="text-sm font-semibold text-gray-200 text-center">
+          <div className="text-sm font-semibold text-gray-800 dark:text-gray-200 text-center">
             {uploadingPackage ? 'Uploading update package...' : 'Click to browse or drag & drop update package (.tar.gz)'}
           </div>
           <div className="text-xs text-gray-500 text-center mt-1">

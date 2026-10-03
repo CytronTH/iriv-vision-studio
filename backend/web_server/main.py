@@ -4,7 +4,7 @@ import json
 import yaml
 import re
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,6 +42,29 @@ def on_metadata_received(project_id, metadata):
     Callback fired by HailoPipelineWorker (which runs in a background thread).
     """
     try:
+        if metadata.get("type") == "system" and metadata.get("action") == "restart_worker":
+            logger.info(f"Received restart_worker signal for {project_id}. Scheduling restart in 100ms.")
+            # Trigger the deploy endpoint to fully restart the engine
+            def _trigger_restart():
+                import requests
+                try:
+                    # Fetch current nodes and edges
+                    projects = read_projects()
+                    target_project = next((p for p in projects if p["id"] == project_id), None)
+                    if target_project:
+                        pipe = target_project.get("pipeline", {})
+                        requests.post(f"http://127.0.0.1:8000/api/pipeline/deploy", json={
+                            "project_id": project_id,
+                            "nodes": pipe.get("nodes", []),
+                            "edges": pipe.get("edges", []),
+                            "deploy_mode": "full"
+                        })
+                except Exception as ex:
+                    logger.error(f"Auto-restart failed: {ex}")
+                    
+            asyncio.get_event_loop().call_later(0.1, lambda: threading.Thread(target=_trigger_restart, daemon=True).start())
+            return
+            
         if main_loop and main_loop.is_running():
             asyncio.run_coroutine_threadsafe(manager.broadcast_json(metadata, project_id), main_loop)
     except Exception as e:
@@ -76,7 +99,7 @@ async def database_maintenance_task():
     while True:
         try:
             logger.info("Running automatic database maintenance & log pruning...")
-            res = db.purge_old_logs(days=30, max_records=50000, delete_files=True)
+            res = db.purge_old_logs(days=30, max_records=500000, delete_files=True)
             logger.info(f"Database maintenance completed: {res}")
         except Exception as e:
             logger.error(f"Database maintenance error: {e}")
@@ -130,7 +153,7 @@ async def lifespan(app: FastAPI):
     db.stop()
 
 app = FastAPI(
-    title="IRIV Vision Studio API",
+    title="PiDo.AI API",
     description="Backend API and WebSocket server for Edge AI Vision",
     version="1.0.0",
     lifespan=lifespan
@@ -147,17 +170,22 @@ app.add_middleware(
 
 from fastapi.staticfiles import StaticFiles
 import os
-snapshots_dir = "/home/pi/iriv-vision-studio/snapshots"
+snapshots_dir = "/home/pi/pido-ai/snapshots"
 os.makedirs(snapshots_dir, exist_ok=True)
 app.mount("/api/snapshots", StaticFiles(directory=snapshots_dir), name="snapshots")
 
 from .project_backup import router as project_backup_router
 app.include_router(project_backup_router)
 
+from .routers.auth import router as auth_router
+from .routers.users import router as users_router
+app.include_router(auth_router)
+app.include_router(users_router)
+
 
 @app.get("/")
 async def root():
-    return {"status": "ok", "message": "IRIV Vision Studio Backend is running."}
+    return {"status": "ok", "message": "PiDo.AI Backend is running."}
 
 @app.websocket("/ws/metadata/{project_id}")
 async def websocket_metadata_endpoint(websocket: WebSocket, project_id: str):
@@ -630,7 +658,7 @@ async def upload_hef_only(
     version: Optional[str] = Form("v1.0")
 ):
     """
-    Simplified .hef upload from IRIV Model Studio (local Docker compile).
+    Simplified .hef upload from PiDo Model Studio (local Docker compile).
     Accepts only the .hef file — automatically assigns the correct post-process .so
     based on task type, generates unique stored filename and SHA-256 checksum.
     """
@@ -675,7 +703,7 @@ async def upload_hef_only(
             "file_hash": file_hash,
             "file_size": file_size,
             "version": (version or "v1.0").strip(),
-            "description": "Uploaded from IRIV Model Studio",
+            "description": "Uploaded from PiDo Model Studio",
             "so_path": default_so,
             "classes": []
         }
@@ -768,24 +796,16 @@ async def delete_video(filename: str):
 
 @app.get("/api/data-sources")
 async def get_data_sources(project_id: str = None):
-    # Base data sources that are always available (e.g. system metrics)
-    base_sources = [
-        { "id": "system.cpu_percent", "name": "CPU Usage (%)", "dataType": "number" },
-        { "id": "system.ram_percent", "name": "RAM Usage (%)", "dataType": "number" },
-        { "id": "alerts", "name": "System Alerts (Feed)", "dataType": "array_text" }
-    ]
-    
     if not project_id:
-        return base_sources
+        return []
         
     projects = read_projects()
     project = next((p for p in projects if p.get("id") == project_id), None)
     
     if project and "exposed_data_sources" in project:
-        # Merge project specific data sources with base sources
-        return project["exposed_data_sources"] + base_sources
+        return project["exposed_data_sources"]
         
-    return base_sources
+    return []
 
 # --- Project Management APIs ---
 def read_projects():
@@ -800,8 +820,9 @@ def read_projects():
             try: pd["exposed_data_sources"] = json.loads(pd["exposed_data_sources_json"])
             except: pd["exposed_data_sources"] = []
             
-            # Use runtime state if available, fallback to db state
-            pd["is_running"] = pd["is_running"]
+            # Keep intended state from DB, but guarantee True if it's actually running
+            if pd["id"] in active_workers:
+                pd["is_running"] = True
             del pd["pipeline_json"]
             del pd["dashboard_layout_json"]
             del pd["exposed_data_sources_json"]
@@ -824,7 +845,7 @@ def write_projects(data):
             dash_str = json.dumps(p.get("dashboard_layout", {}))
             ds_str = json.dumps(p.get("exposed_data_sources", []))
             is_run = p.get("is_running", False)
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             
             if pid in existing_projects:
                 proj_obj = existing_projects[pid]
@@ -946,12 +967,25 @@ async def deploy_pipeline(payload: PipelinePayload):
                     worker.hot_reload_router(config.router)
 
                 # Update database project state
+                project_found = False
                 for p in projects:
                     if p["id"] == project_id:
                         p["pipeline"] = {"nodes": payload.nodes, "edges": payload.edges}
                         p["exposed_data_sources"] = config.dashboard_nodes
                         p["is_running"] = True
+                        project_found = True
                         break
+                
+                if not project_found:
+                    projects.append({
+                        "id": project_id,
+                        "name": f"Project {project_id[-4:]}",
+                        "description": "Auto-created on deploy",
+                        "pipeline": {"nodes": payload.nodes, "edges": payload.edges},
+                        "exposed_data_sources": config.dashboard_nodes,
+                        "is_running": True
+                    })
+
                 await asyncio.to_thread(write_projects, projects)
 
                 return {
@@ -975,12 +1009,25 @@ async def deploy_pipeline(payload: PipelinePayload):
         active_workers[project_id] = new_worker
         
         # Update projects.json with the new pipeline state
+        project_found = False
         for p in projects:
             if p["id"] == project_id:
                 p["pipeline"] = {"nodes": payload.nodes, "edges": payload.edges}
                 p["exposed_data_sources"] = config.dashboard_nodes
                 p["is_running"] = True
+                project_found = True
                 break
+        
+        if not project_found:
+            projects.append({
+                "id": project_id,
+                "name": f"Project {project_id[-4:]}",
+                "description": "Auto-created on deploy",
+                "pipeline": {"nodes": payload.nodes, "edges": payload.edges},
+                "exposed_data_sources": config.dashboard_nodes,
+                "is_running": True
+            })
+
         await asyncio.to_thread(write_projects, projects)
             
         return {
@@ -1051,7 +1098,7 @@ async def start_project(project_id: str):
     )
     return await deploy_pipeline(payload)
 
-# --- IRIV Model Studio: Remote ONNX Compilation API ---
+# --- PiDo Model Studio: Remote ONNX Compilation API ---
 @app.post("/api/compile-onnx")
 async def compile_onnx(
     onnx_file: UploadFile = File(...),
@@ -1059,7 +1106,7 @@ async def compile_onnx(
     task: str = Form("detection")
 ):
     """
-    Receives an ONNX file from IRIV Model Studio (PC) and compiles it to .hef
+    Receives an ONNX file from PiDo Model Studio (PC) and compiles it to .hef
     using Hailo Dataflow Compiler installed on this device.
     The compiled model is automatically registered in entities.json.
     """
@@ -1235,6 +1282,83 @@ async def reset_counter(payload: CounterResetPayload = CounterResetPayload()):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+class ThroughputTogglePayload(BaseModel):
+    project_id: str = "default"
+    node_id: str
+    state: bool
+
+@app.post("/api/analytics/throughput/reset")
+async def reset_throughput(payload: CounterResetPayload = CounterResetPayload()):
+    try:
+        global active_workers
+        worker = active_workers.get(payload.project_id)
+        if worker and hasattr(worker, 'config') and getattr(worker.config, 'router', None):
+            router = worker.config.router
+            for nid, node in router.nodes.items():
+                if getattr(node, 'node_type', None) == 'unitThroughputNode' and hasattr(node, 'reset_counts'):
+                    if payload.node_id is None or payload.node_id == nid:
+                        node.reset_counts()
+        return {"status": "success", "message": "Throughput reset successfully"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/analytics/throughput/toggle")
+async def toggle_throughput(payload: ThroughputTogglePayload):
+    try:
+        global active_workers
+        worker = active_workers.get(payload.project_id)
+        if worker and hasattr(worker, 'config') and getattr(worker.config, 'router', None):
+            router = worker.config.router
+            node = router.nodes.get(payload.node_id)
+            if node and hasattr(node, 'set_manual_state'):
+                node.set_manual_state(payload.state)
+                return {"status": "success", "message": f"Throughput state toggled to {payload.state}"}
+        return {"status": "error", "message": "Node not found or unsupported"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+class TargetTrackerSetPayload(BaseModel):
+    project_id: str = "default"
+    node_id: str
+    target: int
+
+@app.post("/api/analytics/target_tracker/set")
+async def set_target_tracker(payload: TargetTrackerSetPayload):
+    try:
+        global active_workers
+        worker = active_workers.get(payload.project_id)
+        if worker and hasattr(worker, 'config') and getattr(worker.config, 'router', None):
+            router = worker.config.router
+            node = router.nodes.get(payload.node_id)
+            if node and hasattr(node, 'target'):
+                node.target = payload.target
+                
+                # Immediately emit update so UI refreshes
+                if hasattr(node, 'actual') and hasattr(node, 'is_complete'):
+                    if node.actual >= node.target:
+                        node.is_complete = True
+                    else:
+                        node.is_complete = False
+                        
+                    progress = (node.actual / node.target) * 100.0 if node.target > 0 else 100.0
+                    if progress > 100.0: progress = 100.0
+                    
+                    if router.metadata_callback:
+                        router.metadata_callback({
+                            "type": "target_tracker_update",
+                            "node_id": node.node_id,
+                            "target": node.target,
+                            "actual": node.actual,
+                            "progress_percent": progress,
+                            "current_rate_per_minute": getattr(node, 'current_rate_per_minute', 0.0),
+                            "eta_seconds": getattr(node, 'eta_seconds', None),
+                            "is_complete": node.is_complete
+                        })
+                return {"status": "success", "message": f"Target updated to {payload.target}"}
+        return {"status": "error", "message": "Node not found or unsupported"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 # --- Database Maintenance APIs ---
 @app.get("/api/database/stats")
 async def get_database_stats(project_id: str = None):
@@ -1247,7 +1371,7 @@ async def get_database_stats(project_id: str = None):
 
 class MaintenancePayload(BaseModel):
     days: Optional[int] = 30
-    max_records: Optional[int] = 50000
+    max_records: Optional[int] = 500000
     delete_files: Optional[bool] = True
 
 @app.post("/api/database/maintenance/cleanup")
@@ -1256,7 +1380,7 @@ async def cleanup_database(payload: MaintenancePayload = MaintenancePayload()):
         from db.database import db
         result = db.purge_old_logs(
             days=payload.days or 30,
-            max_records=payload.max_records or 50000,
+            max_records=payload.max_records or 500000,
             delete_files=payload.delete_files if payload.delete_files is not None else True
         )
         return {"status": "success", "result": result}
@@ -1280,7 +1404,7 @@ def system_ping():
     return {
         "status": "ok",
         "timestamp": int(time.time()),
-        "service": "iriv-vision-studio"
+        "service": "pido-ai"
     }
 
 @app.get("/api/system/version")
@@ -1444,7 +1568,7 @@ class UpdateApplyPayload(BaseModel):
 async def apply_update(payload: UpdateApplyPayload = UpdateApplyPayload()):
     """Trigger background detached update runner"""
     try:
-        lock_file = Path("/tmp/iriv_update.lock")
+        lock_file = Path("/tmp/pido_update.lock")
         if lock_file.exists():
             try:
                 pid = int(lock_file.read_text().strip())
@@ -1458,7 +1582,7 @@ async def apply_update(payload: UpdateApplyPayload = UpdateApplyPayload()):
             return {"status": "error", "message": f"Updater script not found at {updater_script}"}
 
         # Initialize status file
-        status_file = Path("/tmp/iriv_update_status.json")
+        status_file = Path("/tmp/pido_update_status.json")
         init_status = {
             "status": "running",
             "step": "init",
@@ -1501,7 +1625,7 @@ async def upload_offline_update(package: UploadFile = File(...)):
         if not updater_script.exists():
             return {"status": "error", "message": "Updater script not found"}
 
-        status_file = Path("/tmp/iriv_update_status.json")
+        status_file = Path("/tmp/pido_update_status.json")
         init_status = {
             "status": "running",
             "step": "init",
@@ -1531,7 +1655,7 @@ async def upload_offline_update(package: UploadFile = File(...)):
 async def get_update_status():
     """Poll update progress, current step, and recent logs"""
     try:
-        status_file = Path("/tmp/iriv_update_status.json")
+        status_file = Path("/tmp/pido_update_status.json")
         if status_file.exists():
             data = json.loads(status_file.read_text())
             return {"status": "success", "data": data}
@@ -1552,9 +1676,196 @@ async def get_update_status():
 async def get_node_history(node_id: str, limit: int = 300, timeframe_min: int = None, aggregate_min: int = None):
     """Fetch time-series history for a specific node from telemetry_db"""
     try:
-        from ai_engine.telemetry_db import telemetry_db
-        history = telemetry_db.get_history(node_id, limit=limit, timeframe_min=timeframe_min, aggregate_min=aggregate_min)
+        from db.database import db
+        history = db.get_metric_history(node_id, limit=limit, timeframe_min=timeframe_min, aggregate_min=aggregate_min)
         return {"status": "success", "data": history}
     except Exception as e:
         logger.error(f"Error fetching history for {node_id}: {e}")
+        return {"status": "error", "message": str(e)}
+
+@app.delete("/api/projects/{project_id}/logs")
+def clear_project_logs_api(project_id: str):
+    """Deletes all logs and snapshots for a specific project."""
+    try:
+        from db.database import db
+        result = db.clear_project_logs(project_id=project_id)
+        return result
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+# --- Collection Management ---
+
+@app.get("/api/projects/{project_id}/collections")
+def get_project_collections(project_id: str):
+    from db.models import ProjectCollection
+    from sqlmodel import Session, select
+    with Session(db.engine) as session:
+        colls = session.exec(select(ProjectCollection).where(ProjectCollection.project_id == project_id)).all()
+        return {"status": "success", "data": [c.model_dump() for c in colls]}
+
+@app.post("/api/projects/{project_id}/collections")
+def create_project_collection(project_id: str, payload: dict):
+    from db.models import ProjectCollection
+    from sqlmodel import Session
+    import uuid
+    with Session(db.engine) as session:
+        coll = ProjectCollection(
+            id=str(uuid.uuid4()),
+            project_id=project_id,
+            name=payload.get("name"),
+            description=payload.get("description", ""),
+            schema_json=payload.get("schema_json", "{}")
+        )
+        session.add(coll)
+        session.commit()
+        session.refresh(coll)
+        return {"status": "success", "data": coll.model_dump()}
+
+@app.delete("/api/projects/{project_id}/collections/{collection_id}")
+def delete_project_collection(project_id: str, collection_id: str):
+    from db.models import ProjectCollection, CollectionRecord
+    from sqlmodel import Session, select, delete
+    import json
+    from pathlib import Path
+    
+    with Session(db.engine) as session:
+        coll = session.get(ProjectCollection, collection_id)
+        if coll and coll.project_id == project_id:
+            session.delete(coll)
+            session.commit()
+        else:
+            return {"status": "error", "message": "Collection not found"}
+            
+    with Session(db.engine_telemetry) as session:
+        records = session.exec(select(CollectionRecord).where(CollectionRecord.collection_id == collection_id)).all()
+        for r in records:
+            try:
+                data = json.loads(r.data_json) if isinstance(r.data_json, str) else r.data_json
+                if isinstance(data, dict):
+                    for k, v in data.items():
+                        if isinstance(v, str) and ('/api/snapshots/' in v or '/api/files/snapshots/' in v or 'snapshots/' in v):
+                            filename = v.split('/')[-1]
+                            filepath = Path("/home/pi/pido-ai/snapshots") / filename
+                            if filepath.exists() and filepath.is_file():
+                                filepath.unlink()
+            except Exception:
+                pass
+        session.exec(delete(CollectionRecord).where(CollectionRecord.collection_id == collection_id))
+        session.commit()
+        
+    return {"status": "success"}
+
+@app.get("/api/projects/{project_id}/collections/{collection_id}/records")
+def get_collection_records(project_id: str, collection_id: str):
+    from db.models import CollectionRecord
+    from sqlmodel import Session, select
+    with Session(db.engine_telemetry) as session:
+        records = session.exec(select(CollectionRecord).where(CollectionRecord.collection_id == collection_id).order_by(CollectionRecord.timestamp.desc())).all()
+        return {"status": "success", "data": [r.model_dump() for r in records]}
+
+@app.delete("/api/projects/{project_id}/collections/{collection_id}/records")
+def clear_collection_records(project_id: str, collection_id: str):
+    from db.models import CollectionRecord
+    from sqlmodel import Session, select, delete
+    import json
+    from pathlib import Path
+    
+    with Session(db.engine_telemetry) as session:
+        records = session.exec(select(CollectionRecord).where(CollectionRecord.collection_id == collection_id)).all()
+        for r in records:
+            try:
+                data = json.loads(r.data_json) if isinstance(r.data_json, str) else r.data_json
+                if isinstance(data, dict):
+                    for k, v in data.items():
+                        if isinstance(v, str) and ('/api/snapshots/' in v or '/api/files/snapshots/' in v or 'snapshots/' in v):
+                            filename = v.split('/')[-1]
+                            filepath = Path("/home/pi/pido-ai/snapshots") / filename
+                            if filepath.exists() and filepath.is_file():
+                                filepath.unlink()
+            except Exception:
+                pass
+        session.exec(delete(CollectionRecord).where(CollectionRecord.collection_id == collection_id))
+        session.commit()
+    return {"status": "success"}
+
+# --- Variable Monitoring ---
+
+@app.get("/api/projects/{project_id}/variables")
+def get_project_variables(project_id: str):
+    from sqlalchemy import text
+    from sqlmodel import Session
+    with Session(db.engine_telemetry) as session:
+        query = text("""
+            SELECT node_id, variable_name, value, MAX(timestamp) as last_updated, COUNT(id) as record_count
+            FROM custom_metric_log
+            WHERE project_id = :project_id
+            GROUP BY node_id, variable_name
+            ORDER BY last_updated DESC
+        """)
+        result = session.execute(query, {"project_id": project_id}).fetchall()
+        variables = [
+            {
+                "node_id": row[0],
+                "variable_name": row[1],
+                "value": row[2],
+                "last_updated": row[3],
+                "record_count": row[4]
+            }
+            for row in result
+        ]
+        return {"status": "success", "data": variables}
+
+@app.get("/api/projects/{project_id}/variables/{variable_name}/history")
+def get_project_variable_history(project_id: str, variable_name: str, limit: int = 100):
+    from sqlalchemy import text
+    from sqlmodel import Session
+    with Session(db.engine_telemetry) as session:
+        query = text("""
+            SELECT id, timestamp, value, node_id
+            FROM custom_metric_log
+            WHERE project_id = :project_id AND variable_name = :variable_name
+            ORDER BY timestamp DESC
+            LIMIT :limit
+        """)
+        result = session.execute(query, {"project_id": project_id, "variable_name": variable_name, "limit": limit}).fetchall()
+        history = [
+            {
+                "id": row[0],
+                "timestamp": row[1],
+                "value": row[2],
+                "node_id": row[3]
+            }
+            for row in result
+        ]
+        return {"status": "success", "data": history}
+
+@app.delete("/api/projects/{project_id}/variables/{variable_name}")
+def delete_project_variable(project_id: str, variable_name: str):
+    from sqlalchemy import text
+    from sqlmodel import Session
+    try:
+        with Session(db.engine_telemetry) as session:
+            # Delete from custom_metric_log
+            session.execute(text("DELETE FROM custom_metric_log WHERE project_id = :project_id AND variable_name = :variable_name"), {"project_id": project_id, "variable_name": variable_name})
+            # Also delete from hourly rollups if any
+            session.execute(text("DELETE FROM custom_metric_hourly WHERE project_id = :project_id AND variable_name = :variable_name"), {"project_id": project_id, "variable_name": variable_name})
+            session.commit()
+            return {"status": "success", "message": f"Variable {variable_name} deleted completely."}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.delete("/api/projects/{project_id}/variables/{variable_name}/cleanup")
+def cleanup_project_variable(project_id: str, variable_name: str, days: int = 7):
+    from sqlalchemy import text
+    from sqlmodel import Session
+    from datetime import datetime, timedelta, timezone
+    try:
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        cutoff_str = cutoff.strftime('%Y-%m-%d %H:%M:%S')
+        with Session(db.engine_telemetry) as session:
+            res = session.execute(text("DELETE FROM custom_metric_log WHERE project_id = :project_id AND variable_name = :variable_name AND timestamp < :cutoff"), 
+                {"project_id": project_id, "variable_name": variable_name, "cutoff": cutoff_str})
+            session.commit()
+            return {"status": "success", "message": f"Purged data older than {days} days.", "deleted": res.rowcount}
+    except Exception as e:
         return {"status": "error", "message": str(e)}

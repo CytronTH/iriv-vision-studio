@@ -1,6 +1,6 @@
 #!/bin/bash
 # ==============================================================================
-# IRIV Vision Studio - Platform Updater Script
+# PiDo.AI - Platform Updater Script
 # Handles safe automated OTA & Offline updates with auto-backup,
 # dependency synchronization, DB migration, and service restart.
 # ==============================================================================
@@ -9,11 +9,11 @@ set -euo pipefail
 export GIT_TERMINAL_PROMPT=0
 
 # ── Paths & Constants ─────────────────────────────────────────────────────────
-PROJECT_ROOT="/home/pi/iriv-vision-studio"
-BACKUP_BASE_DIR="/home/pi/iriv-backups"
-STATUS_FILE="/tmp/iriv_update_status.json"
-LOG_FILE="/tmp/iriv_update.log"
-LOCK_FILE="/tmp/iriv_update.lock"
+PROJECT_ROOT="/home/pi/pido-ai"
+BACKUP_BASE_DIR="/home/pi/pido-ai-backups"
+STATUS_FILE="/tmp/pido_pi_update_status.json"
+LOG_FILE="/tmp/pido_pi_update.log"
+LOCK_FILE="/tmp/pido_pi_update.lock"
 
 MODE="online"           # "online" or "offline"
 TARGET_VERSION="main"   # Tag, commit, or branch
@@ -106,7 +106,7 @@ fi
 echo "$$" > "$LOCK_FILE"
 echo "" > "$LOG_FILE"
 
-update_status "running" "init" 5 "Starting IRIV Vision Studio update process (Mode: $MODE)..."
+update_status "running" "init" 5 "Starting PiDo.AI update process (Mode: $MODE)..."
 
 # ── Step 1: Create Pre-update Backup ──────────────────────────────────────────
 update_status "running" "backup" 15 "Backing up database and configuration..."
@@ -156,7 +156,7 @@ elif [ "$MODE" = "offline" ]; then
     fi
 
     update_status "running" "pull" 45 "Extracting offline update package..."
-    TMP_EXTRACT="/tmp/iriv_update_extracted"
+    TMP_EXTRACT="/tmp/pido_pi_update_extracted"
     rm -rf "$TMP_EXTRACT"
     mkdir -p "$TMP_EXTRACT"
     tar -xzf "$PACKAGE_PATH" -C "$TMP_EXTRACT" >> "$LOG_FILE" 2>&1
@@ -207,8 +207,8 @@ if [ -f "$PROJECT_ROOT/backend/db/migrate.py" ]; then
 fi
 
 # ── Step 5: Restart Platform Service ──────────────────────────────────────────
-update_status "running" "restart" 95 "Restarting IRIV Vision Studio services..."
-echo "Restarting service iriv-vision.service..." >> "$LOG_FILE"
+update_status "running" "restart" 95 "Restarting PiDo.AI services..."
+echo "Restarting service pido-ai.service..." >> "$LOG_FILE"
 
 # Sleep briefly to ensure web API sends response to frontend
 sleep 1
@@ -219,7 +219,7 @@ rm -f "$LOCK_FILE"
 
 # Trigger systemctl restart
 if command -v systemctl >/dev/null 2>&1; then
-    sudo systemctl restart iriv-vision.service || true
+    sudo systemctl restart pido-ai.service || true
 else
     # Fallback if not running as systemd
     pkill -f "uvicorn web_server.main" 2>/dev/null || true

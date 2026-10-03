@@ -148,13 +148,13 @@ export default function ButtonEdge({
             }}
             className="nodrag nopan z-50 flex flex-col items-center"
           >
-            <div className="bg-gray-900/90 backdrop-blur-md border border-gray-600 rounded shadow-xl overflow-hidden min-w-[250px] max-w-[400px]">
+            <div className="bg-gray-50 dark:bg-gray-900/90 backdrop-blur-md border border-gray-300 dark:border-gray-600 rounded shadow-xl overflow-hidden min-w-[250px] max-w-[400px]">
               <div 
-                className="bg-gray-800 border-b border-gray-700 p-1 flex justify-center cursor-grab active:cursor-grabbing hover:bg-gray-700 transition-colors"
+                className="bg-gray-100 dark:bg-gray-800 border-b border-gray-300 dark:border-gray-700 p-1 flex justify-center cursor-grab active:cursor-grabbing hover:bg-gray-200 dark:bg-gray-700 transition-colors"
                 onPointerDown={handlePointerDown}
                 title="Drag to move"
               >
-                <GripHorizontal size={14} className="text-gray-400" />
+                <GripHorizontal size={14} className="text-gray-600 dark:text-gray-400" />
               </div>
               <div className="p-2 text-green-400 font-mono text-[10px] leading-tight max-h-[300px] overflow-y-auto custom-scrollbar shadow-inner">
                 <pre className="whitespace-pre-wrap word-break m-0">

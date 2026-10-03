@@ -81,7 +81,7 @@ class NodeMetrics:
                     # CPU post-process and python probe duty cycle
                     cpu_ms = self.extra.get("cpu_postprocess_ms", 0) + self.extra.get("python_probe_ms", 0)
                     self.cpu_percent = round(min(100.0, (cpu_ms * self.fps) / (10.0 * num_cores)), 1)
-                elif self.node_type in ("logicNode", "functionNode", "counterNode", "rateLimitNode", "actionNode", "hardwareOutputNode"):
+                elif self.node_type in ("logicNode", "functionNode", "counterNode", "targetTrackerNode", "rateLimitNode", "actionNode", "hardwareOutputNode"):
                     self.freq_hz = round(freq, 1)
                     self.latency_ms = round(avg_sec * 1000.0, 3)
                     # Total CPU time in window / window duration / num_cores
@@ -118,7 +118,7 @@ class NodeMetrics:
                 res["cpu_postprocess_ms"] = self.extra.get("cpu_postprocess_ms", 0.0)
                 res["python_probe_ms"] = self.extra.get("python_probe_ms", 0.0)
                 res["model"] = self.extra.get("model", "")
-            elif self.freq_hz > 0 or self.node_type in ("logicNode", "functionNode", "counterNode"):
+            elif self.freq_hz > 0 or self.node_type in ("logicNode", "functionNode", "counterNode", "targetTrackerNode"):
                 res["freq_hz"] = self.freq_hz
             if self.extra:
                 for k, v in self.extra.items():

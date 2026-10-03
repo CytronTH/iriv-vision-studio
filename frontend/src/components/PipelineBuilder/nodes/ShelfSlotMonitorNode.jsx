@@ -15,6 +15,7 @@ const SLOT_PALETTE = [
 ];
 
 export default function ShelfSlotMonitorNode({ id, data }) {
+  const isCompact = data?.viewMode === 'compact';
   const updateNodeData = usePipelineStore((s) => s.updateNodeData);
   const nodes = usePipelineStore((s) => s.nodes);
   const edges = usePipelineStore((s) => s.edges);
@@ -92,7 +93,7 @@ export default function ShelfSlotMonitorNode({ id, data }) {
   };
 
   return (
-    <div className="bg-gray-900 border-2 border-amber-500 rounded-xl shadow-xl shadow-amber-900/20 w-80 text-white flex flex-col select-none">
+    <div className={`bg-gray-900 border-2 border-amber-500 rounded-xl shadow-xl shadow-amber-900/20 ${isCompact ? 'w-48' : 'w-80'} text-white flex flex-col select-none`}>
       {/* Target Handle from AINode */}
       <Handle
         type="target"
@@ -113,10 +114,10 @@ export default function ShelfSlotMonitorNode({ id, data }) {
             <div className="text-[10px] text-amber-400/80 font-mono">Retail Slot Occupancy</div>
           </div>
         </div>
-        <NodeMenu id={id} />
+        {!isCompact && <NodeMenu id={id} />}
       </div>
 
-      <div className="p-3.5 flex flex-col gap-3">
+      <div className={`p-3.5 flex flex-col gap-3 ${isCompact ? 'hidden' : ''}`}>
         {/* Real-time Status Banner */}
         {isPaused ? (
           <div className="bg-amber-950/70 border border-amber-700/70 rounded-lg p-2 flex items-center justify-between text-xs text-amber-200 animate-pulse">

@@ -323,12 +323,12 @@ export default function VideoWidget({ metadata, projectId, config }) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-xl">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden shadow-xl">
       {/* Header */}
-      <div className="bg-gray-800/80 px-3 py-2 flex items-center justify-between border-b border-gray-700 shrink-0">
+      <div className="bg-gray-100 dark:bg-gray-800/80 px-3 py-2 flex items-center justify-between border-b border-gray-300 dark:border-gray-700 shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <Camera size={16} className="text-blue-400 shrink-0" />
-          <span className="text-xs sm:text-sm font-semibold text-gray-200 truncate">
+          <span className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">
             {config?.title || 'Live Video Stream'}
           </span>
           <span
@@ -355,7 +355,7 @@ export default function VideoWidget({ metadata, projectId, config }) {
           <button
             onClick={() => setIsExpanded(true)}
             title="ขยายเต็มจอ (Full Screen Pop-up)"
-            className="flex items-center justify-center p-1.5 rounded-lg text-xs font-mono border border-gray-600 bg-gray-700 text-gray-300 hover:text-white hover:bg-gray-600 transition-colors active:scale-95 shadow-sm"
+            className="flex items-center justify-center p-1.5 rounded-lg text-xs font-mono border border-gray-300 dark:border-gray-600 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:text-white hover:bg-gray-600 transition-colors active:scale-95 shadow-sm"
           >
             <Maximize2 size={13} />
           </button>
@@ -365,7 +365,7 @@ export default function VideoWidget({ metadata, projectId, config }) {
       {/* Video + Canvas overlay */}
       <div className="flex-1 relative bg-black min-h-0 flex items-center justify-center">
         {!config?.dataPath && !config?.camera_id ? (
-          <div className="flex flex-col items-center gap-2 text-gray-500 text-sm">
+          <div className="flex flex-col items-center gap-2 text-gray-500 dark:text-gray-400 text-sm">
             <Camera size={32} className="text-gray-600" />
             <p>Please bind a video source in settings</p>
           </div>
@@ -394,7 +394,7 @@ export default function VideoWidget({ metadata, projectId, config }) {
 
             {/* Status overlay */}
             {status !== 'connected' && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-gray-400 text-sm flex-col gap-2 pointer-events-none">
+              <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-gray-500 dark:text-gray-400 dark:text-gray-400 text-sm flex-col gap-2 pointer-events-none">
                 {status === 'connecting' && (
                   <><span className="animate-spin text-xl">⟳</span><span>Connecting...</span></>
                 )}
@@ -419,11 +419,11 @@ export default function VideoWidget({ metadata, projectId, config }) {
           }}
         >
           <div 
-            className="relative w-full h-full max-w-[96vw] max-h-[96vh] flex flex-col bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden shadow-2xl shadow-black ring-1 ring-white/10"
+            className="relative w-full h-full max-w-[96vw] max-h-[96vh] flex flex-col bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 rounded-2xl overflow-hidden shadow-2xl shadow-black ring-1 ring-white/10"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="bg-gray-900/95 px-4 py-3 flex items-center justify-between border-b border-gray-800 shrink-0">
+            <div className="bg-white dark:bg-gray-900/95 px-4 py-3 flex items-center justify-between border-b border-gray-200 dark:border-gray-800 shrink-0">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20">
                   <Camera size={16} />
@@ -431,12 +431,12 @@ export default function VideoWidget({ metadata, projectId, config }) {
                 <span className="text-sm sm:text-base font-semibold text-gray-100 truncate">
                   {config?.title || 'Live Video Stream'}
                 </span>
-                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-900 border border-gray-800">
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
                   <span
                     className={`inline-block w-2 h-2 rounded-full ${status === 'connected' ? 'animate-pulse' : ''}`}
                     style={{ background: statusColor[status] ?? '#6b7280' }}
                   />
-                  <span className="text-[11px] font-mono text-gray-300 uppercase tracking-wider">
+                  <span className="text-[11px] font-mono text-gray-700 dark:text-gray-300 uppercase tracking-wider">
                     {status === 'connected' ? 'LIVE' : status}
                   </span>
                 </div>
@@ -459,16 +459,16 @@ export default function VideoWidget({ metadata, projectId, config }) {
                 <button
                   onClick={() => setIsExpanded(false)}
                   title="ย่อหน้าต่าง (Esc)"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-850 hover:bg-gray-750 text-gray-300 hover:text-white border border-gray-700 transition-all active:scale-95 shadow-sm"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-850 hover:bg-gray-750 text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:text-white border border-gray-300 dark:border-gray-700 transition-all active:scale-95 shadow-sm"
                 >
                   <Minimize2 size={13} />
                   <span className="hidden sm:inline">ย่อหน้าต่าง</span>
-                  <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-gray-950 border border-gray-700 rounded text-gray-400">ESC</kbd>
+                  <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-gray-50 dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded text-gray-500 dark:text-gray-400 dark:text-gray-400">ESC</kbd>
                 </button>
                 <button
                   onClick={() => setIsExpanded(false)}
                   title="ปิด (Esc)"
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-red-500/20 hover:border-red-500/40 border border-transparent transition-all"
+                  className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 dark:text-gray-400 hover:text-gray-900 dark:text-white hover:bg-red-500/20 hover:border-red-500/40 border border-transparent transition-all"
                 >
                   <X size={18} />
                 </button>
@@ -478,7 +478,7 @@ export default function VideoWidget({ metadata, projectId, config }) {
             {/* Modal Video Player Area */}
             <div className="flex-1 relative bg-black min-h-0 flex items-center justify-center p-2 sm:p-4 overflow-hidden">
               {!config?.dataPath && !config?.camera_id ? (
-                <div className="flex flex-col items-center gap-2 text-gray-500 text-sm">
+                <div className="flex flex-col items-center gap-2 text-gray-500 dark:text-gray-400 text-sm">
                   <Camera size={36} className="text-gray-600" />
                   <p>Please bind a video source in settings</p>
                 </div>
@@ -510,7 +510,7 @@ export default function VideoWidget({ metadata, projectId, config }) {
                     />
 
                     {status !== 'connected' && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-gray-400 text-sm flex-col gap-2 pointer-events-none rounded-lg">
+                      <div className="absolute inset-0 flex items-center justify-center bg-black/70 text-gray-500 dark:text-gray-400 dark:text-gray-400 text-sm flex-col gap-2 pointer-events-none rounded-lg">
                         {status === 'connecting' && (
                           <><span className="animate-spin text-2xl">⟳</span><span>Connecting...</span></>
                         )}

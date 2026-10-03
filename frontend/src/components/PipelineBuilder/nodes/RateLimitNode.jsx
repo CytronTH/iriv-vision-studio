@@ -5,6 +5,7 @@ import NodeMenu from './NodeMenu';
 import usePipelineStore from '../../../store/usePipelineStore';
 
 export default function RateLimitNode({ id, data, isConnectable }) {
+  const isCompact = data?.viewMode === 'compact';
   const globalUpdateNodeData = usePipelineStore((state) => state.updateNodeData);
   const updateNodeData = data?.onUpdate || globalUpdateNodeData;
 
@@ -25,10 +26,10 @@ export default function RateLimitNode({ id, data, isConnectable }) {
           </div>
           <div className="font-semibold text-xs uppercase tracking-wider text-teal-100">Rate Limit</div>
         </div>
-        <NodeMenu id={id} />
+        {!isCompact && <NodeMenu id={id} />}
       </div>
       
-      <div className="p-3 flex flex-col gap-3">
+      <div className={`p-3 flex flex-col gap-3 ${isCompact ? 'hidden' : ''}`}>
         <div className="text-[10px] text-gray-400">
           Limits the rate of messages passing through. Excess messages are dropped.
         </div>

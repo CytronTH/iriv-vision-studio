@@ -13,10 +13,10 @@ export default function SnapshotNode({ id, data, selected }) {
           <Camera size={18} className="text-pink-400" />
           <span className="font-semibold text-gray-200 text-sm tracking-wide">Snapshot Node</span>
         </div>
-        <NodeMenu id={id} />
+        {!isCompact && <NodeMenu id={id} />}
       </div>
       
-      <div className="p-4 space-y-4">
+      <div className={`p-4 space-y-4 ${isCompact ? 'hidden' : ''}`}>
         <div>
           <label className="block text-xs font-medium text-gray-400 mb-1">Snapshot Label</label>
           <input

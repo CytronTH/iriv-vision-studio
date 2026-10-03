@@ -48,25 +48,97 @@ export const nodeTutorials = {
       example: "[ { label: 'person', confidence: 0.89, bbox: [...] } ]"
     },
     supportedInputs: ['inputNode'],
-    supportedOutputs: ['logicNode', 'dashboardVideoNode', 'debugNode']
+    supportedOutputs: ['logicNode', 'flowCounterNode', 'dashboardVideoNode', 'debugNode']
   },
   logicNode: {
     title: "Logic / Filter",
-    description: "โหนดกำหนดเงื่อนไขตรรกะ เพื่อกรองข้อมูลจาก AI",
+    description: "โหนดประเมินเงื่อนไขตรรกะ เพื่อคัดกรองผลการตรวจจับจาก AI (Object Detection) หรือ Digital Input แล้วส่งออกสถานะ True / False",
+    explanation: "โหนด Logic / Filter ทำหน้าที่เสมือน 'สมองตัดสินใจ' (Rule Evaluator) ของระบบ AI Pipeline โดยรับข้อมูล Metadata ผลลัพธ์การตรวจจับจาก AI Node (เช่น Bounding Box, Label, Confidence) ในแต่ละเฟรม แล้วนำมาตรวจสอบกับเงื่อนไขตรรกะที่คุณกำหนดไว้ หากเงื่อนไขเป็นจริง ระบบจะส่งสัญญาณ True เพื่อสั่งการโหนดถัดไป เช่น สั่งถ่าย Snapshot, สั่งเปิด Buzzer/LED, ส่งแจ้งเตือนภายนอก หรือเพิ่มค่านับใน Counter พร้อมระบบ Debounce ที่ช่วยป้องกันสัญญาณกระพริบ (Flicker) และลด False Alarm ในงาน Computer Vision",
     input: {
-      desc: "รับข้อมูล AI Metadata จาก AI Model",
-      example: "ต่อสายจาก Output ของ AI Model"
+      desc: "รับข้อมูล AI Metadata (ผลลัพธ์ Object Detection) จาก AI Model หรือสัญญาณดิจิทัลจาก Digital Input",
+      example: "{ payload: { detections: [{ label: 'person', confidence: 0.88, bbox: [...] }], count: 1, labels: ['person'] } }"
     },
     process: {
-      desc: "คัดกรองข้อมูลตามเงื่อนไขที่คุณตั้งไว้ เช่น ให้ทำงานเมื่อเจอ 'คน' มากกว่า 0 คน",
-      example: "Label = 'person', Count > 0"
+      desc: "ประเมินเงื่อนไขตรรกะ (เช่น has('person'), label_count('person') >= 2) รองรับทั้งการลากวางบล็อกสำเร็จรูป (Equation Builder) และการเขียนสูตร Python (Code Editor) พร้อมการหน่วงเวลา Debounce",
+      example: "has(\"person\") and label_confidence(\"person\") >= 0.80  (Debounce: 300 ms)"
     },
     output: {
-      desc: "สถานะความจริง (True / False) และจำนวนวัตถุที่นับได้ที่ผ่านเงื่อนไข",
-      example: "{ value: true, count: 2 }"
+      desc: "ส่งออกสถานะความจริง (True / False) เพื่อนำไปสั่งงานโหนด Action, Hardware Output หรือ Dashboard",
+      example: "{ payload: true, metadata: { camera_id: 'cam_1', timestamp: 1727100000.12 } }"
     },
     supportedInputs: ['aiNode', 'digitalInputNode'],
-    supportedOutputs: ['actionNode', 'digitalOutputNode', 'ledNode', 'buzzerNode', 'rs485Node', 'dashboardMetricNode', 'dashboardLogNode']
+    supportedOutputs: ['actionNode', 'digitalOutputNode', 'ledNode', 'buzzerNode', 'rs485Node', 'dashboardMetricNode', 'dashboardLogNode', 'snapshotNode', 'counterNode'],
+    guide: {
+      modes: [
+        {
+          id: 'equation',
+          name: 'Equation Builder (โหมดลากวางบล็อก)',
+          badge: 'เหมาะสำหรับผู้เริ่มต้น',
+          desc: 'สร้างเงื่อนไขโดยการคลิกหรือลากบล็อกชิปคำสั่งมาวางใน Equation Box ระบบจะดึง Class ทั้งหมดจากโมเดล AI ที่เชื่อมต่ออยู่มาสร้างเป็นบล็อกให้อัตโนมัติ เช่น Has person, Count person, Conf. person และบล็อกตรรกะ AND, OR, NOT, เปรียบเทียบตัวเลข'
+        },
+        {
+          id: 'code',
+          name: 'Code Editor (โหมดเขียน Python Expression)',
+          badge: 'ยืดหยุ่นขั้นสูง',
+          desc: 'เขียนสูตรเงื่อนไขตรรกะแบบไพธอนได้โดยตรงในช่อง Textarea รองรับตัวดำเนินการ and, or, not, วงเล็บจัดกลุ่มเงื่อนไข และฟังก์ชัน Built-in ต่างๆ เหมาะสำหรับงานที่มีตรรกะเงื่อนไขซับซ้อน'
+        }
+      ],
+      variables: [
+        { name: 'has("label")', type: 'bool', desc: 'ตรวจสอบว่าพบวัตถุชนิดนั้นในเฟรมหรือไม่ (คืนค่า True/False)', example: 'has("person")' },
+        { name: 'label_count("label")', type: 'int', desc: 'นับจำนวนวัตถุเฉพาะคลาสนั้นในเฟรม', example: 'label_count("person") >= 2' },
+        { name: 'count', type: 'int', desc: 'จำนวนวัตถุทั้งหมดที่ตรวจพบในเฟรม (ทุกคลาสรวมกัน)', example: 'count > 0' },
+        { name: 'confidence', type: 'float', desc: 'ค่าความมั่นใจสูงสุดของทุกวัตถุในเฟรม (ช่วง 0.0 - 1.0)', example: 'confidence >= 0.80' },
+        { name: 'label_confidence("label")', type: 'float', desc: 'ค่าความมั่นใจสูงสุดของวัตถุคลาสนั้น', example: 'label_confidence("person") > 0.75' },
+        { name: 'all_labels("A", "B")', type: 'bool', desc: 'ตรวจสอบว่าพบวัตถุทั้งสองชนิดพร้อมกันในเฟรม', example: 'all_labels("person", "car")' },
+        { name: 'any_label("A", "B")', type: 'bool', desc: 'ตรวจสอบว่าพบวัตถุอย่างน้อยหนึ่งชนิดที่ระบุ', example: 'any_label("forklift", "truck")' },
+        { name: 'msg["payload"]', type: 'list / dict', desc: 'ออบเจ็กต์ข้อมูล Detections ดิบทั้งหมดจาก AI', example: 'len(msg["payload"]) > 0' }
+      ],
+      debounce: {
+        title: 'การตั้งค่า Debounce (ms) เพื่อลด False Trigger',
+        desc: 'ในระบบตรวจจับด้วยภาพ (Computer Vision) วัตถุอาจกระพริบ (Flicker) หลุดเฟรมไป 1 เฟรม หรือมีสิ่งแปลกปลอมผ่านกล้องเพียงเสี้ยววินาที การตั้งค่า Debounce เช่น 300 - 1000 ms จะช่วยหน่วงเวลาให้แน่ใจว่าเงื่อนไขต้องคงสถานะ True ต่อเนื่องกันตามเวลาที่กำหนด จึงจะเริ่มส่งสัญญาณ True ออกไปสั่งการโหนดถัดไป ช่วยขจัดปัญหาการแจ้งเตือนผิดพลาดได้อย่างมีประสิทธิภาพ'
+      },
+      flowControl: {
+        title: 'การควบคุมการไหลของข้อมูล (Output Trigger Mode & Cooldown)',
+        desc: 'เนื่องจาก AI Node ส่งข้อมูลออกมาระดับ 25-30 FPS การเลือกโหมด On Change (ส่งเฉพาะเมื่อสถานะเปลี่ยน) หรือ Rising Edge (ส่งเมื่อเป็นจริงครั้งแรก) ร่วมกับการตั้ง Cooldown (ms) จะช่วยตัดปัญหาข้อมูลไหลทะลักและป้องกันการยิงสั่ง Action ซ้ำซ้อนได้อย่างสมบูรณ์แบบ'
+      },
+      recipes: [
+        {
+          title: '1. ตรวจจับคนบุกรุกพื้นที่ (Presence Detection)',
+          expr: 'has("person")',
+          debounce: 300,
+          desc: 'ส่งสัญญาณ True ทันทีที่มีคนเข้ามาในกล้องต่อเนื่องเกิน 300ms',
+          downstream: 'Buzzer, LED, Snapshot'
+        },
+        {
+          title: '2. ตรวจจับคนหนาแน่นเกินกำหนด (Capacity Limit)',
+          expr: 'label_count("person") >= 5',
+          debounce: 500,
+          desc: 'แจ้งเตือนเมื่อมีจำนวนคนในพื้นที่ตั้งแต่ 5 คนขึ้นไป',
+          downstream: 'Dashboard Metric, Action (Line Notify)'
+        },
+        {
+          title: '3. ตรวจจับความปลอดภัยร่วม (คน + รถโฟล์คลิฟท์/รถยนต์)',
+          expr: 'has("person") and has("car")',
+          debounce: 200,
+          desc: 'แจ้งเตือนเหตุการณ์อันตรายเมื่อคนและยานพาหนะเข้ามาอยู่ในเฟรมเดียวกัน',
+          downstream: 'Buzzer, Digital Output (Relay สั่งหยุดเครื่อง)'
+        },
+        {
+          title: '4. กรองเฉพาะผลตรวจจับความแม่นยำสูง (High Confidence)',
+          expr: 'has("person") and label_confidence("person") >= 0.80',
+          debounce: 300,
+          desc: 'กรองเอาเฉพาะการตรวจจับที่ AI มั่นใจเกิน 80% ขึ้นไป เพื่อลด False Alarm',
+          downstream: 'Snapshot, Action'
+        },
+        {
+          title: '5. ตรวจสอบสิ่งผิดปกติที่ขาดหายไป (Absence Detection)',
+          expr: 'has("car") and not has("person")',
+          debounce: 1000,
+          desc: 'ตรวจพบรถจอดอยู่แต่ไม่มีคนขับควบคุมต่อเนื่องนานเกิน 1 วินาที',
+          downstream: 'Dashboard Log, Snapshot'
+        }
+      ]
+    }
   },
   actionNode: {
     title: "Action / Alert",
@@ -196,20 +268,21 @@ export const nodeTutorials = {
   },
   dashboardMetricNode: {
     title: "Number / Metric (Dashboard)",
-    description: "โหนดแสดงตัวเลขสถิติบน Live Dashboard",
+    description: "โหนดแสดงตัวเลขสถิติบน Live Dashboard (Grafana Style)",
+    explanation: "โหนดตัวเลขแบบใหม่ รองรับการปรับแต่งขั้นสูงระดับ Grafana สามารถแสดงตัวเลขขนาดใหญ่พร้อมกราฟขนาดย่อม (Sparkline) พื้นหลัง เพื่อดูเทรนด์การเปลี่ยนแปลงได้ทันที รองรับการตั้งค่าสีตามช่วงเงื่อนไข (Threshold) และสามารถดึงข้อมูลย้อนหลัง (History) จาก Database มาสร้างกราฟ Sparkline ได้อัตโนมัติ",
     input: {
-      desc: "รับข้อมูลตัวเลข เช่น Count จาก Logic Node",
-      example: "ต่อสายจาก Logic Node ที่นับจำนวนคน"
+      desc: "รับข้อมูลตัวเลข เช่น Count จาก Counter Node หรือ Logic Node",
+      example: "ต่อสายจาก Counter Node ที่นับยอดสะสมของคนผ่านประตู"
     },
     process: {
-      desc: "ดึงข้อมูลจากเส้นทางที่กำหนด (Data Path) และนำไปผูกติดกับ Metric Widget เพื่อแสดงผลเป็นตัวเลขขนาดใหญ่ หรือกราฟบน Dashboard",
-      example: "แสดงตัวเลขจำนวนคนเดินผ่านประตู"
+      desc: "ข้อมูลจะถูกบันทึกลง Database (ตาราง metrics) และถูกนำไปแสดงผลบน Metric Widget รองรับการกำหนดหน่วย (Prefix/Suffix) เช่น 'คน', '%' และตั้งค่า Threshold เพื่อเปลี่ยนสีเมื่อค่าเกินพิกัด",
+      example: "แสดงตัวเลขพร้อมหน่วย 'คน' และเปลี่ยนเป็นสีแดงเมื่อยอดเกิน 50 คน พร้อมกราฟ Sparkline 10 นาทีล่าสุด"
     },
     output: {
       desc: "ส่งข้อมูลตัวเลขไปยังหน้า Dashboard (ฝั่ง UI)",
       example: "N/A"
     },
-    supportedInputs: ['logicNode'],
+    supportedInputs: ['logicNode', 'counterNode', 'flowCounterNode'],
     supportedOutputs: []
   },
   dashboardTextNode: {
@@ -251,16 +324,17 @@ export const nodeTutorials = {
   dashboardChartNode: {
     title: "Chart (Dashboard)",
     description: "โหนดแสดงกราฟข้อมูลบน Live Dashboard",
+    explanation: "โหนดกราฟเต็มรูปแบบที่สามารถคิวรี (Query) ข้อมูลจาก Database (ตาราง metrics) มาพล็อตเป็นกราฟเส้น (Line Chart) หรือกราฟแท่ง (Bar Chart) รองรับการตั้งค่าช่วงเวลา (Time Range) เพื่อดูข้อมูลย้อนหลัง หรือดูแบบ Real-time",
     input: {
-      desc: "รับข้อมูลประเภทอาร์เรย์ (Array) หรือประวัติ (History) จาก Counter หรือโหนดอื่นๆ",
+      desc: "รับข้อมูลประเภทตัวเลขจาก Counter หรือโหนดอื่นๆ เพื่อบันทึกลงฐานข้อมูลเป็นอนุกรมเวลา (Time-series)",
       example: "ต่อสายจาก Counter Node"
     },
     process: {
-      desc: "นำข้อมูลสถิติหรือประวัติมาพล็อตเป็นกราฟเส้นหรือกราฟแท่งบน Live Dashboard เพื่อดูแนวโน้ม (Trend)",
-      example: "แสดงกราฟจำนวนรถที่วิ่งผ่านในแต่ละชั่วโมง"
+      desc: "ระบบจะเก็บค่าพร้อม Timestamp ลงฐานข้อมูล SQLite และเมื่อเปิด Dashboard จะคิวรีข้อมูลมาพล็อตเป็นกราฟตามกรอบเวลาที่เลือกไว้ (เช่น 1 ชั่วโมงล่าสุด, 24 ชั่วโมงล่าสุด)",
+      example: "แสดงกราฟเส้นจำนวนรถที่วิ่งผ่านแยกย้อนหลัง 12 ชั่วโมง"
     },
     output: {
-      desc: "ส่งข้อมูลกราฟไปยังหน้า Dashboard (ฝั่ง UI)",
+      desc: "แสดงกราฟบนหน้า Dashboard (ฝั่ง UI)",
       example: "N/A"
     },
     supportedInputs: ['counterNode', 'flowCounterNode', 'logicNode'],
@@ -285,37 +359,37 @@ export const nodeTutorials = {
     supportedOutputs: ['logicNode', 'dashboardVideoNode', 'dashboardMetricNode', 'actionNode']
   },
   counterNode: {
-    title: "Counter",
-    description: "โหนดนับจำนวนสะสม (Accumulate) หรือหาค่าเฉลี่ย",
+    title: "Event Counter",
+    description: "โหนดนับจำนวนเหตุการณ์สะสม (Discrete Event Counter) จากการเปลี่ยนสถานะของสัญญาณ (Edge Triggering)",
     input: {
-      desc: "รับข้อมูลตัวเลข (เช่น Count) หรือสถานะจาก Logic Node",
-      example: "รับค่า { count: 2 }"
+      desc: "รับสัญญาณเชิงตรรกะ (True / False) จาก Logic Node หรือเซ็นเซอร์ดิจิทัล",
+      example: "{ payload: true, metadata: { camera_id: 'cam_1' } }"
     },
     process: {
-      desc: "บวกสะสมค่าที่ได้รับในแต่ละเฟรม หรือนับเวลาที่เงื่อนไขเป็นจริง",
-      example: "นับจำนวนคนเดินผ่านไปแล้วทั้งหมด 15 คน"
+      desc: "ตรวจจับจังหวะการเปลี่ยนสถานะของสัญญาณ (Rising Edge: False ➔ True หรือ Falling Edge: True ➔ False) แล้วเพิ่มค่านับสะสมขึ้น 1 ครั้ง",
+      example: "เมื่อ Logic ตรวจพบชิ้นงาน NG (สัญญาณเปลี่ยนเป็น True) ให้นับเพิ่ม 1 ครั้งสะสมในยอดรวม"
     },
     output: {
-      desc: "ผลรวมของตัวเลข (Total Count) หรือค่าสถิติอื่นๆ",
-      example: "{ total_count: 15 }"
+      desc: "ตัวเลขจำนวนครั้งที่เกิดเหตุการณ์สะสม (Total Count)",
+      example: "15"
     },
-    supportedInputs: ['logicNode'],
-    supportedOutputs: ['dashboardMetricNode', 'dashboardTextNode']
+    supportedInputs: ['logicNode', 'digitalInputNode'],
+    supportedOutputs: ['dashboardMetricNode', 'dashboardTextNode', 'actionNode']
   },
   flowCounterNode: {
     title: "Flow Counter",
-    description: "โหนดนับจำนวนคนหรือวัตถุที่เดินข้ามเส้น (Line Crossing)",
+    description: "โหนดนับจำนวนคนหรือวัตถุที่เคลื่อนที่ตัดผ่านเส้น (Line Crossing) หรือเข้าพื้นที่ (Zone ROI) พร้อมระบบติดตามป้องกันนับซ้ำ",
     input: {
-      desc: "รับข้อมูล AI Metadata (พิกัดกล่อง) จาก AI Node",
-      example: "ต่อสายจาก Output ของ AI Model"
+      desc: "รับข้อมูล AI Metadata (ผลลัพธ์การตรวจจับ Bounding Box) จาก AI Model โดยตรง",
+      example: "ต่อสายตรงจาก AI Model เพื่อดึงรายการวัตถุที่ตรวจจับได้"
     },
     process: {
-      desc: "ตรวจสอบว่ามีพิกัดของวัตถุเคลื่อนที่ตัดผ่านเส้นสมมติที่ลากไว้หรือไม่ พร้อมจำแนกทิศทาง (เข้า/ออก)",
-      example: "ลากเส้นหน้าประตู เพื่อพิจารณาคนเดินเข้า (In) และเดินออก (Out)"
+      desc: "ใช้ระบบ Centroid Tracking ติดตามวัตถุแต่ละชิ้นข้ามเฟรมแบบมี Tracking ID เพื่อป้องกันการนับซ้ำ และตรวจการตัดเส้นหรือเข้าเขตพื้นที่",
+      example: "ลากเส้นหน้าประตูเพื่อนับคนเดินเข้า-ออก หรือลากเส้นบนสายพานเพื่อนับจำนวนสินค้าแยกตามประเภท (Class)"
     },
     output: {
-      desc: "จำนวนวัตถุที่เดินผ่านเส้น แบ่งตามทิศทาง",
-      example: "{ in: 5, out: 2, net: 3 }"
+      desc: "จำนวนยอดนับรวม (Total) และแจกแจงแยกตามประเภท Class พร้อมบันทึกลงฐานข้อมูลประวัติ",
+      example: "{ total: 15, counts: { person: 10, car: 5 }, newly_counted: 1 }"
     },
     supportedInputs: ['aiNode'],
     supportedOutputs: ['dashboardMetricNode', 'actionNode']
@@ -358,20 +432,21 @@ export const nodeTutorials = {
   },
   snapshotNode: {
     title: "Snapshot",
-    description: "โหนดบันทึกภาพนิ่ง (Snapshot) เมื่อเกิดเหตุการณ์สำคัญ",
+    description: "โหนดบันทึกภาพนิ่ง (Snapshot) พร้อมเก็บประวัติลง Database",
+    explanation: "บันทึกภาพนิ่งจากวิดีโอทันทีเมื่อได้รับสัญญาณทริกเกอร์ พร้อมจัดเก็บ Metadata และรูปภาพลงใน Snapshot Storage ซึ่งสามารถเข้าไปดู ย้อนกลับ บริหารจัดการ หรือลบ (ลบรูปจากดิสก์และเรคคอร์ดจาก DB) ได้ผ่านหน้า Snapshot Gallery",
     input: {
-      desc: "รับภาพวิดีโอจาก Input/AI และสัญญาณ Trigger จาก Logic/Action",
-      example: "ต่อสาย Video จาก AI Node และสาย Trigger จาก Logic Node"
+      desc: "รับสัญญาณ Trigger (True/False) จาก Logic หรือ Action Node",
+      example: "ต่อสายจาก Logic Node เมื่อเงื่อนไขเป็นจริง (เช่น นับคนได้เกิน 5 คน) เพื่อสั่งถ่ายภาพ"
     },
     process: {
-      desc: "เมื่อได้รับสัญญาณ Trigger (True) จะทำการแคปเจอร์เฟรมวิดีโอปัจจุบันและบันทึกลงในระบบ หรือส่งแจ้งเตือน",
-      example: "ถ่ายภาพบันทึกหลักฐานเมื่อมีผู้บุกรุกตอน 22:00 น."
+      desc: "เมื่อได้รับสัญญาณ Trigger (True) จะทำการแคปเจอร์เฟรมวิดีโอปัจจุบัน, ระบุ Timestamp, และบันทึกประวัติเหตุการณ์ลงตาราง snapshots ใน Database แบบอัตโนมัติ",
+      example: "ถ่ายภาพบันทึกหลักฐานเมื่อมีผู้บุกรุกตอน 22:00 น. และเก็บบันทึกลงฐานข้อมูลเพื่อเปิดดูทีหลัง"
     },
     output: {
       desc: "เส้นทางรูปภาพ (Image Path) หรือ URL ของภาพที่ถูกบันทึกไว้ในระบบ",
-      example: "{ image_url: '/snapshots/12345.jpg' }"
+      example: "{ id: 102, image_url: '/snapshots/172778888.jpg', created_at: '2026-09-30...' }"
     },
-    supportedInputs: ['inputNode', 'aiNode', 'logicNode', 'digitalInputNode'],
+    supportedInputs: ['logicNode', 'digitalInputNode', 'actionNode'],
     supportedOutputs: ['actionNode', 'dashboardLogNode']
   }
 };

@@ -186,9 +186,9 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-gray-900 border border-purple-500/30 w-full max-w-2xl rounded-2xl shadow-2xl shadow-purple-950/50 overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="bg-gray-50 dark:bg-gray-900 border border-purple-500/30 w-full max-w-2xl rounded-2xl shadow-2xl shadow-purple-950/50 overflow-hidden flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="bg-gradient-to-r from-purple-950/60 via-gray-900 to-gray-900 px-5 py-4 border-b border-gray-800 flex items-center justify-between">
+        <div className="bg-gradient-to-r from-purple-950/60 via-gray-900 to-gray-900 px-5 py-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="bg-purple-600/30 p-2.5 rounded-xl border border-purple-500/40 text-purple-300">
               <Cpu size={22} />
@@ -200,14 +200,14 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
                   Hailo-8L
                 </span>
               </h2>
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-gray-600 dark:text-gray-400">
                 Safe, collision-free storage with automatic checksum verification and post-process matching.
               </p>
             </div>
           </div>
           <button 
             onClick={onClose}
-            className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-gray-800 transition-colors"
+            className="p-1.5 text-gray-600 dark:text-gray-400 hover:text-white rounded-lg hover:bg-gray-100 dark:bg-gray-800 transition-colors"
           >
             <X size={20} />
           </button>
@@ -225,7 +225,7 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
 
           {/* Section 1: HEF File Dropzone */}
           <div>
-            <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
               Model Binary (.hef) <span className="text-purple-400">*</span>
             </label>
 
@@ -242,14 +242,14 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
                 className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2.5 ${
                   isDraggingHef 
                     ? 'border-purple-500 bg-purple-950/30' 
-                    : 'border-gray-700 hover:border-purple-500/60 hover:bg-gray-800/50 bg-gray-900/50'
+                    : 'border-gray-300 dark:border-gray-700 hover:border-purple-500/60 hover:bg-gray-100 dark:bg-gray-800/50 bg-gray-50 dark:bg-gray-900/50'
                 }`}
               >
                 <div className="p-3 bg-purple-600/20 text-purple-400 rounded-full">
                   <UploadCloud size={28} />
                 </div>
                 <div>
-                  <div className="text-sm font-medium text-gray-200">
+                  <div className="text-sm font-medium text-gray-800 dark:text-gray-200">
                     Drag & drop your <span className="text-purple-400 font-mono font-bold">.hef</span> file here, or <span className="text-purple-400 underline">browse</span>
                   </div>
                   <div className="text-xs text-gray-500 mt-1">
@@ -265,7 +265,7 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
                 />
               </div>
             ) : (
-              <div className="bg-gray-800/80 border border-purple-500/40 rounded-xl p-3 flex items-center justify-between">
+              <div className="bg-gray-100 dark:bg-gray-800/80 border border-purple-500/40 rounded-xl p-3 flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 bg-purple-900/60 text-purple-300 rounded-lg border border-purple-700/50">
                     <FileCode size={22} />
@@ -277,7 +277,7 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
                         {formatFileSize(hefFile.size)}
                       </span>
                     </div>
-                    <div className="text-xs text-gray-400 flex items-center gap-1.5 mt-0.5">
+                    <div className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1.5 mt-0.5">
                       <ShieldCheck size={12} className="text-green-400" />
                       Ready to store with unique collision-safe ID
                     </div>
@@ -286,7 +286,7 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
                 <button
                   type="button"
                   onClick={() => { setHefFile(null); if (hefInputRef.current) hefInputRef.current.value = ''; }}
-                  className="text-xs text-gray-400 hover:text-red-400 p-1.5 hover:bg-gray-700/50 rounded-lg transition-colors"
+                  className="text-xs text-gray-600 dark:text-gray-400 hover:text-red-400 p-1.5 hover:bg-gray-200 dark:bg-gray-700/50 rounded-lg transition-colors"
                 >
                   Change File
                 </button>
@@ -297,7 +297,7 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
           {/* Section 2: Model Name & Version */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="sm:col-span-2">
-              <label className="block text-xs font-semibold text-gray-300 mb-1">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                 Model Name <span className="text-purple-400">*</span>
               </label>
               <div className="relative">
@@ -307,14 +307,14 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Expiry Date Detector"
-                  className="w-full bg-gray-950 border border-gray-700 rounded-xl p-2.5 pl-9 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                  className="w-full bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl p-2.5 pl-9 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
                 />
                 <Tag size={15} className="absolute left-3 top-3 text-gray-500" />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-300 mb-1">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
                 Version Tag
               </label>
               <input
@@ -322,14 +322,14 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
                 value={version}
                 onChange={(e) => setVersion(e.target.value)}
                 placeholder="v1.0"
-                className="w-full bg-gray-950 border border-gray-700 rounded-xl p-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 font-mono"
+                className="w-full bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl p-2.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-purple-500 font-mono"
               />
             </div>
           </div>
 
           {/* Section 3: Task Selector */}
           <div>
-            <label className="block text-xs font-semibold text-gray-300 mb-1.5">
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
               AI Task Type <span className="text-purple-400">*</span>
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -344,15 +344,15 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
                     className={`p-3 rounded-xl border text-left transition-all flex flex-col justify-between ${
                       isSelected
                         ? 'border-purple-500 bg-purple-950/40 shadow-sm shadow-purple-900/30'
-                        : 'border-gray-800 bg-gray-950/60 hover:bg-gray-800/40 hover:border-gray-700'
+                        : 'border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950/60 hover:bg-gray-100 dark:bg-gray-800/40 hover:border-gray-300 dark:border-gray-700'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <IconComponent size={18} className={isSelected ? 'text-purple-300' : 'text-gray-400'} />
+                      <IconComponent size={18} className={isSelected ? 'text-purple-300' : 'text-gray-600 dark:text-gray-400'} />
                       {isSelected && <CheckCircle2 size={14} className="text-purple-400" />}
                     </div>
                     <div>
-                      <div className={`text-xs font-bold ${isSelected ? 'text-purple-200' : 'text-gray-300'}`}>
+                      <div className={`text-xs font-bold ${isSelected ? 'text-purple-200' : 'text-gray-700 dark:text-gray-300'}`}>
                         {opt.label}
                       </div>
                       <div className="text-[10px] text-gray-500 mt-0.5 line-clamp-1">
@@ -366,9 +366,9 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
           </div>
 
           {/* Section 4: Metadata & Classes */}
-          <div className="bg-gray-950/60 border border-gray-800 rounded-xl p-3.5 space-y-3">
+          <div className="bg-white dark:bg-gray-950/60 border border-gray-200 dark:border-gray-800 rounded-xl p-3.5 space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-300 flex items-center gap-1.5">
+              <span className="text-xs font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
                 <FileText size={14} className="text-purple-400" />
                 Class Names & Labels
               </span>
@@ -391,7 +391,7 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
 
             {/* Detected Classes Badges */}
             {detectedClasses.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 p-2 bg-gray-900/80 rounded-lg border border-gray-800">
+              <div className="flex flex-wrap gap-1.5 p-2 bg-gray-50 dark:bg-gray-900/80 rounded-lg border border-gray-200 dark:border-gray-800">
                 <div className="w-full text-[10px] text-purple-300 font-semibold mb-1 flex items-center justify-between">
                   <span>Detected Classes ({detectedClasses.length}):</span>
                   <span className="text-gray-500">From {metadataFile?.name}</span>
@@ -413,7 +413,7 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
                   setDetectedClasses(e.target.value.split(',').map(s => s.trim()).filter(Boolean));
                 }}
                 placeholder="Comma-separated: cup, person, bottle, forklift"
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
               />
               <span className="text-[10px] text-gray-500 mt-1 block">
                 Type classes or upload YOLO `metadata.yaml` to auto-extract label indices.
@@ -426,21 +426,21 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
             <button
               type="button"
               onClick={() => setShowAdvancedSo(!showAdvancedSo)}
-              className="text-xs text-gray-400 hover:text-gray-300 flex items-center gap-1.5 transition-colors"
+              className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-700 dark:text-gray-300 flex items-center gap-1.5 transition-colors"
             >
               {showAdvancedSo ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
               Advanced: Custom Post-Process (.so Library)
             </button>
 
             {showAdvancedSo && (
-              <div className="mt-2 bg-gray-950/80 p-3 rounded-xl border border-gray-800 space-y-2">
-                <label className="block text-xs text-gray-400">
+              <div className="mt-2 bg-white dark:bg-gray-950/80 p-3 rounded-xl border border-gray-200 dark:border-gray-800 space-y-2">
+                <label className="block text-xs text-gray-600 dark:text-gray-400">
                   Shared Post-Processing Library (.so)
                 </label>
                 <select
                   value={soName}
                   onChange={(e) => setSoName(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500"
+                  className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-300 dark:border-gray-700 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-purple-500"
                 >
                   <option value="">Auto-select based on Task ({task})</option>
                   {soFiles.map(f => (
@@ -456,7 +456,7 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
 
           {/* Description */}
           <div>
-            <label className="block text-xs font-semibold text-gray-300 mb-1">
+            <label className="block text-xs font-semibold text-gray-700 dark:text-gray-300 mb-1">
               Description / Notes <span className="text-gray-500 font-normal">(optional)</span>
             </label>
             <input
@@ -464,13 +464,13 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="e.g. YOLOv8s trained on 500 warehouse images, 94% mAP"
-              className="w-full bg-gray-950 border border-gray-700 rounded-xl p-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
+              className="w-full bg-white dark:bg-gray-950 border border-gray-300 dark:border-gray-700 rounded-xl p-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-purple-500"
             />
           </div>
         </form>
 
         {/* Footer Actions */}
-        <div className="bg-gray-950 px-5 py-3.5 border-t border-gray-800 flex items-center justify-between">
+        <div className="bg-white dark:bg-gray-950 px-5 py-3.5 border-t border-gray-200 dark:border-gray-800 flex items-center justify-between">
           <div className="text-xs text-gray-500 flex items-center gap-1.5">
             <Info size={14} className="text-purple-400" />
             <span>Files are isolated by Unique Model ID</span>
@@ -480,7 +480,7 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
               type="button"
               onClick={onClose}
               disabled={isUploading}
-              className="px-4 py-2 text-xs text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl transition-colors font-semibold"
+              className="px-4 py-2 text-xs text-gray-600 dark:text-gray-400 hover:text-white hover:bg-gray-100 dark:bg-gray-800 rounded-xl transition-colors font-semibold"
             >
               Cancel
             </button>
@@ -490,7 +490,7 @@ export default function ModelUploadModal({ isOpen, onClose, onUploadSuccess, soF
               disabled={isUploading || !hefFile}
               className={`px-5 py-2 rounded-xl text-xs font-bold text-white flex items-center gap-2 transition-all shadow-lg active:scale-95 ${
                 isUploading || !hefFile
-                  ? 'bg-purple-800/40 text-gray-400 cursor-not-allowed'
+                  ? 'bg-purple-800/40 text-gray-600 dark:text-gray-400 cursor-not-allowed'
                   : 'bg-purple-600 hover:bg-purple-500 shadow-purple-900/30'
               }`}
             >

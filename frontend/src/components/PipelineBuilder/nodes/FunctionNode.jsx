@@ -5,6 +5,7 @@ import NodeMenu from './NodeMenu';
 import usePipelineStore from '../../../store/usePipelineStore';
 
 export default function FunctionNode({ id, data }) {
+  const isCompact = data?.viewMode === 'compact';
   const updateNodeData = usePipelineStore(s => s.updateNodeData);
 
   useEffect(() => {
@@ -20,7 +21,7 @@ export default function FunctionNode({ id, data }) {
   const setCode = (val) => updateNodeData(id, { code: val });
 
   return (
-    <div className="bg-gray-900 border-2 border-emerald-600 rounded-xl shadow-lg shadow-emerald-900/20 w-80 text-white overflow-hidden">
+    <div className={`bg-gray-900 border-2 border-emerald-600 rounded-xl shadow-lg shadow-emerald-900/20 ${isCompact ? 'w-48' : 'w-80'} text-white overflow-hidden`}>
       {/* Header */}
       <div className="bg-emerald-600/20 p-3 flex items-center justify-between border-b border-emerald-900/50">
         <div className="flex items-center gap-3">
@@ -32,10 +33,10 @@ export default function FunctionNode({ id, data }) {
             <div className="text-[10px] text-emerald-300/70">Python Script</div>
           </div>
         </div>
-        <NodeMenu id={id} />
+        {!isCompact && <NodeMenu id={id} />}
       </div>
 
-      <div className="p-3 flex flex-col gap-2.5">
+      <div className={`p-3 flex flex-col gap-2.5 ${isCompact ? 'hidden' : ''}`}>
         <div className="flex flex-col gap-1">
           <label className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
             Code (def process)

@@ -4,8 +4,9 @@ import { Settings2 } from 'lucide-react';
 import NodeMenu from './NodeMenu';
 
 export default function RS485Node({ id, data }) {
+  const isCompact = data?.viewMode === 'compact';
   return (
-    <div className="bg-gray-900 border-2 border-indigo-500 rounded-xl p-4 shadow-xl shadow-indigo-900/20 w-64">
+    <div className={`bg-gray-900 border-2 border-indigo-500 rounded-xl p-4 shadow-xl shadow-indigo-900/20 ${isCompact ? 'w-48' : 'w-64'}`}>
       <Handle type="target" position={Position.Left} className="w-3 h-3 bg-indigo-500 border-2 border-gray-900" />
       
       <div className="flex items-center justify-between mb-3 border-b border-gray-800 pb-2">
@@ -18,7 +19,7 @@ export default function RS485Node({ id, data }) {
             <p className="text-xs text-indigo-500 font-mono">/dev/ttyACM0</p>
           </div>
         </div>
-        <NodeMenu id={id} />
+        {!isCompact && <NodeMenu id={id} />}
       </div>
       
       <div className="space-y-3">

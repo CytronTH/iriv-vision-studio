@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { Database, HardDrive, Image as ImageIcon, Trash2, Activity, ShieldAlert, Check, RefreshCw } from 'lucide-react';
+import { Database, HardDrive, Image as ImageIcon, Trash2, Activity, ShieldAlert, Check, RefreshCw, Archive, Zap, Server, BarChart3, DatabaseZap, Code2 } from 'lucide-react';
+import SqlExplorer from './SqlExplorer';
 
-export default function DatabaseMonitoring() {
+export default function DatabaseMonitoring({ projectId }) {
+  const [activeTab, setActiveTab] = useState('health');
   const [dbStats, setDbStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
 
   // Cleanup states
   const [showCleanupModal, setShowCleanupModal] = useState(false);
-  const [cleanupLoading, setCleanupLoading] = useState(false);
   const [cleanupResult, setCleanupResult] = useState(null);
   const [cleanupOptions, setCleanupOptions] = useState({
     days: 30,
@@ -16,9 +18,9 @@ export default function DatabaseMonitoring() {
   });
 
   const fetchDbStats = async () => {
-    setLoading(true);
     try {
-      const res = await fetch('/api/database/stats');
+      const url = projectId ? `/api/database/stats?project_id=${projectId}` : '/api/database/stats';
+      const res = await fetch(url);
       const data = await res.json();
       if (data.status === 'success') {
         setDbStats(data.data);
@@ -32,12 +34,12 @@ export default function DatabaseMonitoring() {
 
   useEffect(() => {
     fetchDbStats();
-    const interval = setInterval(fetchDbStats, 30000);
+    const interval = setInterval(fetchDbStats, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [projectId]);
 
   const handleExecuteCleanup = async () => {
-    setCleanupLoading(true);
+    setActionLoading(true);
     setCleanupResult(null);
     try {
       const res = await fetch('/api/database/maintenance/cleanup', {
@@ -55,106 +57,254 @@ export default function DatabaseMonitoring() {
     } catch (err) {
       setCleanupResult({ error: err.message });
     } finally {
-      setCleanupLoading(false);
+      setActionLoading(false);
+    }
+  };
+
+  const handleVacuum = async () => {
+    if (!confirm('This will lock the databases temporarily to reclaim disk space. Proceed?')) return;
+    setActionLoading(true);
+    try {
+      const res = await fetch('/api/database/maintenance/vacuum', { method: 'POST' });
+      const data = await res.json();
+      alert(data.message || (data.status === 'success' ? 'Vacuum successful' : 'Vacuum failed'));
+      fetchDbStats();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleRollup = async () => {
+    setActionLoading(true);
+    try {
+      const res = await fetch('/api/database/maintenance/rollup', { method: 'POST' });
+      const data = await res.json();
+      alert(data.message || (data.status === 'success' ? 'Rollup successful' : 'Rollup failed'));
+      fetchDbStats();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    } finally {
+      setActionLoading(false);
     }
   };
 
   return (
-    <div className="h-full flex flex-col p-6 animate-in fade-in duration-500 overflow-y-auto bg-gray-950">
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-indigo-500/20 text-indigo-400 rounded-xl">
-            <Database size={24} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Database Monitoring</h1>
-            <p className="text-gray-400 text-sm mt-1">Global Storage & Database Health</p>
-          </div>
+    <div className="flex flex-col animate-in fade-in duration-500">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-lg font-bold text-slate-200">System Metrics</h2>
+          <p className="text-xs text-slate-400 mt-0.5">Health monitoring and SQL Explorer</p>
+        </div>
+        <div className="flex bg-slate-900 border border-slate-800 rounded-lg p-1">
+          <button
+            onClick={() => setActiveTab('health')}
+            className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-colors ${activeTab === 'health' ? 'bg-slate-800 text-gray-900 dark:text-white' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <Activity size={16} />
+            Health & Maintenance
+          </button>
+          <button
+            onClick={() => setActiveTab('explorer')}
+            className={`px-4 py-2 rounded-md text-sm font-semibold flex items-center gap-2 transition-colors ${activeTab === 'explorer' ? 'bg-slate-800 text-blue-400' : 'text-slate-400 hover:text-slate-200'}`}
+          >
+            <Code2 size={16} />
+            SQL Explorer
+          </button>
         </div>
       </div>
 
-      {/* Top Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-        <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800/80 rounded-2xl p-4 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">SQLite DB File</p>
-            <h3 className="text-2xl font-extrabold text-white mt-1 font-mono tracking-tight">
-              {dbStats?.db_file_size_mb ? `${dbStats.db_file_size_mb} MB` : (loading ? 'Loading...' : '-')}
-            </h3>
-            <p className="text-[11px] text-emerald-400/90 mt-0.5 flex items-center gap-1 font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block" />
-              WAL Mode Enabled (WAL: {dbStats?.wal_file_size_mb || 0} MB)
-            </p>
+      {activeTab === 'explorer' ? (
+        <div className="flex-1 min-h-[500px] bg-slate-950 rounded-xl overflow-hidden border border-slate-800 p-4">
+          <SqlExplorer />
+        </div>
+      ) : (
+        <>
+          <div className="flex justify-end mb-4">
+            <button 
+              onClick={fetchDbStats}
+              disabled={loading}
+              className="flex items-center gap-2 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg transition-colors text-sm"
+            >
+              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-            <HardDrive size={20} />
+
+          {/* Primary Storage Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        
+        {/* Main SD Card / Disk Space */}
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-sm relative overflow-hidden">
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Device Storage</p>
+              <h3 className="text-2xl font-extrabold text-gray-900 mt-1 tracking-tight dark:text-white">
+                {dbStats?.disk_free_gb ? `${dbStats.disk_free_gb} GB` : (loading ? '...' : '-')}
+              </h3>
+              <p className="text-xs text-slate-500 mt-1">Free of {dbStats?.disk_total_gb || 0} GB</p>
+            </div>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${dbStats?.disk_usage_percent > 85 ? 'bg-rose-500/10 text-rose-400' : 'bg-emerald-500/10 text-emerald-400'}`}>
+              <HardDrive size={20} />
+            </div>
+          </div>
+          {dbStats && (
+            <div className="mt-4 w-full bg-slate-800 rounded-full h-1.5">
+              <div 
+                className={`h-1.5 rounded-full ${dbStats.disk_usage_percent > 85 ? 'bg-rose-500' : dbStats.disk_usage_percent > 70 ? 'bg-amber-500' : 'bg-emerald-500'}`} 
+                style={{ width: `${Math.min(100, dbStats.disk_usage_percent)}%` }} 
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Config DB Size */}
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Config DB (vision_studio)</p>
+            <h3 className="text-2xl font-extrabold text-gray-900 mt-1 tracking-tight dark:text-white">
+              {dbStats?.db_file_size_mb ? `${dbStats.db_file_size_mb} MB` : (loading ? '...' : '-')}
+            </h3>
+            <p className="text-xs text-indigo-400 mt-1">Projects, Models, Cameras</p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+            <Database size={20} />
           </div>
         </div>
 
-        <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800/80 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+        {/* Telemetry DB Size */}
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-sm flex items-center justify-between">
           <div>
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Snapshots Stored</p>
-            <h3 className="text-2xl font-extrabold text-white mt-1 font-mono tracking-tight">
-              {dbStats?.snapshot_count ? dbStats.snapshot_count.toLocaleString() : (loading ? 'Loading...' : '-')}
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Telemetry DB (Logs)</p>
+            <h3 className="text-2xl font-extrabold text-gray-900 mt-1 tracking-tight dark:text-white">
+              {dbStats?.telemetry_file_size_mb ? `${dbStats.telemetry_file_size_mb} MB` : (loading ? '...' : '-')}
             </h3>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              {dbStats?.snapshot_size_mb ? `${(dbStats.snapshot_size_mb / 1024).toFixed(2)} GB on disk` : '...'}
-            </p>
+            <p className="text-xs text-blue-400 mt-1">High-freq Event Logs</p>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+          <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
+            <DatabaseZap size={20} />
+          </div>
+        </div>
+
+        {/* Snapshots Size */}
+        <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Snapshot Images</p>
+            <h3 className="text-2xl font-extrabold text-gray-900 mt-1 tracking-tight dark:text-white">
+              {dbStats?.snapshot_size_mb ? `${(dbStats.snapshot_size_mb / 1024).toFixed(2)} GB` : (loading ? '...' : '-')}
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">{dbStats?.snapshot_count?.toLocaleString() || 0} files stored</p>
+          </div>
+          <div className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center text-slate-400">
             <ImageIcon size={20} />
           </div>
         </div>
-
-        <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800/80 rounded-2xl p-4 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Total Event Logs</p>
-            <h3 className="text-2xl font-extrabold text-white mt-1 font-mono tracking-tight">
-              {dbStats?.total_event_logs ? dbStats.total_event_logs.toLocaleString() : (loading ? 'Loading...' : '0')}
-            </h3>
-            <p className="text-[11px] text-blue-400 mt-0.5">All Projects</p>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-            <Activity size={20} />
-          </div>
-        </div>
-        
-        <div className="bg-slate-900/80 backdrop-blur-md border border-slate-800/80 rounded-2xl p-4 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Storage Cleanup</p>
-            <button 
-              onClick={() => setShowCleanupModal(true)}
-              className="mt-2 text-sm bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 px-3 py-1.5 rounded-lg border border-rose-500/20 transition-colors flex items-center gap-1.5"
-            >
-              <Trash2 size={16} /> Manage Space
-            </button>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
-            <ShieldAlert size={20} />
-          </div>
-        </div>
       </div>
 
-      {/* Global Records Summary */}
-      <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6 mt-4">
-        <h2 className="text-lg font-bold text-white mb-4 border-b border-slate-800 pb-2">Global Records Summary</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-gray-950 p-4 rounded-xl border border-gray-800">
-            <div className="text-sm text-gray-500 mb-1">Projects</div>
-            <div className="text-xl font-bold text-gray-200">{dbStats?.total_projects || 0}</div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        
+        {/* Data Metrics & Row Counts */}
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+          <h2 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2">
+            <BarChart3 size={16} /> Data Row Counts
+          </h2>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-gray-50 dark:bg-gray-950 p-3 rounded-xl border border-gray-200/60 dark:border-gray-800/60">
+              <div className="text-xs text-gray-500 mb-1 dark:text-gray-500">Raw Event Logs</div>
+              <div className="text-xl font-bold text-blue-400">{dbStats?.total_event_logs?.toLocaleString() || 0}</div>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-950 p-3 rounded-xl border border-gray-200/60 dark:border-gray-800/60">
+              <div className="text-xs text-gray-500 mb-1 dark:text-gray-500">System Metrics</div>
+              <div className="text-xl font-bold text-amber-400">{dbStats?.total_metrics?.toLocaleString() || 0}</div>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-950 p-3 rounded-xl border border-gray-200/60 dark:border-gray-800/60">
+              <div className="text-xs text-gray-500 mb-1 dark:text-gray-500">Raw Class Counts</div>
+              <div className="text-xl font-bold text-gray-800 dark:text-gray-200">{dbStats?.total_class_counts?.toLocaleString() || 0}</div>
+            </div>
+            <div className="bg-gray-50 dark:bg-gray-950 p-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5">
+              <div className="text-xs text-emerald-500 mb-1">Hourly Rollups</div>
+              <div className="text-xl font-bold text-emerald-400">{dbStats?.total_hourly_rollups?.toLocaleString() || 0}</div>
+            </div>
           </div>
-          <div className="bg-gray-950 p-4 rounded-xl border border-gray-800">
-            <div className="text-sm text-gray-500 mb-1">Cameras</div>
-            <div className="text-xl font-bold text-gray-200">{dbStats?.total_cameras || 0}</div>
+        </div>
+
+        {/* Database Write Queue Health */}
+        <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+          <h2 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2">
+            <Server size={16} /> Database Write Queue Health
+          </h2>
+          <div className="flex gap-4">
+            <div className="flex-1 bg-gray-50 dark:bg-gray-950 p-4 rounded-xl border border-gray-200 dark:border-gray-800 relative overflow-hidden">
+              <div className="text-xs text-gray-500 mb-1 uppercase tracking-wider dark:text-gray-500">Pending Writes</div>
+              <div className="text-3xl font-mono font-bold text-gray-900 dark:text-white">{dbStats?.log_queue_size || 0}</div>
+              <div className="text-xs text-slate-500 mt-2">Max Capacity: {dbStats?.log_queue_max || 10000}</div>
+              
+              {dbStats && (
+                <div className="absolute bottom-0 left-0 w-full h-1 bg-slate-800">
+                  <div 
+                    className={`h-full ${dbStats.log_queue_size > 5000 ? 'bg-rose-500' : 'bg-blue-500'}`}
+                    style={{ width: `${(dbStats.log_queue_size / (dbStats.log_queue_max || 10000)) * 100}%` }}
+                  />
+                </div>
+              )}
+            </div>
+            
+            <div className="flex-1 bg-gray-50 dark:bg-gray-950 p-4 rounded-xl border border-gray-200 dark:border-gray-800 flex flex-col justify-center">
+              <div className="text-sm text-slate-400 mb-1">Status</div>
+              {dbStats?.log_queue_size > 5000 ? (
+                <div className="text-rose-400 font-medium flex items-center gap-1.5"><ShieldAlert size={16}/> High Load</div>
+              ) : (
+                <div className="text-emerald-400 font-medium flex items-center gap-1.5"><Check size={16}/> Healthy</div>
+              )}
+              <div className="text-xs text-slate-500 mt-2">Background batch writer is active.</div>
+            </div>
           </div>
-          <div className="bg-gray-950 p-4 rounded-xl border border-gray-800">
-            <div className="text-sm text-gray-500 mb-1">Models</div>
-            <div className="text-xl font-bold text-gray-200">{dbStats?.total_models || 0}</div>
-          </div>
-          <div className="bg-gray-950 p-4 rounded-xl border border-gray-800">
-            <div className="text-sm text-gray-500 mb-1">Metrics Logged</div>
-            <div className="text-xl font-bold text-gray-200">{dbStats?.total_metrics?.toLocaleString() || 0}</div>
-          </div>
+        </div>
+
+      </div>
+
+      {/* Admin Actions */}
+      <div className="bg-slate-900/30 border border-slate-800 rounded-2xl p-6">
+        <h2 className="text-sm font-bold text-slate-300 mb-4 flex items-center gap-2">
+          <Activity size={16} /> Manual Maintenance Actions
+        </h2>
+        <div className="flex flex-wrap gap-4">
+          <button 
+            onClick={() => handleRollup()}
+            disabled={actionLoading}
+            className="bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 px-4 py-3 rounded-xl flex items-center gap-3 transition-colors text-left flex-1 min-w-[250px]"
+          >
+            <div className="p-2 bg-emerald-500/20 rounded-lg"><Zap size={18} /></div>
+            <div>
+              <div className="font-semibold text-sm">Force Data Rollup</div>
+              <div className="text-xs text-emerald-500/70 mt-0.5">Aggregate raw data into hourly buckets immediately</div>
+            </div>
+          </button>
+          
+          <button 
+            onClick={() => handleVacuum()}
+            disabled={actionLoading}
+            className="bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 border border-indigo-500/20 px-4 py-3 rounded-xl flex items-center gap-3 transition-colors text-left flex-1 min-w-[250px]"
+          >
+            <div className="p-2 bg-indigo-500/20 rounded-lg"><Archive size={18} /></div>
+            <div>
+              <div className="font-semibold text-sm">Vacuum Database</div>
+              <div className="text-xs text-indigo-500/70 mt-0.5">Defragment and reclaim unused disk space</div>
+            </div>
+          </button>
+
+          <button 
+            onClick={() => setShowCleanupModal(true)}
+            disabled={actionLoading}
+            className="bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/20 px-4 py-3 rounded-xl flex items-center gap-3 transition-colors text-left flex-1 min-w-[250px]"
+          >
+            <div className="p-2 bg-rose-500/20 rounded-lg"><Trash2 size={18} /></div>
+            <div>
+              <div className="font-semibold text-sm">Purge Old Logs</div>
+              <div className="text-xs text-rose-500/70 mt-0.5">Delete historical logs and snapshots to free space</div>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -167,7 +317,7 @@ export default function DatabaseMonitoring() {
                 <Trash2 size={20} />
               </div>
               <div>
-                <h3 className="text-lg font-bold text-white">Database Cleanup</h3>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">Database Cleanup</h3>
                 <p className="text-xs text-slate-400">Purge old event logs and reclaim disk space</p>
               </div>
             </div>
@@ -225,22 +375,24 @@ export default function DatabaseMonitoring() {
             <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-end gap-3">
               <button 
                 onClick={() => { setShowCleanupModal(false); setCleanupResult(null); }}
-                className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-white transition-colors"
-                disabled={cleanupLoading}
+                className="px-4 py-2 text-sm font-medium text-slate-300 hover:text-gray-900 transition-colors dark:hover:text-white"
+                disabled={actionLoading}
               >
                 Close
               </button>
               <button 
                 onClick={handleExecuteCleanup}
-                disabled={cleanupLoading}
-                className="px-4 py-2 text-sm font-medium bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
+                disabled={actionLoading}
+                className="px-4 py-2 text-sm font-medium bg-rose-600 hover:bg-rose-500 text-gray-900 rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50 dark:text-white"
               >
-                {cleanupLoading ? <RefreshCw size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                {actionLoading ? <RefreshCw size={16} className="animate-spin" /> : <Trash2 size={16} />}
                 Execute Cleanup
               </button>
             </div>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

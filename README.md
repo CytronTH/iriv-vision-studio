@@ -1,6 +1,6 @@
-# IRIV Vision Studio 🚀
+# PiDo.AI 🚀
 
-**IRIV Vision Studio** is a powerful, node-based Edge AI Vision platform designed specifically for industrial automation and edge computing (e.g., Raspberry Pi with Hailo-8L accelerators). It allows users to visually design, deploy, and monitor real-time AI pipelines through an intuitive drag-and-drop interface, bridging the gap between hardware (GPIO, RS485), computer vision models (YOLO, custom `.hef`), and logical edge processing.
+**PiDo.AI** is a powerful, node-based Edge AI Vision platform designed specifically for industrial automation and edge computing (e.g., Raspberry Pi with Hailo-8L accelerators). It allows users to visually design, deploy, and monitor real-time AI pipelines through an intuitive drag-and-drop interface, bridging the gap between hardware (GPIO, RS485), computer vision models (YOLO, custom `.hef`), and logical edge processing.
 
 ---
 
@@ -35,10 +35,10 @@
 
 ---
 
-## 💻 Companion PC Software: IRIV Model Studio
-**IRIV Model Studio** is a dedicated PC desktop application designed to bridge the gap between AI training and edge deployment.
+## 💻 Companion PC Software: PiDo.AI Model Studio
+**PiDo.AI Model Studio** is a dedicated PC desktop application designed to bridge the gap between AI training and edge deployment.
 - **Seamless Model Compilation:** Easily convert ONNX models into Hailo `.hef` format without dealing with complex command-line tools.
-- **Direct Edge Deployment:** One-click upload and deployment of compiled `.hef` models directly to the **IRIV Vision Studio** running on the Raspberry Pi over the local network.
+- **Direct Edge Deployment:** One-click upload and deployment of compiled `.hef` models directly to the **PiDo.AI** running on the Raspberry Pi over the local network.
 - **Optimized Workflow:** Designed to work hand-in-hand with this platform, ensuring that updating AI models on the factory floor is as simple as a click of a button.
 
 ---
@@ -77,7 +77,7 @@ graph TD
 ## 📂 Project Structure
 
 ```text
-iriv-vision-studio/
+pido-ai/
 ├── backend/                  # Python API, AI Worker, Hardware interaction
 │   ├── ai_engine/            # Pipeline parser, Hailo inference worker, Message Router
 │   ├── db/                   # Project and entity definitions (JSON database)
@@ -109,8 +109,8 @@ iriv-vision-studio/
 
 1. **Clone the repository:**
    ```bash
-   git clone https://github.com/your-username/iriv-vision-studio.git
-   cd iriv-vision-studio
+   git clone https://github.com/your-username/pido-ai.git
+   cd pido-ai
    ```
 
 2. **Frontend Setup:**
@@ -129,7 +129,7 @@ iriv-vision-studio/
 
 ### Running the Application
 
-IRIV Vision Studio comes with a handy script that concurrently starts the **Frontend**, **FastAPI Backend**, and **MediaMTX** Server.
+PiDo.AI comes with a handy script that concurrently starts the **Frontend**, **FastAPI Backend**, and **MediaMTX** Server.
 
 ```bash
 chmod +x start.sh
@@ -174,8 +174,8 @@ HAILO_DEVICE_ID=0000:01:00.0
 ## 📝 Development Progress & Roadmap
 
 ### ✅ Completed
-- [x] **Native compatibility and integration with IRIV EdgeAI platform/hardware**
-- [x] Seamless IRIV Model Studio local compile flow (`/api/upload-hef`)
+- [x] **Native compatibility and integration with PiDo.AI platform/hardware**
+- [x] Seamless PiDo.AI Model Studio local compile flow (`/api/upload-hef`)
 - [x] Node-based Pipeline Builder core functionality
 - [x] Integration with Hailo-8L Edge AI accelerators
 - [x] MediaMTX RTSP/WebRTC stream routing and management
@@ -190,7 +190,7 @@ HAILO_DEVICE_ID=0000:01:00.0
 
 ### 🚧 In Progress (WIP)
 - [ ] Export pipeline configurations to standalone Docker containers
-- [ ] [Optional] IRIV Cloud telemetry & sync integration
+- [ ] [Optional] PiDo.AI Cloud telemetry & sync integration
 
 ### 🛡️ Offline-First & Air-Gapped Capabilities (Roadmap)
 - [ ] **Local Data & Image Storage Architecture:**
@@ -199,7 +199,7 @@ HAILO_DEVICE_ID=0000:01:00.0
 - [ ] **Zero-Touch USB Auto-Deploy:** Auto-load pipelines and models via USB stick for mass deployment without UI interaction.
 - [ ] **Physical & Local Alerts:** Direct GPIO Tower Light controls, local network Modbus TCP, and SMS module integration (no internet required).
 - [ ] **Local Access Point (Hotspot):** Built-in AP mode for direct tablet/laptop connection without factory Wi-Fi.
-- [ ] **mDNS Discovery (`iriv.local`):** Local network auto-discovery.
+- [ ] **mDNS Discovery (`pido-ai.local`):** Local network auto-discovery.
 - [ ] **Air-Gapped Firmware Updates:** Upload `.tar.gz` system updates directly via the Web UI.
 - [ ] **Self-Hosted Documentation:** Fully offline, bundled interactive tutorials and node documentation.
 

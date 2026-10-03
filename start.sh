@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Starting IRIV Vision Studio (Backend + Frontend)..."
+echo "Starting PiDo.AI (Backend + Frontend)..."
 echo "Press Ctrl+C to stop both servers."
 echo ""
 
@@ -24,6 +24,6 @@ npx concurrently \
   --kill-others-on-fail \
   -n "BACKEND,FRONTEND,MEDIAMTX" \
   -c "cyan.bold,green.bold,yellow.bold" \
-  "cd backend && . venv/bin/activate && uvicorn web_server.main:app --host 0.0.0.0 --port 8000" \
+  "cd backend && . venv/bin/activate && uvicorn web_server.main:app --host 0.0.0.0 --port 8000 --no-access-log" \
   "cd frontend && npm run dev" \
   "cd backend/mediamtx && ./mediamtx"

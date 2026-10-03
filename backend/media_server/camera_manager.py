@@ -15,6 +15,8 @@ class CameraStreamInstance:
         self.camera_type = camera_type
         self.path = path
         self.rtsp_url = rtsp_url
+        self.loop = True
+        self.loop_count = 1
         self.proc: Optional[subprocess.Popen] = None
         self.sub_proc: Optional[subprocess.Popen] = None # For pipe if any (e.g. rpicam-vid)
         self.ref_count = 0
@@ -22,6 +24,7 @@ class CameraStreamInstance:
         self.start_time = 0
         self.restart_count = 0
         self.is_ready = False
+        self.duration_sec: Optional[float] = None
 
 class CameraManager:
     """
@@ -56,7 +59,18 @@ class CameraManager:
                 return stream.rtsp_url
             return None
 
-    def acquire(self, camera_id: str, camera_entity: Optional[Dict[str, Any]] = None) -> str:
+    def get_stream_info(self, camera_id: str) -> dict:
+        """Returns info like current_loop for file streams."""
+        with self.lock:
+            stream = self.streams.get(camera_id)
+            if stream and stream.proc and stream.camera_type == "file" and stream.start_time > 0 and stream.duration_sec:
+                # Calculate loop based on elapsed time (minus the 4s tpad delay)
+                elapsed = max(0, time.time() - stream.start_time - 4.0)
+                current_loop = int(elapsed // stream.duration_sec) + 1
+                return {"duration": stream.duration_sec, "current_loop": current_loop}
+            return {}
+
+    def acquire(self, camera_id: str, camera_entity: Optional[Dict[str, Any]] = None, loop: bool = True, loop_count: int = 1) -> str:
         """
         Acquires a shared camera stream.
         If already running, increments ref_count and cancels any pending grace shutdown.
@@ -103,6 +117,8 @@ class CameraManager:
                 path=cam_path,
                 rtsp_url=rtsp_url
             )
+            new_stream.loop = loop
+            new_stream.loop_count = loop_count
             new_stream.ref_count = 1
 
             # 3. Start Ingestion Process
@@ -131,14 +147,19 @@ class CameraManager:
                 if stream.grace_timer:
                     stream.grace_timer.cancel()
 
-                logger.info(f"Camera '{camera_id}' reached ref_count=0. Starting {self.grace_period_seconds}s grace timer.")
-                stream.grace_timer = threading.Timer(
-                    self.grace_period_seconds,
-                    self._grace_period_expired,
-                    args=[camera_id]
-                )
-                stream.grace_timer.daemon = True
-                stream.grace_timer.start()
+                if stream.camera_type == "file":
+                    logger.info(f"Camera '{camera_id}' is a file and reached ref_count=0. Stopping immediately without grace period.")
+                    self._kill_stream_process(stream)
+                    del self.streams[camera_id]
+                else:
+                    logger.info(f"Camera '{camera_id}' reached ref_count=0. Starting {self.grace_period_seconds}s grace timer.")
+                    stream.grace_timer = threading.Timer(
+                        self.grace_period_seconds,
+                        self._grace_period_expired,
+                        args=[camera_id]
+                    )
+                    stream.grace_timer.daemon = True
+                    stream.grace_timer.start()
 
     def _grace_period_expired(self, camera_id: str):
         """Called when grace timer expires with ref_count still 0."""
@@ -159,21 +180,35 @@ class CameraManager:
 
         try:
             if cam_type == "file":
+                # Extract duration using ffprobe
+                try:
+                    out = subprocess.check_output(
+                        ["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", path],
+                        stderr=subprocess.STDOUT
+                    ).decode().strip()
+                    stream.duration_sec = float(out)
+                except Exception as e:
+                    logger.warning(f"Failed to get duration for {path}: {e}")
+                    stream.duration_sec = None
+
                 # Looping video file via FFmpeg
+                loop_arg = "-1" if stream.loop else str(max(0, stream.loop_count - 1))
                 cmd = [
                     "ffmpeg", "-nostdin", "-re",
-                    "-f", "lavfi",
-                    "-i", f"movie={path}:loop=0,setpts=N/FRAME_RATE/TB",
+                    "-stream_loop", loop_arg,
+                    "-i", path,
+                    "-vf", "tpad=start_duration=4:color=black,setpts=N/FRAME_RATE/TB,realtime",
                     "-c:v", "libx264", "-profile:v", "baseline",
                     "-tune", "zerolatency", "-preset", "ultrafast",
                     "-b:v", "2M", "-g", "30",
                     "-an", "-f", "rtsp", "-rtsp_transport", "tcp",
                     rtsp_url
                 ]
-                proc = subprocess.Popen(
-                    cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    start_new_session=True
-                )
+                with open("/tmp/ffmpeg_err.log", "w") as f:
+                    proc = subprocess.Popen(
+                        cmd, stdout=subprocess.DEVNULL, stderr=f,
+                        start_new_session=True
+                    )
                 stream.proc = proc
                 stream.start_time = time.time()
 
@@ -288,6 +323,12 @@ class CameraManager:
                 for cam_id, stream in list(self.streams.items()):
                     if stream.ref_count > 0 and stream.proc:
                         if stream.proc.poll() is not None:
+                            # If it's a file that reached its loop count naturally, it exits with 0
+                            if stream.camera_type == "file" and not stream.loop and stream.proc.returncode == 0:
+                                logger.info(f"Video file '{cam_id}' finished playing. Not restarting.")
+                                self._kill_stream_process(stream)
+                                continue
+
                             logger.warning(f"Ingestion process for '{cam_id}' exited unexpectedly (code {stream.proc.returncode}).")
                             if stream.restart_count < 3:
                                 stream.restart_count += 1

@@ -68,32 +68,32 @@ export default function HistoricalChartWidget({ projectId = 'default', config = 
   };
 
   return (
-    <div className="flex flex-col h-full bg-gray-900 border border-gray-800 rounded-xl overflow-hidden shadow-xl">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden shadow-xl">
       {/* Header Toolbar */}
-      <div className="bg-gray-800/80 px-3.5 py-2.5 flex items-center justify-between border-b border-gray-700/80 shrink-0">
+      <div className="bg-gray-100 dark:bg-gray-800/80 px-3.5 py-2.5 flex items-center justify-between border-b border-gray-300 dark:border-gray-700/80 shrink-0">
         <div className="flex items-center gap-2">
           <BarChart3 size={16} className="text-teal-400" />
-          <span className="text-xs sm:text-sm font-semibold text-gray-200">{title}</span>
+          <span className="text-xs sm:text-sm font-semibold text-gray-800 dark:text-gray-200">{title}</span>
         </div>
 
         <div className="flex items-center gap-2">
           {/* Interval Selector */}
-          <div className="flex bg-gray-950 p-0.5 rounded-lg border border-gray-800 text-[11px]">
+          <div className="flex bg-gray-50 dark:bg-gray-950 p-0.5 rounded-lg border border-gray-200 dark:border-gray-800 text-[11px]">
             <button
               onClick={() => setInterval('minute')}
-              className={`px-2 py-0.5 rounded font-medium transition-colors ${interval === 'minute' ? 'bg-teal-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+              className={`px-2 py-0.5 rounded font-medium transition-colors ${interval === 'minute' ? 'bg-teal-600 text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 dark:text-gray-400 hover:text-gray-800 dark:text-gray-200'}`}
             >
               Min
             </button>
             <button
               onClick={() => setInterval('hour')}
-              className={`px-2 py-0.5 rounded font-medium transition-colors ${interval === 'hour' ? 'bg-teal-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+              className={`px-2 py-0.5 rounded font-medium transition-colors ${interval === 'hour' ? 'bg-teal-600 text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 dark:text-gray-400 hover:text-gray-800 dark:text-gray-200'}`}
             >
               Hour
             </button>
             <button
               onClick={() => setInterval('day')}
-              className={`px-2 py-0.5 rounded font-medium transition-colors ${interval === 'day' ? 'bg-teal-600 text-white' : 'text-gray-400 hover:text-gray-200'}`}
+              className={`px-2 py-0.5 rounded font-medium transition-colors ${interval === 'day' ? 'bg-teal-600 text-gray-900 dark:text-white' : 'text-gray-500 dark:text-gray-400 dark:text-gray-400 hover:text-gray-800 dark:text-gray-200'}`}
             >
               Day
             </button>
@@ -113,7 +113,7 @@ export default function HistoricalChartWidget({ projectId = 'default', config = 
           {/* Refresh Button */}
           <button
             onClick={fetchData}
-            className="text-gray-400 hover:text-white p-1 rounded hover:bg-gray-800 transition-colors"
+            className="text-gray-500 dark:text-gray-400 dark:text-gray-400 hover:text-gray-900 dark:text-white p-1 rounded hover:bg-gray-100 dark:bg-gray-800 transition-colors"
             title="Refresh Data"
           >
             <RefreshCw size={13} className={loading ? 'animate-spin text-teal-400' : ''} />
@@ -124,7 +124,7 @@ export default function HistoricalChartWidget({ projectId = 'default', config = 
       {/* Chart Canvas */}
       <div className="flex-1 p-3 min-h-[160px] relative">
         {loading && data.length === 0 ? (
-          <div className="absolute inset-0 flex items-center justify-center bg-gray-900/50">
+          <div className="absolute inset-0 flex items-center justify-center bg-white dark:bg-gray-900/50">
             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-teal-500"></div>
           </div>
         ) : data.length > 0 ? (
@@ -168,7 +168,7 @@ export default function HistoricalChartWidget({ projectId = 'default', config = 
             </BarChart>
           </ResponsiveContainer>
         ) : (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500 gap-1.5 text-xs italic">
+          <div className="flex flex-col items-center justify-center h-full text-gray-500 dark:text-gray-400 gap-1.5 text-xs italic">
             <TrendingUp size={24} className="text-gray-600 mb-1" />
             <span>No historical count records logged yet.</span>
             <span className="text-[10px] text-gray-600">Ensure Flow Counter node has Auto-Save enabled.</span>

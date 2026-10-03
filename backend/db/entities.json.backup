@@ -10,7 +10,7 @@
       "id": "cam_file_1787165388",
       "name": "Conveyor_belt_inspecting_congee_\u2026_202608181434.mp4",
       "type": "file",
-      "path": "/home/pi/iriv-vision-studio/backend/videos/Conveyor_belt_inspecting_congee_\u2026_202608181434.mp4"
+      "path": "/home/pi/pido-ai/backend/videos/Conveyor_belt_inspecting_congee_\u2026_202608181434.mp4"
     },
     {
       "id": "cam_1787888752117",
@@ -104,7 +104,7 @@
     },
     {
       "id": "cm5_hardware",
-      "name": "IRIV EdgeAI CM5 (Hardware I/O)",
+      "name": "PiDo EdgeAI CM5 (Hardware I/O)",
       "type": "cm5_hardware",
       "target": "local"
     }
